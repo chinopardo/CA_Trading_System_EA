@@ -64,7 +64,8 @@ enum PolicyBlockCode
   POLICY_MAX_LOSSES    = 3,
   POLICY_MAX_TRADES    = 4,
   POLICY_SPREAD_HIGH   = 5,
-  POLICY_COOLDOWN      = 6
+  POLICY_COOLDOWN      = 6,
+  POLICY_MONTH_TARGET  = 7
 };
 
 namespace Policies
@@ -85,7 +86,8 @@ namespace Policies
     GATE_LIQUIDITY  = 20,
     GATE_CONFLICT   = 21,
     GATE_ADR        = 22,
-    GATE_ACCOUNT_DD = 23
+    GATE_ACCOUNT_DD = 23,
+    GATE_MONTH_TARGET = 24
   };
 
   inline string ReasonString(const int r)
@@ -106,6 +108,7 @@ namespace Policies
       case GATE_CONFLICT:   return "CONFLICT";
       case GATE_ADR:        return "ADR_CAP";
       case GATE_ACCOUNT_DD: return "ACCOUNT_DD_FLOOR";
+      case GATE_MONTH_TARGET: return "MONTH_TARGET";
       default:              return "UNKNOWN";
     }
   }
@@ -205,6 +208,16 @@ namespace Policies
      #endif
    }
 
+  inline double CfgMonthlyTargetPct(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MONTHLY_TARGET_PCT
+      // 0–100 %, 0 => disabled
+      return (cfg.monthly_target_pct > 0.0 ? cfg.monthly_target_pct : 0.0);
+    #else
+      return 0.0; // compile-safe: feature off if not wired in Config.mqh
+    #endif
+  }
+  
   inline long CfgMagicNumber(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAGIC_NUMBER
@@ -618,12 +631,25 @@ namespace Policies
    
    inline double CfgFib_MinRRFibAllowed(const Settings &cfg)
    {
-      return (cfg.minRRFibAllowed > 0.0 ? cfg.minRRFibAllowed : 1.5);
+     // Compile-safe: only touch cfg.minRRFibAllowed if the macro is defined.
+     // Fallback default keeps behaviour sensible if the field/macros are absent.
+     #ifdef CFG_HAS_FIB_MIN_RR_ALLOWED
+       return (cfg.minRRFibAllowed > 0.0 ? cfg.minRRFibAllowed : 1.5);
+     #else
+       // Default minimum RR for fib-based plays when not explicitly configured.
+       return 1.5;
+     #endif
    }
    
    inline bool CfgFib_HardReject(const Settings &cfg)
    {
-      return cfg.fibRRHardReject;
+     // Compile-safe: only use hard-reject flag when explicitly enabled in Config.
+     #ifdef CFG_HAS_FIB_RR_HARD_REJECT
+       return (bool)cfg.fibRRHardReject;
+     #else
+       // No hard reject when fib RR config is not wired in.
+       return false;
+     #endif
    }
    
    inline double CfgFib_W_OTE(const Settings &cfg)
@@ -813,6 +839,11 @@ namespace Policies
   // account-wide (challenge) DD persistence
   static double   s_acctEqStart    = 0.0;  // fixed baseline (challenge init equity)
   static bool     s_acctStopHit    = false; // latched once floor is breached
+  
+  // month-level profit target persistence
+  static int      s_monthKey        = -1;    // YYYYMM (e.g. 202512)
+  static double   s_monthStartEq    = 0.0;   // equity at start of month
+  static bool     s_monthTargetHit  = false; // latched once target reached
 
   static int      s_loss_streak     = 0;
   static int      s_cooldown_losses = 2;
@@ -855,6 +886,11 @@ namespace Policies
     // account-wide floor
     _GVSetD(_Key("ACCT_EQ0"),          s_acctEqStart);
     _GVSetB(_Key("ACCT_DD_STOP_FLAG"), s_acctStopHit);
+    
+    // monthly profit target baseline & latch
+    _GVSetD(_Key("MONTH_KEY"),         (double)s_monthKey);
+    _GVSetD(_Key("MONTH_EQ0"),         s_monthStartEq);
+    _GVSetB(_Key("MONTH_TARGET_HIT"),  s_monthTargetHit);
   }
 
   inline void _ResetDayStopForNewDayIfNeeded(const int curD)
@@ -887,6 +923,34 @@ namespace Policies
     s_dayStopHit = _GVGetB(_Key("DAY_STOP_FLAG"), false);
     s_dayStopDay = _GVGetI(_Key("DAY_STOP_DAY"), curD);
     _ResetDayStopForNewDayIfNeeded(curD);
+  }
+  
+  inline void _EnsureMonthState()
+  {
+    // Compute current month as YYYYMM (e.g. 202512)
+    MqlDateTime dt;
+    TimeToStruct(TimeCurrent(), dt);
+    const int curM = dt.year * 100 + dt.mon;
+
+    int    storedM = _GVGetI(_Key("MONTH_KEY"), -1);
+    double eq0     = _GVGetD(_Key("MONTH_EQ0"), 0.0);
+    bool   tgtHit  = _GVGetB(_Key("MONTH_TARGET_HIT"), false);
+
+    // If month changed or no valid baseline yet, re-anchor
+    if(storedM != curM || eq0 <= 0.0)
+    {
+      storedM = curM;
+      eq0     = AccountInfoDouble(ACCOUNT_EQUITY);
+      tgtHit  = false;
+
+      _GVSetD(_Key("MONTH_KEY"),        (double)storedM);
+      _GVSetD(_Key("MONTH_EQ0"),        eq0);
+      _GVSetB(_Key("MONTH_TARGET_HIT"), tgtHit);
+    }
+
+    s_monthKey       = storedM;
+    s_monthStartEq   = eq0;
+    s_monthTargetHit = tgtHit;
   }
   
   inline void _EnsureAccountBaseline(const Settings &cfg)
@@ -938,6 +1002,10 @@ namespace Policies
 
     // Daily anchors and day-stop
     _EnsureDayState();
+    
+    // Monthly baseline / latch (YYYYMM)
+    // (helper defined in next step)
+    _EnsureMonthState();
 
     s_loaded = true;
   }
@@ -1054,6 +1122,51 @@ namespace Policies
      return false;
    }
 
+   inline void MonthlyProfitStats(const Settings &cfg,
+                                 double &profit_pct_out,
+                                 bool   &target_hit_out)
+  {
+    _EnsureLoaded(cfg);
+    _EnsureMonthState();
+
+    profit_pct_out  = 0.0;
+    target_hit_out  = false;
+
+    const double eq0 = s_monthStartEq;
+    const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
+    if(eq0 <= 0.0 || eq1 <= 0.0)
+      return;
+
+    const double profit = (eq1 - eq0);
+    profit_pct_out      = 100.0 * profit / eq0;  // 0–100 %
+
+    const double target_pct = CfgMonthlyTargetPct(cfg);
+    if(target_pct > 0.0 && profit_pct_out >= target_pct)
+    {
+      // latch once per month
+      s_monthTargetHit = true;
+      target_hit_out   = true;
+
+      _GVSetB(_Key("MONTH_TARGET_HIT"), true);
+    }
+    else
+    {
+      // if target already latched from earlier run, respect it
+      if(_GVGetB(_Key("MONTH_TARGET_HIT"), false))
+      {
+        s_monthTargetHit = true;
+        target_hit_out   = true;
+      }
+    }
+  }
+ 
+  inline bool MonthlyProfitTargetHit(const Settings &cfg, double &profit_pct_out)
+  {
+    bool hit = false;
+    MonthlyProfitStats(cfg, profit_pct_out, hit);
+    return hit;
+  }
+  
   inline bool DailyLossStopHit(const Settings &cfg, double &loss_money_out, double &loss_pct_out)
    {
      _EnsureLoaded(cfg); _EnsureDayState();
@@ -1267,26 +1380,213 @@ namespace Policies
   inline int  TradeCooldownSecondsLeft(){ return _SecondsLeft(s_trade_cd_until); }
   inline int  LossCooldownSecondsLeft(){  return _SecondsLeft(s_cooldown_until); }
 
+  // ---------------------------------------------------------------------------
+  // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)
+  // ---------------------------------------------------------------------------
+  inline bool Check(const Settings &cfg, int &reason)
+  {
+    _EnsureLoaded(cfg);
+    _EnsureMonthState();
+    reason = GATE_OK;
+
+    // ------------------------------------------------------------------------
+    // 0) Apply runtime knobs from cfg so Execution / Router / Intent builder
+    //    all see consistent policy parameters, even if they never call the
+    //    higher-level intent builders.
+    // ------------------------------------------------------------------------
+    SetMoDMultiplier      (CfgModSpreadMult(cfg));
+    SetSpreadATRAdapt     (CfgATRShort(cfg), CfgATRLong(cfg),
+                           CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
+    SetVolBreakerLimit    (CfgVolBreakerLimit(cfg));
+    SetLiquidityParams    (CfgLiqMinRatio(cfg));
+    SetLossCooldownParams (CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
+    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
+
+    // ------------------------------------------------------------------------
+    // 1) Hard day/account stops (cheap, persistent, latched)
+    // ------------------------------------------------------------------------
+
+    // 1a) Realised day-loss (money / %) hard stop
+    double loss_money = 0.0;
+    double loss_pct   = 0.0;
+    if(DailyLossStopHit(cfg, loss_money, loss_pct))
+    {
+      reason = GATE_DAYLOSS;
+      return false;
+    }
+
+    // 1b) Daily equity drawdown vs day anchor
+    double day_dd_pct = 0.0;
+    if(DailyEquityDDHit(cfg, day_dd_pct))
+    {
+      reason = GATE_DAILYDD;
+      return false;
+    }
+
+    // 1c) Account-wide (challenge) equity floor (never re-anchors)
+    double acct_dd_pct = 0.0;
+    if(AccountEquityDDHit(cfg, acct_dd_pct))
+    {
+      reason = GATE_ACCOUNT_DD;
+      return false;
+    }
+    
+    // 1d) Monthly profit target (latched per calendar month)
+    double month_pct = 0.0;
+    if(MonthlyProfitTargetHit(cfg, month_pct))
+    {
+      reason = GATE_MONTH_TARGET;
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 2) Cooldowns (loss-streak + per-trade)
+    // ------------------------------------------------------------------------
+    if(LossCooldownActive() || TradeCooldownActive())
+    {
+      reason = GATE_COOLDOWN;
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 3) Spread / session-aware MoD gate (with weekly-open ramp)
+    //     • Will return GATE_SPREAD / GATE_MOD_SPREAD / GATE_SESSION
+    // ------------------------------------------------------------------------
+    int spread_reason = GATE_OK;
+    if(!MoDSpreadOK(cfg, spread_reason))
+    {
+      reason = spread_reason;
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 4) Optional London-local liquidity policy:
+    //    tweak the liquidity floor depending on London local window.
+    //    This only affects LiquidityOK(), which is used in CheckFull().
+    // ------------------------------------------------------------------------
+    #ifdef CFG_HAS_LONDON_LIQ_POLICY
+    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
+    {
+      const bool in_lon =
+          _WithinLocalWindowMins(cfg.london_local_open_min,
+                                 cfg.london_local_close_min,
+                                 TimeLocal());
+
+      if(cfg.london_liquidity_policy)
+      {
+        const double base = CfgLiqMinRatio(cfg);
+        const double mult = (in_lon ? 0.95 : 1.05); // tighter in London, looser outside
+        SetLiquidityParams(base * mult);
+      }
+    }
+    #endif // CFG_HAS_LONDON_LOCAL_MINUTES
+    #endif // CFG_HAS_LONDON_LIQ_POLICY
+
+    // ------------------------------------------------------------------------
+    // 5) Volatility breaker – short ATR vs long ATR too extreme
+    // ------------------------------------------------------------------------
+    double vb_ratio = 0.0;
+    if(VolatilityBreaker(cfg, vb_ratio))
+    {
+      reason = GATE_VOLATILITY;
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 6) ADR cap – "too much range today" style breaker
+    //     ADRCapOK sets its own reason (normally GATE_ADR).
+    // ------------------------------------------------------------------------
+    double adr_pts    = 0.0;
+    int    adr_reason = GATE_OK;
+    if(!ADRCapOK(cfg, adr_reason, adr_pts))
+    {
+      reason = adr_reason;
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 7) Calm mode – too quiet / illiquid (ATR vs spread / min ATR)
+    // ------------------------------------------------------------------------
+    int calm_reason = GATE_OK;
+    if(!CalmModeOK(cfg, calm_reason))
+    {
+      reason = calm_reason;  // typically GATE_CALM
+      return false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 8) Regime gate (trend-quality / correlation slope consensus)
+    // ------------------------------------------------------------------------
+    EnableRegimeGate(CfgRegimeGateOn(cfg));
+    SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
+    if(!RegimeConsensusOK(cfg))
+    {
+      reason = GATE_REGIME;
+      return false;
+    }
+
+    // If we reach here, all gates passed.
+    reason = GATE_OK;
+    return true;
+  }
+
   // --- Hooks expected by Execution.mqh ---
   inline void TouchTradeCooldown(){ NotifyTradePlaced(); }
-
+  
   inline void RecordExecutionAttempt()
   {
     _GVSetD(_Key("LAST_ATTEMPT_TS"), (double)TimeCurrent());
-    // optional: increment per-day attempts counter
-    int cnt = _GVGetI(_Key("ATTEMPTS_D"), 0);
-    const int curD = EpochDay(TimeCurrent());
-    const int dGV  = _GVGetI(_Key("ATTEMPTS_D_DAY"), -1);
-    if(dGV!=curD){ _GVSetD(_Key("ATTEMPTS_D_DAY"), (double)curD); cnt=0; }
-    _GVSetD(_Key("ATTEMPTS_D"), (double)(cnt+1));
+
+    // Optional: simple per-day attempts counter for telemetry
+    int        cnt  = _GVGetI(_Key("ATTEMPTS_D"), 0);
+    const int  curD = EpochDay(TimeCurrent());
+    const int  dGV  = _GVGetI(_Key("ATTEMPTS_D_DAY"), -1);
+
+    if(dGV != curD)
+    {
+      // New day → reset counter and day key
+      _GVSetD(_Key("ATTEMPTS_D_DAY"), (double)curD);
+      cnt = 0;
+    }
+
+    cnt++;
+    _GVSetD(_Key("ATTEMPTS_D"), (double)cnt);
   }
 
-  inline void RecordExecutionResult(const bool ok, const uint retcode, const double filled)
+    inline void RecordExecutionResult(const bool ok, const uint retcode, const double filled_volume)
   {
-    _GVSetD(_Key("LAST_OK"), (ok?1.0:0.0));
-    _GVSetD(_Key("LAST_RC"), (double)retcode);
-    _GVSetD(_Key("LAST_FILLED"), filled);
-    _GVSetD(_Key("LAST_RESULT_TS"), (double)TimeCurrent());
+    // If Policies::Init(...) was never called, s_prefix may be empty.
+    // In that case we still work, but the keys are shared per-login.
+    const datetime now = TimeCurrent();
+
+    // Basic last-result telemetry
+    if(StringLen(s_prefix)>0)
+    {
+      _GVSetB(_Key("LAST_EXEC_OK"),      ok);
+      _GVSetD(_Key("LAST_EXEC_RC"),      (double)retcode);
+      _GVSetD(_Key("LAST_RC"),           (double)retcode);
+      _GVSetD(_Key("LAST_EXEC_FILLED"),  filled_volume);
+      _GVSetD(_Key("LAST_EXEC_TS"),      (double)now);
+    }
+
+    // Per-day success/fail counters (for HUD / diagnostics)
+    const int curD   = EpochDay(now);
+    const int d_tr   = _GVGetI(_Key("TRADES_D_DAY"), -1);
+    int       succ_d = _GVGetI(_Key("SUCC_TRADES_D"), 0);
+    int       fail_d = _GVGetI(_Key("FAIL_TRADES_D"), 0);
+
+    if(d_tr!=curD)
+    {
+      // New day → reset counters
+      succ_d = 0;
+      fail_d = 0;
+      _GVSetD(_Key("TRADES_D_DAY"), (double)curD);
+    }
+
+    if(ok) succ_d++; else fail_d++;
+
+    _GVSetD(_Key("SUCC_TRADES_D"), (double)succ_d);
+    _GVSetD(_Key("FAIL_TRADES_D"), (double)fail_d);
   }
 
   // ----------------------------------------------------------------------------
@@ -1377,69 +1677,6 @@ namespace Policies
   // ----------------------------------------------------------------------------
   // Core gates: Check / CheckFull / AllowedByPolicies
   // ----------------------------------------------------------------------------
-  inline bool Check(const Settings &cfg, int &reason)
-  {
-    _EnsureLoaded(cfg);
-
-    // ensure runtime knobs applied even when intent builder isn’t used
-    SetMoDMultiplier(CfgModSpreadMult(cfg));
-    SetSpreadATRAdapt(CfgATRShort(cfg), CfgATRLong(cfg), CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
-    SetVolBreakerLimit(CfgVolBreakerLimit(cfg));
-    SetLiquidityParams(CfgLiqMinRatio(cfg));
-    SetLossCooldownParams(CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
-    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
-
-    // day-loss latch check first (cheap, persistent)
-    double lossM=0.0, lossPct=0.0;
-    if(DailyLossStopHit(cfg, lossM, lossPct)){ reason=GATE_DAYLOSS; return false; }
-
-    if(!MoDSpreadOK(cfg, reason)) return false;
-
-    // daily equity drawdown vs day anchor
-    double dd=0.0;
-    if(DailyEquityDDHit(cfg, dd)){ reason=GATE_DAILYDD; return false; }
-
-    // account-wide challenge floor (never re-anchors)
-    double acct_dd=0.0;
-    if(AccountEquityDDHit(cfg, acct_dd)){ reason=GATE_ACCOUNT_DD; return false; }
-
-    if(LossCooldownActive() || TradeCooldownActive()){ reason=GATE_COOLDOWN; return false; }
-    
-    #ifdef CFG_HAS_LONDON_LIQ_POLICY
-    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
-    {
-      const bool in_lon =
-          _WithinLocalWindowMins(cfg.london_local_open_min,
-                                 cfg.london_local_close_min,
-                                 TimeLocal());
- 
-      if(cfg.london_liquidity_policy)
-      {
-        // Slightly tighter liquidity ratio in London local window; slightly looser outside
-        const double base = CfgLiqMinRatio(cfg);
-        const double mult = (in_lon ? 0.95 : 1.05);
-        SetLiquidityParams(base * mult);
-      }
-    }
-    #endif  // CFG_HAS_LONDON_LOCAL_MINUTES
-    #endif  // CFG_HAS_LONDON_LIQ_POLICY
-
-    double vr=0.0;
-    if(VolatilityBreaker(cfg, vr)){ reason=GATE_VOLATILITY; return false; }
-
-    double adr_pts=0.0;
-    if(!ADRCapOK(cfg, reason, adr_pts)) return false;
-
-    if(!CalmModeOK(cfg, reason)) return false;
-
-    EnableRegimeGate(CfgRegimeGateOn(cfg));
-    SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
-    if(!RegimeConsensusOK(cfg)){ reason=GATE_REGIME; return false; }
-    
-
-    reason=GATE_OK; return true;
-  }
-
   inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news)
   {
     minutes_left_news = 0;
@@ -1497,6 +1734,20 @@ namespace Policies
 
     if(!Check(cfg, reason)) return false;
 
+    // Day-level trade-count limits (max losses / max trades per day)
+    // Re-use GATE_DAYLOSS so HUD / logging stays compact.
+    if(MaxLossesReachedToday(cfg))
+    {
+      reason = GATE_DAYLOSS;
+      return false;
+    }
+
+    if(MaxTradesReachedToday(cfg))
+    {
+      reason = GATE_DAYLOSS;
+      return false;
+    }
+    
     if(EffSessionFilter(cfg, _Symbol))
     {
       const bool sess_on  = EffSessionFilter(cfg, _Symbol);
@@ -1573,27 +1824,38 @@ namespace Policies
   inline bool MaxLossesReachedToday(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAX_LOSSES_DAY
-      if(cfg.max_losses_day <= 0) return false;
+      // Config field is compiled in and guarded → safe to use.
+      if(cfg.max_losses_day <= 0)
+        return false;
+
+      int entries = 0;
+      int losses  = 0;
+      const long mf = _MagicFilterFromCfg(cfg);
+      CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+      return (losses >= cfg.max_losses_day);
     #else
-      if(cfg.max_losses_day <= 0) return false; // fallback if field exists unguarded
+      // Field not compiled in → no daily losses cap.
+      return false;
     #endif
-    int entries=0, losses=0;
-    const long mf = _MagicFilterFromCfg(cfg);
-    CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
-    return (losses >= cfg.max_losses_day);
   }
 
   inline bool MaxTradesReachedToday(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAX_TRADES_DAY
-      if(cfg.max_trades_day <= 0) return false;
+      // Config field is compiled in and guarded → safe to use.
+      if(cfg.max_trades_day <= 0)
+        return false;
+
+      int entries = 0;
+      int losses  = 0;
+      const long mf = _MagicFilterFromCfg(cfg);
+      CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+      return (entries >= cfg.max_trades_day);
     #else
-      if(cfg.max_trades_day <= 0) return false;
+      // Field not compiled in → no daily trade-count cap.
+      (void)cfg;
+      return false;
     #endif
-    int entries=0, losses=0;
-    const long mf = _MagicFilterFromCfg(cfg);
-    CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
-    return (entries >= cfg.max_trades_day);
   }
 
   // ----------------------------------------------------------------------------
@@ -1643,6 +1905,7 @@ namespace Policies
       #endif
     }
 
+    _EnsureLoaded(cfg);
     code_out = POLICY_OK;
 
     // 1) Session window
@@ -1669,6 +1932,16 @@ namespace Policies
     if(MaxLossesReachedToday(cfg)) { code_out = POLICY_MAX_LOSSES; return false; }
     if(MaxTradesReachedToday(cfg)) { code_out = POLICY_MAX_TRADES; return false; }
 
+    // 3b) Monthly profit target (legacy ABI view)
+    {
+      double month_pct = 0.0;
+      if(MonthlyProfitTargetHit(cfg, month_pct))
+      {
+        code_out = POLICY_MONTH_TARGET;
+        return false;
+      }
+    }
+    
     // 4) Spread limit (static cap; adaptive used elsewhere)
     const int spr_pts = (int)MathRound(MarketData::SpreadPoints(_Symbol));
     int cap_pts = EffMaxSpreadPts(cfg, _Symbol);          // honor overrides
@@ -1727,6 +2000,11 @@ namespace Policies
     bool     in_session_window;
     double   adr_cap_limit_pts;
     bool     adr_cap_hit;
+    
+    // Monthly profit target HUD
+    bool     month_target_hit;
+    double   month_start_equity;
+    double   month_profit_pct;  // 0–100 %, +10.0 == +10 %
   };
 
    inline void TelemetrySnapshot(const Settings &cfg, Telemetry &t)
@@ -1809,11 +2087,22 @@ namespace Policies
       t.adr_cap_hit = (!ok && adr_reason == GATE_ADR);
     }
 
+    // --- Monthly profit target HUD ---
+    {
+      double month_pct = 0.0;
+      bool   month_hit = false;
+      MonthlyProfitStats(cfg, month_pct, month_hit);
+
+      t.month_target_hit   = month_hit;
+      t.month_start_equity = s_monthStartEq;
+      t.month_profit_pct   = month_pct;
+    }
+    
     // news & attempts
     NewsBlockedNow(cfg, mleft); t.news_mins_left = mleft;
     t.attempts_today = _GVGetI(_Key("ATTEMPTS_D"), 0);
     t.last_attempt_ts= (datetime)_GVGetD(_Key("LAST_ATTEMPT_TS"), 0.0);
-    t.last_retcode   = (uint)_GVGetI(_Key("LAST_RC"), 0);
+    t.last_retcode   = (uint)_GVGetI(_Key("LAST_EXEC_RC"), 0);
   }
 
   // ----------------------------------------------------------------------------

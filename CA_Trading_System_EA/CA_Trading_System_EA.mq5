@@ -69,7 +69,7 @@
 #include "include/Warmup.mqh"
 
 #ifndef ROUTER_TRACE_FLOW
-#define ROUTER_TRACE_FLOW 0   // set to 1 to enable #F breadcrumbs
+#define ROUTER_TRACE_FLOW 1   // set to 1 to enable #F breadcrumbs
 #endif
 
 // ================== Globals ==================
@@ -268,6 +268,11 @@ input double           InpMinTP_Pips            = 15.0; // Min TP (Pips)
 input double           InpMaxSLCeiling_Pips     = 2500.0; // Max Ceiling (Pips)
 input double           InpMaxDailyDD_Pct        = 2.0; // Max Daily DD Percentage
 input double           InpDayDD_LimitPct        = 2.0; // Max Daily DD taper onset (%); scales risk down from here
+
+// --- Monthly profit target gate ---
+// 0.0 = disabled; otherwise stop new entries once equity is up by this % vs month-start.
+input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month
+
 input int              InpMaxLossesDay          = 4; // Max Daily Losses
 input int              InpMaxTradesDay          = 10; // Max Daily Trades
 input int              InpMaxSpreadPoints       = 100; // Max Spread Points
@@ -279,12 +284,12 @@ input int              InpTimerMS               = 150; // Loop controls / heartb
 input int              InpServerOffsetMinutes   = 0; // Loop controls / heartbeat: Server Offset Mins
 
 // -------- Session windows (UTC minutes) — legacy union (London/NY) --------
-input bool             InpSessionFilter         = true; // Sessions: Filter Enable
+input bool             InpSessionFilter         = false; // Sessions: Filter Enable
 input SessionPreset    InpSessionPreset         = SESS_TOKYO_C3_TO_NY_CLOSE; // Sessions: Preset
 input int              InpLondonOpenUTC         = 7*60; // Sessions: Ldn Open UTC Time
-input int              InpLondonCloseUTC        = 11*60; // Sessions: Ldn Close UTC Time
+input int              InpLondonCloseUTC        = 17*60; // Sessions: Ldn Close UTC Time
 input int              InpNYOpenUTC             = 12*60 + 30; // Sessions: NY Open UTC Time
-input int              InpNYCloseUTC            = 16*60; // Sessions: NY Close UTC Time
+input int              InpNYCloseUTC            = 22*60; // Sessions: NY Close UTC Time
 input int              InpTokyoCloseUTC         = 6*60;  // Sessions: Tky Close UTC Time
 input int              InpSydneyOpenUTC         = 21*60; // Sessions: Syd Open UTC Time
 
@@ -307,7 +312,7 @@ input double           InpStreakMinScale        = 0.5;     // Streak-based Lot S
 // -------- Registry Router & Strategy knobs --------
 input int              InpRouterMode            = 0;    // Registry Router & Strategy: Mode - 0=MAX,1=WEIGHTED,2=AB
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
-input double           InpRouterMinScore        = 0.60; // Registry Router & Strategy: Min Score
+input double           InpRouterMinScore        = 0.55; // Registry Router & Strategy: Min Score
 input int              InpRouterMaxStrats       = 2;   // Registry Router & Strategy: Max Strat
 
 // Position management
@@ -326,7 +331,7 @@ input double           InpP2_At_R               = 3.00;           // Position Mg
 input double           InpP2_ClosePct           = 25.0;          // Position Mgnt: Partial 2 Close Pct
 
 // ================= Strategy family selector =================
-input StrategyMode InpStrat_Mode                = STRAT_PACK_ONLY; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
+input StrategyMode InpStrat_Mode                = STRAT_COMBINED; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
 
 // Separate magic ranges (helps you segment PnL & mgmt)
 input int MagicBase_Main               = 11000;
@@ -363,7 +368,7 @@ input double InpRiskMult_WyckoffTurn      = 0.40;
 // ================= Confluence Gate (base) =================
 // ---- Main confluence gates
 input int    InpConf_MinCount       = 1;       // Confluence Gate: Min Count
-input double InpConf_MinScore       = 0.55;    // Confluence Gate: Min Score
+input double InpConf_MinScore       = 0.50;    // Confluence Gate: Min Score
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
 
 // --- Liquidity Pools (Lux-style, LuxAlgo Liquidity Pools) ---
@@ -414,7 +419,7 @@ input double InpW_News     = 1.00;              // Confluence Gate: News Filter 
 
 // — Router/Confluence thresholds —
 input bool   Inp_EnableHardGate            = false;  // Router/Confluence Threshold: Hard Gate
-input double Inp_RouterFallbackMin         = 0.58;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
+input double Inp_RouterFallbackMin         = 0.50;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
 input int    Inp_MinFeaturesMet            = 1;     // Router/Confluence Threshold: Min Feat. Met exclude NewsOK from count
 
 // Hard-gate recipe: Trend + ADX + (Struct || Candle || OB_Prox)
@@ -725,6 +730,15 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint v
                            (InpProfileUseRouterHints?"ON":"OFF")));
   }
 
+// ------------------------------------------------------------------
+// Forward declarations (defined later in this file)
+// ------------------------------------------------------------------
+bool   TryMinimalPathIntent(const string sym,
+                            const Settings &cfg,
+                            StratReg::RoutedPick &pick_out);
+
+double StreakRiskScale();
+
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -797,7 +811,7 @@ void EvaluateOneSymbol(const string sym)
 // Keep this single source of truth so Router/Policies/ProcessSymbol all see the same flags.
 void MirrorInputsToSettings(Settings &cfg)
 {
-  // ---- Router / Hard-gate knobs: use canonical underscored names ----
+   // ---- Router / Hard-gate knobs: use canonical underscored names ----
    #ifdef CFG_HAS_ENABLE_HARD_GATE
      cfg.enable_hard_gate = Inp_EnableHardGate;
    #endif
@@ -854,6 +868,12 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.max_losses_day = InpMaxLossesDay; cfg.max_trades_day = InpMaxTradesDay;
   cfg.max_spread_points = InpMaxSpreadPoints; cfg.slippage_points = InpSlippagePoints;
 
+  // ---- Monthly profit target gate ----
+  #ifdef CFG_HAS_MONTHLY_TARGET
+    // Interpret as “percent gain vs. month-start equity”.
+    cfg.monthly_target_pct = MathMax(0.0, InpMonthlyTargetPct);
+  #endif
+  
   // ---- Sessions (legacy union) + Preset ----
   cfg.session_filter = InpSessionFilter;
   cfg.london_open_utc = InpLondonOpenUTC; cfg.london_close_utc = InpLondonCloseUTC;
@@ -1475,13 +1495,13 @@ void MaybeEvaluate()
       last_bar = bt;
 
    // Run router once (direct router mode)
-   ICT_Context ictCtx;
+   ICT_Context ictCtx = StateGetICTContext(g_state);
    ZeroMemory(ictCtx);                 // stub context: fibTargets etc. default to "off"
 
    Routing::RouteResult rr;
    ZeroMemory(rr);
 
-   Routing::RouteOnce(S, ictCtx, rr);
+   Routing::RouteOnce(_Symbol, g_state, S, ictCtx, rr);
   }
 
 //--------------------------------------------------------------------
@@ -1491,6 +1511,10 @@ void MaybeEvaluate()
 //--------------------------------------------------------------------
 void BuildSettingsFromInputs(Settings &cfg)
 {
+   // 0) Start from the same base as S (risk, sessions, router, etc.)
+   ZeroMemory(cfg);
+   MirrorInputsToSettings(cfg);
+
    // --- Core / generic ICT config ---
    cfg.tf_entry                  = InpTfEntry;          // ICT entry TF
    cfg.tf_htf                    = InpTfHTF;            // ICT HTF
@@ -1745,15 +1769,14 @@ int OnInit()
    
    // Choose a base magic number by StrategyMode
    #ifdef CFG_HAS_MAGIC_NUMBER
-     const StrategyMode sm = Config::CfgStrategyMode(S);
-     switch(sm)
-     {
-       case STRAT_MAIN_ONLY: S.magic_number = MagicBase_Main; break;
-       case STRAT_PACK_ONLY: S.magic_number = MagicBase_Pack; break;
-       default:              S.magic_number = MagicBase_Combined; break;
-     }
+      const StrategyMode sm = Config::CfgStrategyMode(S);
+      switch(sm)
+      {
+        case STRAT_MAIN_ONLY: S.magic_number = MagicBase_Main; break;
+        case STRAT_PACK_ONLY: S.magic_number = MagicBase_Pack; break;
+        default:              S.magic_number = MagicBase_Combined; break;
+      }
    #endif
-   
    {
      const StrategyMode sm = Config::CfgStrategyMode(S);
      LogX::Info(StringFormat("StrategyMode = %s (%d)",
@@ -1775,6 +1798,7 @@ int OnInit()
       News::Init();
    }
    Risk::InitDayCache();
+   Policies::Init(S);
    Panel::Init(S);
    Panel::ShowBreakdown(g_show_breakdown);
    Panel::SetCalmMode(g_calm_mode);
@@ -2086,53 +2110,33 @@ void OnTick()
                  _Symbol, (int)(PeriodSeconds(S.tf_entry)/60),
                  TimeToString(_bar_time, TIME_DATE|TIME_MINUTES));
    }
-   // Centralized router eval (only when NOT using registry path)
-   if(!g_use_registry)
-      MaybeEvaluate();
+   // Centralized router eval (legacy path) – disabled; RouterEvaluateAll() now owns ICT flow.
+   // if(!g_use_registry)
+   //    MaybeEvaluate();
 
    const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
 
-   if(single_symbol)
+   // When registry routing is ON, keep using ProcessSymbol() path.
+   if(g_use_registry)
      {
-      const bool newbar = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
-      // Keep your existing per-symbol processing
-      ProcessSymbol(_Symbol, newbar);
-     }
-   else
-     {
-      // Multi-symbol: Process every symbol as before.
-      for(int i=0;i<g_symCount;i++)
+      if(single_symbol)
         {
-         const string sym = g_symbols[i];
-         const bool newbar = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
-         ProcessSymbol(sym, newbar);
+         const bool newbar = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
+         // Existing per-symbol processing
+         ProcessSymbol(_Symbol, newbar);
         }
-      if(InpOnlyNewBar && !IsNewBar(_Symbol, InpEntryTF))
-         return;
+      else
+        {
+         // Multi-symbol: Process every symbol as before.
+         for(int i=0;i<g_symCount;i++)
+           {
+            const string sym   = g_symbols[i];
+            const bool   newbar = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
+            ProcessSymbol(sym, newbar);
+           }
 
-      // [WARMUP GATE]
-      // ── Warm-up with soft latch (prevents permanent stall in tester) ──
-      static int  _wu_ticks  = 0;
-      static uint _wu_t0_ms  = 0;
-      
-      if(_wu_t0_ms == 0) _wu_t0_ms = GetTickCount();
-      const uint _wu_elapsed = GetTickCount() - _wu_t0_ms;
-      
-      bool _ready = Warmup::GateReadyOnce(InpDebug);
-      
-      // If not ready after a while, soft-latch to proceed (tester-safe)
-      if(!_ready)
-      {
-        _wu_ticks++;
-        // 5 seconds or 250 ticks – whichever comes first
-        if(_wu_elapsed > 5000 || _wu_ticks > 250)
-        {
-          if(InpDebug) Print("[Warmup] soft-latch engaged; proceeding.");
-          _ready = true;
-        }
-      }
-      
-      if(!_ready) return;
+         if(InpOnlyNewBar && !IsNewBar(_Symbol, InpEntryTF))
+            return;
      }
 
    // 1. Refresh low-level market data into State.
@@ -2186,7 +2190,20 @@ void OnTick()
       g_cfg.direction_bias_mode = Config::DIRM_MANUAL_SELECTOR;
 
    // 5. Dispatch strategies via router (ICT-aware path)
-   RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+   //    - Telemetry is always updated (above).
+   //    - Actual routing / order planning only runs if all gates are OK.
+   int router_gate_reason = 0;
+   const datetime now_srv = TimeUtils::NowServer();
+
+   if((RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason)) || !g_use_registry)
+   {
+      RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+   }
+   else
+   {
+      if(InpDebug)
+         PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d", router_gate_reason);
+   }
 
    // DebugChecklist tracer on entry TF once per new bar (no early return so telemetry still runs)
    if(InpDebugChecklistOn)
@@ -2199,6 +2216,7 @@ void OnTick()
                           InpDebugChecklistDryRun);
      }
   }
+}
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -2277,8 +2295,9 @@ void OnTimer()
 
    if(InpOnlyNewBar)
       return;
-   if(!g_use_registry)
-      MaybeEvaluate();
+   // Legacy centralized router eval on timer – disabled.
+   // if(!g_use_registry)
+   //    MaybeEvaluate();
   }
 
    // --- Minimal Trading Path (MVP): intent → risk → execute ---
@@ -2298,7 +2317,7 @@ void OnTimer()
    #ifdef STRATREG_HAS_ROUTE
       okRoute = (StratReg::Route(cfg, pick_out) && pick_out.ok);
    #else
-   // Fallback to your existing helpers (kept exactly as-is)
+      // Fallback to your existing helpers ...
       if(g_use_registry)
         {
          string top;
@@ -2399,6 +2418,79 @@ double StreakRiskScale()
 
    return mult;
   }
+
+// -------- Router-friendly gate wrapper (no duplication of exec logic) --------
+bool RouterGateOK(const string sym,
+                  const Settings &cfg,
+                  const datetime now_srv,
+                  int &gate_reason_out)
+{
+   gate_reason_out = 0;
+
+   // 1) Policy / risk guard (DD, spread, cooldown, etc.)
+   if(!Policies::Check(cfg, gate_reason_out))
+   {
+      Panel::SetGate(gate_reason_out);
+      return false;
+   }
+   Panel::SetGate(gate_reason_out);
+
+   // 2) Session gate (legacy preset + TimeUtils)
+   if(CfgSessionFilter(cfg))
+   {
+      const bool sess_on = Policies::EffSessionFilter(cfg, sym);
+      if(sess_on)
+      {
+         TimeUtils::SessionContext sc;
+         TimeUtils::BuildSessionContext(cfg, now_srv, sc);
+         const bool allowed =
+            (CfgSessionPreset(cfg) != SESS_OFF ? sc.preset_in_window : sc.in_window);
+
+         if(!allowed)
+         {
+            if(InpDebug)
+               PrintFormat("[RouterGate] Session gate: session_on=1 in_window=0 → skip %s", sym);
+            return false;
+         }
+      }
+   }
+
+   // 3) Hard time window (start/expiry)
+   if(!TimeGateOK(now_srv))
+      return false;
+
+   // 4) Price gates (arm + stop)
+   if(!PriceArmOK())
+      return false;
+   CheckStopTradeAtPrice();
+   // After stop-trigger, PriceArmOK() will refuse to arm again
+   if(!PriceArmOK())
+      return false;
+
+   // 5) News hard block (uses cfg.* copied from inputs into g_cfg)
+   int mins_left = 0;
+   if(cfg.news_on &&
+      News::IsBlocked(now_srv, sym,
+                      cfg.news_impact_mask,
+                      cfg.block_pre_m,
+                      cfg.block_post_m,
+                      mins_left))
+   {
+      if(InpDebug)
+         PrintFormat("[RouterGate] News hard block (%d mins left) → skip %s", mins_left, sym);
+      return false;
+   }
+
+   // 6) Execution lock (async send guard)
+   if(Exec::IsLocked(sym))
+   {
+      if(InpDebug)
+         PrintFormat("[RouterGate] Exec lock active → skip %s", sym);
+      return false;
+   }
+
+   return true;
+}
 
 // Per-symbol processing unit (PM + gates + MVP pipeline)
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
@@ -2523,13 +2615,14 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    static int veto_counts[16];
    static int veto_total = 0;
    if(pick.bd.veto)
-     {
-      const int mask = (pick.bd.veto_mask & 15);
-      veto_counts[mask]++;
-      veto_total++;
+      {
+         const int mask = (pick.bd.veto_mask & 15);
+         veto_counts[mask]++;
+         veto_total++;
    #ifdef TELEMETRY_HAS_EVENT
          Telemetry::Event("veto", IntegerToString(mask), pick.ss.score);
    #endif
+
       if((veto_total % 100) == 0)
          LogX::Warn(StringFormat("[VETO] total=%d last_mask=%d  (STRUCT=%d, LIQ=%d, CORR=%d)",
                                  veto_total, mask,

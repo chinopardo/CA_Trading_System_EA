@@ -241,6 +241,22 @@ struct Settings;
   #define CFG_HAS_TAPER_FLOOR 1
 #endif
 
+// --- Monthly profit target (compile-safe) ------------------------------------
+// Primary feature switch (used by Settings and Policies)
+#ifndef CFG_HAS_MONTHLY_TARGET
+  #define CFG_HAS_MONTHLY_TARGET 1
+#endif
+
+// Backward-compat alias for any existing CFG_HAS_MONTHLY_TARGET_PCT usage
+#ifndef CFG_HAS_MONTHLY_TARGET_PCT
+  #define CFG_HAS_MONTHLY_TARGET_PCT CFG_HAS_MONTHLY_TARGET
+#endif
+
+// Default monthly target: 10.0 = +10% on starting equity of the month
+#ifndef CFG_MONTHLY_TARGET_PCT
+  #define CFG_MONTHLY_TARGET_PCT 10.0
+#endif
+
 // --- Account-wide (challenge) DD feature flags (for Policies) ---------------
 #ifndef CFG_HAS_MAX_ACCOUNT_DD_PCT
   #define CFG_HAS_MAX_ACCOUNT_DD_PCT 1
@@ -628,7 +644,7 @@ namespace Config
    }
 
    // ===== Moved from Types.mqh: inline helpers that require full Settings =====
-   #ifndef CFG_HAS_STRAT_MODE
+   #ifdef CFG_HAS_STRAT_MODE
       inline StrategyMode GetStrategyMode(const Settings &s){
         int m = s.strat_mode;
         if(m < 0 || m > 2) m = (int)STRAT_COMBINED;
@@ -774,6 +790,24 @@ namespace Config
      #endif
    }
    
+   inline double CfgMonthlyTargetPct(const Settings &cfg)
+   {
+   #ifdef CFG_HAS_MONTHLY_TARGET
+     // Raw value in PERCENT units (1.0 = 1%, 10.0 = 10%)
+     double raw = cfg.monthly_target_pct;
+   
+     // Default and clamp in percent-space
+     if(raw <= 0.0) raw = CFG_MONTHLY_TARGET_PCT;   // e.g. 10.0
+     if(raw < 0.0)  raw = 0.0;
+     if(raw > 100.0) raw = 100.0;
+   
+     // Expose fraction (0.10) to Policies/RiskEngine
+     return raw / 100.0;
+   #else
+     return 0.0;
+   #endif
+   }
+  
    inline double CfgTaperFloor(const Settings &cfg)
    {
      #ifdef CFG_HAS_TAPER_FLOOR
@@ -1255,6 +1289,15 @@ namespace Config
     #ifdef CFG_HAS_MODE
       if((int)cfg.mode<0) cfg.mode=BSM_BOTH;
     #endif
+
+     // Directional bias mode: clamp to valid enum range [0..1].
+     // 0 = DIRM_MANUAL_SELECTOR, 1 = DIRM_AUTO_SMARTMONEY
+     if(cfg.direction_bias_mode < (int)DIRM_MANUAL_SELECTOR ||
+        cfg.direction_bias_mode > (int)DIRM_AUTO_SMARTMONEY)
+     {
+       cfg.direction_bias_mode = (int)DIRM_MANUAL_SELECTOR;
+     }
+  
     #ifdef CFG_HAS_MIN_FEATURES_MET
       if(cfg.min_features_met < 0) cfg.min_features_met = 0;
         // Optional upper bound if you consider CF__COUNT:
@@ -1292,6 +1335,29 @@ namespace Config
     if(cfg.min_tp_pips<0.0) cfg.min_tp_pips=0.0;
     if(cfg.max_sl_ceiling_pips<cfg.min_sl_pips) cfg.max_sl_ceiling_pips=cfg.min_sl_pips;
     if(cfg.max_daily_dd_pct<0.0) cfg.max_daily_dd_pct=0.0;
+    // Broker-enforced SL floor: use StopsLevel + FreezeLevel (in points).
+    // We treat min_sl_pips as "points" here to avoid double-guessing your pip math.
+    // If your pipeline already treats it as true pips, you can scale accordingly.
+    int    stops_level  = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+    int    freeze_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+    double point        = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+
+    if(point > 0.0)
+    {
+      int total_pts      = stops_level + freeze_level;
+      // If broker exposes 0 (some do), don't accidentally zero out your floor.
+      if(total_pts > 0)
+      {
+        double broker_min = (double)total_pts;   // "points" floor
+
+        if(cfg.min_sl_pips < broker_min)
+          cfg.min_sl_pips = broker_min;
+
+        if(cfg.max_sl_ceiling_pips < cfg.min_sl_pips)
+          cfg.max_sl_ceiling_pips = cfg.min_sl_pips;
+      }
+    }
+    
     #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
       if(cfg.day_dd_limit_pct<0.0) cfg.day_dd_limit_pct=0.0;
     #endif
@@ -1309,7 +1375,14 @@ namespace Config
     if(cfg.max_losses_day<0) cfg.max_losses_day=0;
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
-    if(cfg.slippage_points<0) cfg.slippage_points=0;
+    // Slippage: give the first attempt a generous budget.
+    //  - rc=0 rejections are common when slippage is too tight.
+    //  - 300–500 points on 5-digit FX is prop-friendly (30–50 pips),
+    //    and later attempts can taper via BaseDeviationPoints/SpreadAwareBumpPts.
+    if(cfg.slippage_points <= 0)
+      cfg.slippage_points = 300;     // default if unset
+    else if(cfg.slippage_points < 100)
+      cfg.slippage_points = 100;     // enforce a sane minimu
     
     // Fibonacci / OTE clamps
     if(cfg.fibDepth < 2)     cfg.fibDepth = 2;
@@ -1332,11 +1405,26 @@ namespace Config
     if(cfg.fibOTEQualityBonusReversal > 0.5)
       cfg.fibOTEQualityBonusReversal = 0.5;
 
-    // Fib RR gating: keep in a sane band (0..5R)
+    // Fib RR gating: keep in a sane band (0..5R) on the canonical field
     if(cfg.minRRFibAllowed < 0.0) cfg.minRRFibAllowed = 0.0;
     if(cfg.minRRFibAllowed > 5.0) cfg.minRRFibAllowed = 5.0;
-    // fibRRHardReject is a bool; no clamp needed
 
+    #ifdef CFG_HAS_FIB_MIN_RR_ALLOWED
+      // Sync optional alias <-> canonical field.
+      // 1) If only the alias is set, propagate into canonical.
+      if(cfg.fib_min_rr_allowed > 0.0 && cfg.minRRFibAllowed <= 0.0)
+        cfg.minRRFibAllowed = cfg.fib_min_rr_allowed;
+
+      // 2) If only the canonical is set, reflect it into the alias.
+      if(cfg.minRRFibAllowed > 0.0 && cfg.fib_min_rr_allowed <= 0.0)
+        cfg.fib_min_rr_allowed = cfg.minRRFibAllowed;
+
+      // 3) Clamp the alias as well, so both live in [0..5].
+      if(cfg.fib_min_rr_allowed < 0.0) cfg.fib_min_rr_allowed = 0.0;
+      if(cfg.fib_min_rr_allowed > 5.0) cfg.fib_min_rr_allowed = 5.0;
+    #endif
+    // fibRRHardReject is a bool; no clamp needed
+    
     // Loop
     if(cfg.timer_ms<25) cfg.timer_ms=25;
 
@@ -1370,6 +1458,15 @@ namespace Config
     if(cfg.day_profit_stop_pct < cfg.day_profit_cap_pct)
        cfg.day_profit_stop_pct = cfg.day_profit_cap_pct;
 
+    if(cfg.taper_floor <= 0.0) cfg.taper_floor = 0.35;
+    if(cfg.taper_floor > 1.0)  cfg.taper_floor = 1.0;
+
+    // Monthly target: only forbid negatives; defaulting is done via CfgMonthlyTargetPct.
+    #ifdef CFG_HAS_MONTHLY_TARGET
+      if(cfg.monthly_target_pct < 0.0)
+        cfg.monthly_target_pct = 0.0;
+    #endif
+     
     if(cfg.taper_floor <= 0.0) cfg.taper_floor = 0.35;
     if(cfg.taper_floor > 1.0)  cfg.taper_floor = 1.0;
 
@@ -1522,6 +1619,10 @@ namespace Config
   //──────────────────────────────────────────────────────────────────
   inline bool LoadInputs(Settings &cfg)
   {
+    #ifdef CFG_HAS_MONTHLY_TARGET
+      // Store raw in PERCENT units; CfgMonthlyTargetPct will convert to fraction.
+      cfg.monthly_target_pct = InpMonthlyTargetPct;
+    #endif
     return true;
   }
 
@@ -1551,6 +1652,13 @@ namespace Config
       int wr = 0;
       if(KV::GetInt("pol.weekly_open_ramp", wr))
         cfg.weekly_open_spread_ramp = (wr != 0);
+    #endif
+    #ifdef CFG_HAS_MONTHLY_TARGET
+      double mt = 0.0;
+      if(KV::GetDouble("risk.monthly_target_pct", mt))
+      {
+        cfg.monthly_target_pct = mt; // Store raw; accessor will clamp/default.
+      }
     #endif
   }
   
@@ -1622,6 +1730,12 @@ namespace Config
           warns += "enable_hard_gate ON but min_features_met==0; gate will act like OFF.\n";
       #endif
     #endif
+    
+    #ifdef CFG_HAS_MONTHLY_TARGET
+      const double mt = CfgMonthlyTargetPct(cfg);
+      if(mt > 0.50)
+        warns += "monthly_target_pct > 0.50; monthly gate may never trigger in realistic conditions.\n";
+    #endif
 
     // Sessions
     if(cfg.session_filter)
@@ -1630,9 +1744,14 @@ namespace Config
         warns+="session_filter ON but both windows are zero-width.\n";
     }
 
-    // Slippage/spread
-    if(cfg.max_spread_points>0 && cfg.slippage_points>0 && cfg.slippage_points<cfg.max_spread_points/4)
-      warns+="slippage_points unusually tight vs max_spread_points.\n";
+    // Slippage/spread sanity
+    if(cfg.max_spread_points > 0 && cfg.slippage_points > 0)
+    {
+      if(cfg.slippage_points < cfg.max_spread_points / 2)
+        warns += "slippage_points very tight vs max_spread_points; broker may reject in fast moves (rc=0).\n";
+      if(cfg.slippage_points < 100)
+        warns += "slippage_points < 100; consider 300–500 for prop FX (first attempt), then taper.\n";
+    }
 
     // Carry
     #ifdef CFG_HAS_CARRY_BOOST_MAX
@@ -1726,10 +1845,25 @@ namespace Config
      // Legacy alias: keep risk_per_trade in sync with risk_pct
      cfg.risk_per_trade      = risk_pct;
 
+     #ifdef CFG_HAS_MONTHLY_TARGET
+        // Store raw target in PERCENT units, using compile-time default.
+        cfg.monthly_target_pct    = CFG_MONTHLY_TARGET_PCT; // e.g. 10.0
+      
+        // Runtime state is always reset at EA init; Policies will re-capture on month boundary.
+        cfg.monthly_baseline_equity = 0.0;
+        cfg.monthly_peak_equity     = 0.0;
+        cfg.monthly_target_hit      = false;
+     #endif
+
      cfg.max_losses_day      = max_losses_day;
      cfg.max_trades_day      = max_trades_day;
      cfg.max_spread_points   = max_spread_points;
      cfg.slippage_points     = slippage_points;
+     // Guard against dangerously small slippage coming from EA inputs
+     if(cfg.slippage_points <= 0)
+       cfg.slippage_points = 300;   // default
+     else if(cfg.slippage_points < 100)
+       cfg.slippage_points = 100;
    
      // Loop/timing
      cfg.only_new_bar      = only_new_bar;
@@ -1879,6 +2013,25 @@ namespace Config
      );
    }
 
+  #ifdef CFG_HAS_STRAT_MODE
+   // Clamp to valid StrategyMode codes: 0..2 (MAIN_ONLY, PACK_ONLY, COMBINED)
+   inline int _ClampStratModeInt(const int v)
+   {
+     if(v < 0 || v > 2) return (int)STRAT_COMBINED;
+     return v;
+   }
+   
+   // Overloads let this compile whether Settings::strat_mode is int OR StrategyMode.
+   inline void _SetStratModeRef(int &dst, const int v)
+   {
+     dst = _ClampStratModeInt(v);
+   }
+   inline void _SetStratModeRef(StrategyMode &dst, const int v)
+   {
+     dst = (StrategyMode)_ClampStratModeInt(v);
+   }
+   #endif
+
   //──────────────────────────────────────────────────────────────────
   // ABI-safe helpers
   //──────────────────────────────────────────────────────────────────
@@ -1886,7 +2039,10 @@ namespace Config
   {
     #ifdef CFG_HAS_STRAT_MODE
       int m = (mode < 0 || mode > 2) ? 0 : mode;
-      cfg.strat_mode = m;
+      #ifdef CFG_HAS_STRAT_MODE
+        const int mi = _ClampStratModeInt(mode);
+        _SetStratModeRef(cfg.strat_mode, mi);
+      #endif
     #endif
     Normalize(cfg);
   }
@@ -1962,14 +2118,6 @@ namespace Config
       s+=",ddlim="+DoubleToString(c.day_dd_limit_pct,3);
     #endif
 
-    // Account-wide DD & challenge baseline
-    #ifdef CFG_HAS_MAX_ACCOUNT_DD_PCT
-      s+=",acctDD="+DoubleToString(c.max_account_dd_pct,3);
-    #endif
-    #ifdef CFG_HAS_CHALLENGE_INIT_EQUITY
-      s+=",acctInit="+DoubleToString(c.challenge_init_equity,2);
-    #endif
-
     // Profit taper / floor
     #ifdef CFG_HAS_DAY_PROFIT_CAP_PCT
       s+=",dayCap="+DoubleToString(c.day_profit_cap_pct,3);
@@ -1979,6 +2127,20 @@ namespace Config
     #endif
     #ifdef CFG_HAS_TAPER_FLOOR
       s+=",taper="+DoubleToString(c.taper_floor,3);
+    #endif
+    
+    // Monthly profit target (serialized using effective accessor)
+    #ifdef CFG_HAS_MONTHLY_TARGET
+      // Store raw PERCENT units for human readability / round-tripping
+      s+=",monthTarget="+DoubleToString(c.monthly_target_pct,3);
+    #endif
+    
+    // Account-wide DD & challenge baseline
+    #ifdef CFG_HAS_MAX_ACCOUNT_DD_PCT
+      s+=",acctDD="+DoubleToString(c.max_account_dd_pct,3);
+    #endif
+    #ifdef CFG_HAS_CHALLENGE_INIT_EQUITY
+      s+=",acctInit="+DoubleToString(c.challenge_init_equity,2);
     #endif
 
     s+=",loss="+IntegerToString(c.max_losses_day);
@@ -2761,6 +2923,10 @@ namespace Config
       #ifdef CFG_HAS_TAPER_FLOOR
         else if(k=="taper")   cfg.taper_floor = ToDouble(v);
       #endif
+      #ifdef CFG_HAS_MONTHLY_TARGET
+        else if(k=="monthTarget")
+          cfg.monthly_target_pct = ToDouble(v);
+      #endif
 
       else if(k=="loss") cfg.max_losses_day=ToInt(v);
       else if(k=="trades") cfg.max_trades_day=ToInt(v);
@@ -2872,7 +3038,11 @@ namespace Config
       #endif
       
       #ifdef CFG_HAS_STRAT_MODE
-         else if(k=="sMode") cfg.strat_mode = ToInt(v);
+         else if(k=="sMode")
+         {
+           const int mi = _ClampStratModeInt(ToInt(v));
+           _SetStratModeRef(cfg.strat_mode, mi);
+         }
       #endif
 
       #ifdef CFG_HAS_CONFL_BLEND_TREND
@@ -3038,6 +3208,20 @@ struct Settings
   double            day_profit_stop_pct; // max profit (after which taper floor)
   double            taper_floor;         // min risk scale during taper
   
+  // --- Monthly profit target (vs month-start equity) ------------------------
+  #ifdef CFG_HAS_MONTHLY_TARGET
+    // Configured target in PERCENT units (1.0 = 1%, 10.0 = 10%)
+    double monthly_target_pct;
+
+    // Runtime state managed by Policies::_EnsureMonthState():
+    // - baseline: equity snapshot at first detection of this calendar month
+    // - peak:     highest observed equity since baseline
+    // - hit:      once true, Policies gate new trades for the remainder of the month
+    double monthly_baseline_equity;
+    double monthly_peak_equity;
+    bool   monthly_target_hit;
+  #endif
+  
   // --- ICT context / strategy quality thresholds (0..1) ---------------------
   double            qualityThresholdHigh;          // "high conviction" setups
   double            qualityThresholdContinuation;  // trend / continuation models
@@ -3050,7 +3234,7 @@ struct Settings
   #ifdef CFG_HAS_DAILY_DD_HARDSTOP
     bool            daily_dd_hardstop;   // kill-switch when DD breach
   #endif
-
+  
   // --- ATR dampening / ADR caps --------------------------------------------
   #ifdef CFG_HAS_ATR_DAMPEN
     double          atr_dampen_k;        // 0..1 dampening strength
@@ -3523,47 +3707,13 @@ extern Settings g_cfg;
 // For external callers, forward to the canonical implementation in
 // namespace Config (which already handles all compile guards).
 // ---------------------------------------------------------------------
-#ifndef CFG_ROUTER_ALIAS_SYNC_GUARD
+#ifdef CFG_ROUTER_ALIAS_SYNC_GUARD
 #define CFG_ROUTER_ALIAS_SYNC_GUARD 1
 inline void _SyncRouterFallbackAlias(Settings &cfg)
 {
   Config::_SyncRouterFallbackAlias(cfg);
 }
 #endif // CFG_ROUTER_ALIAS_SYNC_GUARD
-
-// ---- Feature flags that mirror the struct above (file scope) ----
-#ifndef CFG_HAS_SERVER_OFFSET_MIN
-#define CFG_HAS_SERVER_OFFSET_MIN
-#endif
-#ifndef CFG_HAS_STRAT_MODE
-#define CFG_HAS_STRAT_MODE 1
-#endif
-
-#ifndef CFG_HAS_SESSION_FILTER
-#define CFG_HAS_SESSION_FILTER
-#endif
-#ifndef CFG_HAS_SESSION_PRESET
-#define CFG_HAS_SESSION_PRESET
-#endif
-
-#ifndef CFG_HAS_LONDON_OPEN_UTC
-#define CFG_HAS_LONDON_OPEN_UTC
-#endif
-#ifndef CFG_HAS_LONDON_CLOSE_UTC
-#define CFG_HAS_LONDON_CLOSE_UTC
-#endif
-#ifndef CFG_HAS_NY_OPEN_UTC
-#define CFG_HAS_NY_OPEN_UTC
-#endif
-#ifndef CFG_HAS_NY_CLOSE_UTC
-#define CFG_HAS_NY_CLOSE_UTC
-#endif
-#ifndef CFG_HAS_TOKYO_CLOSE_UTC
-#define CFG_HAS_TOKYO_CLOSE_UTC
-#endif
-#ifndef CFG_HAS_SYDNEY_OPEN_UTC
-#define CFG_HAS_SYDNEY_OPEN_UTC
-#endif
 
 #endif // EA_CFG_SESSION_HELPERS_GUARD
 
