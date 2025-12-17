@@ -65,7 +65,8 @@ enum PolicyBlockCode
   POLICY_MAX_TRADES    = 4,
   POLICY_SPREAD_HIGH   = 5,
   POLICY_COOLDOWN      = 6,
-  POLICY_MONTH_TARGET  = 7
+  POLICY_MONTH_TARGET  = 7,
+  POLICY_BLOCKED_OTHER = 99
 };
 
 namespace Policies
@@ -112,6 +113,8 @@ namespace Policies
       default:              return "UNKNOWN";
     }
   }
+  
+  inline string GateReasonToString(const int r){ return ReasonString(r); }
 
   // ----------------------------------------------------------------------------
   // Math helpers
@@ -226,6 +229,17 @@ namespace Policies
       return 0;
     #endif
   }
+  
+  // --- Gate debug (compile-safe) ---------------------------------------------
+  inline bool CfgDebugGates(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_DEBUG_GATES
+      return (bool)cfg.debug_gates;
+    #else
+      return (bool)cfg.debug;   // fallback
+    #endif
+  }
+  
   inline bool CfgCalmEnable(const Settings &cfg)
   {
     #ifdef CFG_HAS_CALM_MODE
@@ -234,6 +248,7 @@ namespace Policies
       return false;
     #endif
   }
+  
   inline double CfgCalmMinATRPips(const Settings &cfg)
   {
     #ifdef CFG_HAS_CALM_MIN_ATR_PIPS
@@ -242,6 +257,7 @@ namespace Policies
       return 0.0;
     #endif
   }
+  
   inline double CfgCalmMinATRtoSpread(const Settings &cfg)
   {
     #ifdef CFG_HAS_CALM_MIN_ATR_TO_SPREAD
@@ -250,6 +266,7 @@ namespace Policies
       return 0.0;
     #endif
   }
+  
   // --- Weekly-open ramp (compile-safe) -----------------------------------------
    inline bool CfgWeeklyRampOn(const Settings &cfg)
    {
@@ -357,7 +374,9 @@ namespace Policies
   inline double CfgVolBreakerLimit(const Settings &cfg)
   {
     #ifdef CFG_HAS_VOL_BREAKER_LIMIT
-      return Clamp(cfg.vol_breaker_limit, 1.10, 5.00);
+      // <=0 => disabled
+      if(cfg.vol_breaker_limit <= 0.0) return 0.0;
+      return Clamp(cfg.vol_breaker_limit, 1.10, 10.0);
     #else
       return 2.50;
     #endif
@@ -802,7 +821,14 @@ namespace Policies
          {
            const double today_pts = MathAbs(d1[0].high - d1[0].low) / SymbolInfoDouble(_Symbol, SYMBOL_POINT);
            const double limit_pts = adr_pts * cap_mult;
-           if(today_pts >= limit_pts){ reason=GATE_ADR; return false; }
+           if(today_pts >= limit_pts)
+           {
+             reason=GATE_ADR;
+             _GateDetail(cfg, reason, _Symbol,
+                         StringFormat("adr_pts=%.1f cap_mult=%.3f today_pts=%.1f limit_pts=%.1f",
+                                      adr_pts, cap_mult, today_pts, limit_pts));
+             return false;
+           }
          }
        }
        return true;
@@ -1278,11 +1304,26 @@ namespace Policies
       if(!inwin)
       {
         const int tight = (int)MathFloor(s_mod_mult_outside * (double)cap);
-        if(tight>0 && (int)sp>tight){ reason=GATE_MOD_SPREAD; return false; }
+        if(tight>0 && (int)sp>tight)
+        {
+          reason=GATE_MOD_SPREAD;
+          _GateDetail(cfg, reason, _Symbol,
+                      StringFormat("sp=%.1f tight=%d cap=%d adapt=%.3f eff_cap_pts=%.1f inwin=%s weeklyRamp=%s",
+                                   sp, tight, cap, adapt, eff_cap_pts,
+                                   (inwin?"YES":"NO"), (CfgWeeklyRampOn(cfg)?"ON":"OFF")));
+          return false;
+        }
       }
     }
 
-    if((int)sp>cap){ reason=GATE_SPREAD; return false; }
+    if((int)sp>cap)
+    {
+      reason=GATE_SPREAD;
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("sp=%.1f cap=%d adapt=%.3f eff_cap_pts=%.1f weeklyRamp=%s",
+                               sp, cap, adapt, eff_cap_pts, (CfgWeeklyRampOn(cfg)?"ON":"OFF")));
+      return false;
+    }
     return true;
   }
 
@@ -1290,12 +1331,17 @@ namespace Policies
   // Volatility breaker (re-uses short/long ATR config)
   // ----------------------------------------------------------------------------
   static double s_vb_limit = 2.50;
-  inline void SetVolBreakerLimit(const double limit){ s_vb_limit=(limit<1.10?1.10:limit); }
+  inline void SetVolBreakerLimit(const double limit)
+  {
+    if(limit <= 0.0){ s_vb_limit = 0.0; return; }   // disabled
+    s_vb_limit = (limit < 1.10 ? 1.10 : limit);
+  }
 
   inline bool VolatilityBreaker(const Settings &cfg, double &ratio_out)
   {
     _EnsureLoaded(cfg);
 
+    if(s_vb_limit <= 0.0) return false; // disabled
     ratio_out = 0.0;
     const string sym=_Symbol;
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
@@ -1332,14 +1378,28 @@ namespace Policies
     if(minAtrPips>0.0)
     {
       const double minPts = MarketData::PointsFromPips(sym, minAtrPips);
-      if(minPts>0.0 && atr_s<minPts){ reason=GATE_CALM; return false; }
+      if(minPts>0.0 && atr_s<minPts)
+      {
+        reason=GATE_CALM;
+        _GateDetail(cfg, reason, _Symbol,
+                    StringFormat("atr_s_pts=%.1f minAtrPips=%.2f minPts=%.1f",
+                                 atr_s, minAtrPips, minPts));
+        return false;
+      }
     }
 
     const double minRatio = CfgCalmMinATRtoSpread(cfg);
     if(minRatio>0.0)
     {
       const double spr = MarketData::SpreadPoints(sym);
-      if(spr>0.0 && atr_s/spr < minRatio){ reason=GATE_CALM; return false; }
+      if(spr>0.0 && atr_s/spr < minRatio)
+      {
+        reason=GATE_CALM;
+        _GateDetail(cfg, reason, _Symbol,
+                    StringFormat("atr_s_pts=%.1f spr_pts=%.1f ratio=%.3f minRatio=%.3f",
+                                 atr_s, spr, (spr>0.0?atr_s/spr:0.0), minRatio));
+        return false;
+      }
     }
     return true;
   }
@@ -1380,6 +1440,30 @@ namespace Policies
   inline int  TradeCooldownSecondsLeft(){ return _SecondsLeft(s_trade_cd_until); }
   inline int  LossCooldownSecondsLeft(){  return _SecondsLeft(s_cooldown_until); }
 
+  // ----------------------------------------------------------------------------
+  // Gate debug logger (throttled): prints only when CfgDebugGates(cfg) is true
+  // ----------------------------------------------------------------------------
+  inline bool _ShouldGateLog(const Settings &cfg, const int reason)
+  {
+    if(!CfgDebugGates(cfg)) return false;
+    static datetime last_ts = 0;
+    static int      last_reason = -999;
+    const datetime now = TimeCurrent();
+    if(now==last_ts && reason==last_reason) return false;
+    last_ts = now; last_reason = reason;
+    return true;
+  }
+
+  inline void _GateDetail(const Settings &cfg,
+                          const int reason,
+                          const string sym,
+                          const string msg)
+  {
+    if(!_ShouldGateLog(cfg, reason)) return;
+    PrintFormat("[GateDetail] %s reason=%d (%s) %s",
+                sym, reason, GateReasonToString(reason), msg);
+  }
+  
   // ---------------------------------------------------------------------------
   // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)
   // ---------------------------------------------------------------------------
@@ -1412,6 +1496,19 @@ namespace Policies
     if(DailyLossStopHit(cfg, loss_money, loss_pct))
     {
       reason = GATE_DAYLOSS;
+
+      // Log caps + values (no heavy recompute; caps are cheap)
+      const double cap_money = CfgDayLossCapMoney(cfg);
+
+      double cap_pct = CfgDayLossCapPct(cfg);
+      const double dd_pct_cap = CfgMaxDailyDDPct(cfg);
+      // effective pct cap: prefer explicit, but ensure we show the strictest if both exist
+      if(cap_pct <= 0.0) cap_pct = dd_pct_cap;
+      else if(dd_pct_cap > 0.0) cap_pct = MathMax(cap_pct, dd_pct_cap);
+
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("loss_money=%.2f loss_pct=%.3f cap_money=%.2f cap_pct=%.3f dayEq0=%.2f",
+                               loss_money, loss_pct, cap_money, cap_pct, s_dayEqStart));
       return false;
     }
 
@@ -1420,6 +1517,14 @@ namespace Policies
     if(DailyEquityDDHit(cfg, day_dd_pct))
     {
       reason = GATE_DAILYDD;
+
+      const double eq0 = s_dayEqStart;
+      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
+      const double lim = CfgMaxDailyDDPct(cfg);
+
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("dd_pct=%.3f limit=%.3f dayEq0=%.2f eq=%.2f",
+                               day_dd_pct, lim, eq0, eq1));
       return false;
     }
 
@@ -1428,6 +1533,14 @@ namespace Policies
     if(AccountEquityDDHit(cfg, acct_dd_pct))
     {
       reason = GATE_ACCOUNT_DD;
+
+      const double eq0 = s_acctEqStart;
+      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
+      const double lim = CfgMaxAccountDDPct(cfg);
+
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("acct_dd_pct=%.3f limit=%.3f acctEq0=%.2f eq=%.2f latched=%s",
+                               acct_dd_pct, lim, eq0, eq1, (s_acctStopHit?"YES":"NO")));
       return false;
     }
     
@@ -1436,6 +1549,14 @@ namespace Policies
     if(MonthlyProfitTargetHit(cfg, month_pct))
     {
       reason = GATE_MONTH_TARGET;
+
+      const double eq0 = s_monthStartEq;
+      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
+      const double tgt = CfgMonthlyTargetPct(cfg);
+
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("month_pct=%.3f target=%.3f monthEq0=%.2f eq=%.2f latched=%s",
+                               month_pct, tgt, eq0, eq1, (s_monthTargetHit?"YES":"NO")));
       return false;
     }
 
@@ -1445,6 +1566,10 @@ namespace Policies
     if(LossCooldownActive() || TradeCooldownActive())
     {
       reason = GATE_COOLDOWN;
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("trade_left=%ds loss_left=%ds trade_cd=%ds loss_cd_min=%d",
+                               TradeCooldownSecondsLeft(), LossCooldownSecondsLeft(),
+                               s_trade_cd_sec, s_cooldown_min));
       return false;
     }
 
@@ -1489,6 +1614,9 @@ namespace Policies
     if(VolatilityBreaker(cfg, vb_ratio))
     {
       reason = GATE_VOLATILITY;
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("ATRratio=%.3f limit=%.3f shortP=%d longP=%d",
+                               vb_ratio, s_vb_limit, CfgATRShort(cfg), CfgATRLong(cfg)));
       return false;
     }
 
@@ -1607,7 +1735,12 @@ namespace Policies
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const double tq = RegimeX::TrendQuality(sym, tf, 60);
     const double sg = Corr::HysteresisSlopeGuard(sym, tf, 14,23.0,15.0);
-    return (tq>=s_reg_tq_min) || (sg>=s_reg_sg_min);
+    const bool ok = (tq>=s_reg_tq_min) || (sg>=s_reg_sg_min);
+    if(!ok)
+      _GateDetail(cfg, GATE_REGIME, _Symbol,
+                  StringFormat("tq=%.3f sg=%.3f tq_min=%.3f sg_min=%.3f",
+                               tq, sg, s_reg_tq_min, s_reg_sg_min));
+    return ok;
   }
 
   // ----------------------------------------------------------------------------
@@ -1629,7 +1762,12 @@ namespace Policies
 
     const double floorR = EffLiqMinRatio(cfg, sym, s_liq_min_ratio);
     ratio_out = atr_s / spr;
-    return (ratio_out >= floorR);
+    const bool ok = (ratio_out >= floorR);
+    if(!ok)
+      _GateDetail(cfg, GATE_LIQUIDITY, sym,
+                  StringFormat("atr_s_pts=%.1f spr_pts=%.1f ratio=%.3f floor=%.3f",
+                               atr_s, spr, ratio_out, floorR));
+    return ok;
   }
 
   // ----------------------------------------------------------------------------
@@ -1681,7 +1819,7 @@ namespace Policies
   {
     minutes_left_news = 0;
 
-    if(cfg.debug)
+    if(CfgDebugGates(cfg))
     {
       // Session gate
       const bool sessOn = Policies::EffSessionFilter(cfg, _Symbol);
@@ -1739,12 +1877,36 @@ namespace Policies
     if(MaxLossesReachedToday(cfg))
     {
       reason = GATE_DAYLOSS;
+
+      #ifdef CFG_HAS_MAX_LOSSES_DAY
+        int entries=0, losses=0;
+        const long mf = _MagicFilterFromCfg(cfg);
+        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        _GateDetail(cfg, reason, _Symbol,
+                    StringFormat("max_losses_day=%d losses=%d entries=%d",
+                                 cfg.max_losses_day, losses, entries));
+      #else
+        _GateDetail(cfg, reason, _Symbol, "max losses reached");
+      #endif
+
       return false;
     }
 
     if(MaxTradesReachedToday(cfg))
     {
       reason = GATE_DAYLOSS;
+
+      #ifdef CFG_HAS_MAX_TRADES_DAY
+        int entries=0, losses=0;
+        const long mf = _MagicFilterFromCfg(cfg);
+        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        _GateDetail(cfg, reason, _Symbol,
+                    StringFormat("max_trades_day=%d entries=%d losses=%d",
+                                 cfg.max_trades_day, entries, losses));
+      #else
+        _GateDetail(cfg, reason, _Symbol, "max trades reached");
+      #endif
+
       return false;
     }
     
@@ -1753,17 +1915,34 @@ namespace Policies
       const bool sess_on  = EffSessionFilter(cfg, _Symbol);
       const bool in_win   = TimeUtils::InTradingWindow(cfg, TimeCurrent());
       const bool allowed  = (!sess_on || in_win);
-      if(!allowed) { reason=GATE_SESSION; return false; }
+      if(!allowed)
+      {
+        reason=GATE_SESSION;
+        _GateDetail(cfg, reason, _Symbol,
+                    StringFormat("sess_on=%s in_win=%s server=%s",
+                                 (sess_on?"YES":"NO"), (in_win?"YES":"NO"),
+                                 TimeToString(TimeCurrent(), TIME_SECONDS)));
+        return false;
+      }
     }
 
     if(NewsBlockedNow(cfg, minutes_left_news))
-    { reason=GATE_NEWS; return false; }
+    {
+      reason=GATE_NEWS;
+      _GateDetail(cfg, reason, _Symbol,
+                  StringFormat("mins_left=%d mask=%d pre=%d post=%d",
+                               minutes_left_news,
+                               EffNewsImpactMask(cfg, _Symbol),
+                               CfgNewsBlockPreMins(cfg),
+                               CfgNewsBlockPostMins(cfg)));
+      return false;
+    }
 
     double liqR=0.0;
     if(!LiquidityOK(cfg, liqR))
     { reason=GATE_LIQUIDITY; return false; }
     
-    if(cfg.debug)
+    if(CfgDebugGates(cfg))
       PrintFormat("Policies | WeeklyOpenRamp=%s", (CfgWeeklyRampOn(cfg) ? "ON" : "OFF"));
 
     reason=GATE_OK; return true;
@@ -1863,7 +2042,33 @@ namespace Policies
   // ----------------------------------------------------------------------------
   inline bool AllowedByPolicies(const Settings &cfg, int &code_out)
   {
-    if(cfg.debug)
+    #ifdef POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL
+      int gr=GATE_OK, mins=0;
+      if(!CheckFull(cfg, gr, mins))
+      {
+        // Map gate reason to legacy policy codes (best-effort)
+        if(gr==GATE_SESSION)      { code_out = POLICY_SESSION_OFF; return false; }
+        if(gr==GATE_NEWS)         { code_out = POLICY_NEWS_BLOCK;  return false; }
+        if(gr==GATE_COOLDOWN)     { code_out = POLICY_COOLDOWN;    return false; }
+        if(gr==GATE_MONTH_TARGET) { code_out = POLICY_MONTH_TARGET;return false; }
+        if(gr==GATE_SPREAD || gr==GATE_MOD_SPREAD)
+                                { code_out = POLICY_SPREAD_HIGH;  return false; }
+
+        // Max losses vs max trades are both GATE_DAYLOSS in CheckFull; disambiguate cheaply:
+        if(gr==GATE_DAYLOSS)
+        {
+          if(MaxTradesReachedToday(cfg)) { code_out = POLICY_MAX_TRADES; return false; }
+          code_out = POLICY_MAX_LOSSES; return false;
+        }
+
+        code_out = POLICY_BLOCKED_OTHER;
+        return false;
+      }
+      code_out = POLICY_OK;
+      return true;
+    #endif
+    
+    if(CfgDebugGates(cfg))
     {
       // Session gate
       const bool sessOn = Policies::EffSessionFilter(cfg, _Symbol);
@@ -1921,10 +2126,7 @@ namespace Policies
     if(CfgNewsOn(cfg))
     {
       int mins_left = 0;
-      if(News::IsBlocked(TimeUtils::NowServer(), _Symbol,
-                         EffNewsImpactMask(cfg, _Symbol),
-                         CfgNewsBlockPreMins(cfg), CfgNewsBlockPostMins(cfg),
-                         mins_left))
+      if(NewsBlockedNow(cfg, mins_left))
       { code_out = POLICY_NEWS_BLOCK; return false; }
     }
 
@@ -1955,7 +2157,8 @@ namespace Policies
     }
 
     // 5) Unified cooldown (persisted)
-    if(TradeCooldownActive()) { code_out = POLICY_COOLDOWN; return false; }
+    if(LossCooldownActive() || TradeCooldownActive())
+    { code_out = POLICY_COOLDOWN; return false; }
 
     return true;
   }

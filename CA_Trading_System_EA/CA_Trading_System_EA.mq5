@@ -258,7 +258,7 @@ input double InpFibOTEToleranceATR    = 0.25;   // Fib: distance from OTE band (
 // --- Direction bias mode explicit override for debugging ---
 // 0 = manual selector
 // 1 = auto ICT/Wyckoff bias (will override manual even if you forgot InpUseICTBias)
-input Config::DirectionBiasMode InpDirectionBiasMode = Config::DIRM_AUTO_SMARTMONEY;
+input Config::DirectionBiasMode InpDirectionBiasMode = Config::DIRM_AUTO_SMARTMONEY; // Direction Bias Mode
 
 // Risk core
 input double           InpRiskPct               = 0.40; // Risk Percentage
@@ -273,10 +273,10 @@ input double           InpDayDD_LimitPct        = 2.0; // Max Daily DD taper ons
 // 0.0 = disabled; otherwise stop new entries once equity is up by this % vs month-start.
 input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month
 
-input int              InpMaxLossesDay          = 4; // Max Daily Losses
-input int              InpMaxTradesDay          = 10; // Max Daily Trades
-input int              InpMaxSpreadPoints       = 100; // Max Spread Points
-input int              InpSlippagePoints        = 100; // Max Slippage Points
+input int              InpMaxLossesDay          = 6; // Max Daily Losses
+input int              InpMaxTradesDay          = 20; // Max Daily Trades
+input int              InpMaxSpreadPoints       = 300; // Max Spread Points
+input int              InpSlippagePoints        = 500; // Max Slippage Points
 
 // Loop controls / heartbeat
 input bool             InpOnlyNewBar            = true; // Loop controls / heartbeat: Only New Bar - Per-symbol last-bar gate
@@ -312,8 +312,8 @@ input double           InpStreakMinScale        = 0.5;     // Streak-based Lot S
 // -------- Registry Router & Strategy knobs --------
 input int              InpRouterMode            = 0;    // Registry Router & Strategy: Mode - 0=MAX,1=WEIGHTED,2=AB
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
-input double           InpRouterMinScore        = 0.55; // Registry Router & Strategy: Min Score
-input int              InpRouterMaxStrats       = 2;   // Registry Router & Strategy: Max Strat
+input double           InpRouterMinScore        = 0.22; // Registry Router & Strategy: Min Score
+input int              InpRouterMaxStrats       = 4;   // Registry Router & Strategy: Max Strat
 
 // Position management
 input bool             InpBE_Enable             = true;  // Position Mgnt: BE Enable
@@ -331,7 +331,7 @@ input double           InpP2_At_R               = 3.00;           // Position Mg
 input double           InpP2_ClosePct           = 25.0;          // Position Mgnt: Partial 2 Close Pct
 
 // ================= Strategy family selector =================
-input StrategyMode InpStrat_Mode                = STRAT_COMBINED; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
+input StrategyMode InpStrat_Mode                = STRAT_MAIN_ONLY; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
 
 // Separate magic ranges (helps you segment PnL & mgmt)
 input int MagicBase_Main               = 11000;
@@ -368,7 +368,7 @@ input double InpRiskMult_WyckoffTurn      = 0.40;
 // ================= Confluence Gate (base) =================
 // ---- Main confluence gates
 input int    InpConf_MinCount       = 1;       // Confluence Gate: Min Count
-input double InpConf_MinScore       = 0.50;    // Confluence Gate: Min Score
+input double InpConf_MinScore       = 0.35;    // Confluence Gate: Min Score
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
 
 // --- Liquidity Pools (Lux-style, LuxAlgo Liquidity Pools) ---
@@ -405,7 +405,7 @@ input double InpADX_Min         = 18.0;         // Confluence Gate: ADX Min
 input double InpADX_Upper       = 45.0;         // Confluence Gate: ADX Upper
 input double InpW_ADXRegime     = 1.0;          // Confluence Gate: ADX Weight
 
-input bool   InpExtra_Correlation = true;       // Confluence Gate: Correlation
+input bool   InpExtra_Correlation = false;       // Confluence Gate: Correlation
 input string InpCorr_RefSymbol    = "EURUSD";   // Confluence Gate: Correlation Sym
 input ENUM_TIMEFRAMES InpCorr_TF  = PERIOD_H1;  // Confluence Gate: Correlation Timeframe
 input int    InpCorr_Lookback     = 64;         // Confluence Gate: Correlation Lookback
@@ -414,7 +414,7 @@ input double InpCorr_MaxPen       = 0.20;       // Confluence Gate: Correlation 
 input double InpW_Correlation     = 0.10;       // Confluence Gate: Correlation Weight
 input double InpW_CorrPen         = 1.0;        // Confluence Gate: Correlation Penalty Weight
 
-input bool   InpExtra_News = true;              // Confluence Gate: News Filter
+input bool   InpExtra_News = false;              // Confluence Gate: News Filter
 input double InpW_News     = 1.00;              // Confluence Gate: News Filter Weight
 
 // — Router/Confluence thresholds —
@@ -424,8 +424,8 @@ input int    Inp_MinFeaturesMet            = 1;     // Router/Confluence Thresho
 
 // Hard-gate recipe: Trend + ADX + (Struct || Candle || OB_Prox)
 input bool   Inp_RequireTrendFilter        = false; // Market Structure: Required Trend Filter 
-input bool   Inp_RequireADXRegime         = true; // Market Structure: Required ADX Reg
-input bool   Inp_RequireStructOrPatternOB = true; // Market Structure: Required Struct Pattern OB
+input bool   Inp_RequireADXRegime         = false; // Market Structure: Required ADX Reg
+input bool   Inp_RequireStructOrPatternOB = false; // Market Structure: Required Struct Pattern OB
 
 // — London policy —
 input bool   Inp_LondonLiquidityPolicy     = false; // London Policy:
@@ -460,7 +460,7 @@ input bool InpCF_MarketStructure       = true; // Market Struct: HH/HL/LH/LL bia
 input bool InpCF_TrendRegime           = true; // Trend Regime (trend vs mean) + ADX strength
 input bool InpCF_StochRSI              = true; // Stoch RSI OB/OS confirmation
 input bool InpCF_MACD                  = true; // MACD crosses/confirmation
-input bool InpCF_Correlation           = true; // Cross-pair confirmation
+input bool InpCF_Correlation           = false; // Cross-pair confirmation
 input bool InpCF_News                  = true; // News calendar filter (soft/pass as confluence)
 
 // Optional per-confluence weights (1.0 default)
@@ -488,7 +488,7 @@ input int    InpMACD_FastEMA           = 12; // MACD: Fast EMA
 input int    InpMACD_SlowEMA           = 26; // MACD: Slow EMA
 
 // News hard-block window & surprise scaling
-input bool             InpNewsOn                = true;  // News: Enable
+input bool             InpNewsOn                = false;  // News: Enable
 input int              InpNewsBlockPreMins      = 10;     // News: Block PreMins
 input int              InpNewsBlockPostMins     = 10;     // News: Block PostMins
 input int              InpNewsImpactMask        = 6;     // News: Impact Mask
@@ -500,7 +500,7 @@ input double           InpCal_SoftKnee          = 0.6;   // Calendar Thresholds:
 input double           InpCal_MinScale          = 0.6;   // Calendar Thresholds: Min Scale
 
 // ATR & quantile TP / SL
-input int              InpATR_Period            = 14;    // ATR & Quantile TP/SL: Period
+input int              InpATR_Period            = 10;    // ATR & Quantile TP/SL: Period
 input double           InpTP_Quantile           = 0.6;   // ATR & Quantile TP/SL: TP Quantile
 input double           InpTP_MinR_Floor         = 1.40;  // ATR & Quantile TP/SL: TP MinR Floor
 input double           InpATR_SlMult            = 1.70;  // ATR & Quantile TP/SL: ATR SL Mult
@@ -510,7 +510,7 @@ input bool             InpVSA_Enable            = true;  // Feature: VSA Enable
 input double           InpVSA_PenaltyMax        = 0.25;  // Feature: VSA Max Penalty
 input bool             InpStructure_Enable      = true;  // Feature: Structure Enable
 input bool             InpLiquidity_Enable      = true;  // Feature: Liquidity Enable
-input bool             InpCorrSoftVeto_Enable   = true;  // Feature: Corr Soft Veto Enable
+input bool             InpCorrSoftVeto_Enable   = false;  // Feature: Corr Soft Veto Enable
 
 // Confluence thresholds (VWAP + patterns)
 input double           InpVWAP_Z_Edge           = 1.25;  // Confluence Thresholds: VWAP Z Edge
