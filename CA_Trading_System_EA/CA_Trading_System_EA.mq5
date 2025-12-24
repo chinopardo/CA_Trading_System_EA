@@ -1060,10 +1060,10 @@ void ApplyProfileSpecToRegistry(const Config::ProfileSpec &ps)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void BootRegistry_NoProfile()
+void BootRegistry_NoProfile(const Settings &cfg)
   {
-   StratReg::Init();
-   StratReg::AutoRegisterBuiltins();
+   StratReg::Init(cfg);
+   //StratReg::AutoRegisterBuiltins();
    
    // Scenario prune: disable strategies that don't belong to the selected test case
    {
@@ -1102,10 +1102,10 @@ void BootRegistry_NoProfile()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void BootRegistry_WithProfile(const Config::ProfileSpec &ps)
+void BootRegistry_WithProfile(const Settings &cfg, const Config::ProfileSpec &ps)
   {
-   StratReg::Init();
-   StratReg::AutoRegisterBuiltins();
+   StratReg::Init(cfg);
+   //StratReg::AutoRegisterBuiltins();
 
 // Enable/disable as usual (profile defines weights/throttles; toggles remain inputs)
    StratReg::Enable(STRAT_TREND_VWAP,                 InpEnableTrend);
@@ -1907,9 +1907,9 @@ int OnInit()
 
    // ----- Boot strategy registry with/without profile -----
    if(InpProfileApply)
-      BootRegistry_WithProfile(ps);
+      BootRegistry_WithProfile(S, ps);
    else
-      BootRegistry_NoProfile();
+      BootRegistry_NoProfile(S);
 
    // Optional tester preset overlay
    TesterPresets::ApplyPresetByName(S, InpTesterPreset);

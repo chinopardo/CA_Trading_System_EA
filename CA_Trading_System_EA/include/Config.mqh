@@ -320,6 +320,12 @@ struct ICTLiquidityConfig
 // Fill ICT liquidity tuning from Settings → ICTLiquidityConfig.
 inline void FillICTLiquidityConfig(const Settings &cfg, ICTLiquidityConfig &out)
 {
+  // Always start from sane defaults (caller may pass a dirty struct)
+  out.LiquiditySweepMultiTapMin     = 2;
+  out.LiquidityClusterMinPools      = 2.0;
+  out.LiquidityClusterSkewThreshold = 0.5;
+  out.LiquiditySweepMinExcursionATR = 0.50;
+  
   // Multi-tap requirement for a valid sweep
   out.LiquiditySweepMultiTapMin =
     (cfg.liqPoolMinTouches > 0 ? cfg.liqPoolMinTouches : 2);
@@ -330,8 +336,7 @@ inline void FillICTLiquidityConfig(const Settings &cfg, ICTLiquidityConfig &out)
   out.LiquidityClusterMinPools = minPools;
 
   // Skew threshold: how biased the cluster must be to one side (0..1).
-  if(out.LiquidityClusterSkewThreshold <= 0.0)
-    out.LiquidityClusterSkewThreshold = 0.5;
+  out.LiquidityClusterSkewThreshold = 0.5;
 
   // Minimum ATR excursion to treat a move as a genuine sweep/stop-hunt
   out.LiquiditySweepMinExcursionATR =
@@ -574,73 +579,174 @@ namespace Config
      cfg.enable_strat_ict_wyckoff_turn = false; // maps to spring/UTAD internal name
    }
    
+   enum StratToggleId
+   {
+     ST_NONE = 0,
+     ST_MAIN,
+   
+     ST_TREND_VWAP_PULLBACK,
+     ST_TREND_BOS_CONT,
+   
+     ST_MR_VWAP_BAND,
+     ST_MR_RANGE_NR7IB,
+   
+     ST_BREAKOUT_SQUEEZE,
+     ST_BREAKOUT_ORB,
+   
+     ST_REV_SWEEP_CHOCH,
+     ST_REV_VSA_CLIMAX_FADE,
+   
+     ST_CORR_DIVERGENCE,
+     ST_PAIRS_SPREAD_LITE,
+   
+     ST_NEWS_DEVIATION,
+     ST_NEWS_POSTFADE,
+   
+     ST_ICT_PO3,
+     ST_ICT_SILVERBULLET,
+     ST_ICT_WYCKOFF_TURN
+   };
+
+   inline StratToggleId _StratIdByName(const string name)
+   {
+     const string n = _Norm(name);
+   
+     // MAIN
+     if(n=="maintradinglogic" || n=="main" || n=="stratmain") return ST_MAIN;
+   
+     // TREND
+     if(n=="trendvwappullback" || n=="trendvwap" || n=="trend_vwap" || n=="trendpullback" || n=="strattrendvwappullback")
+       return ST_TREND_VWAP_PULLBACK;
+   
+     if(n=="trendboscontinuation" || n=="boscontinuation" || n=="bos" || n=="strattrendboscontinuation")
+       return ST_TREND_BOS_CONT;
+   
+     // MR
+     if(n=="mrvwapband" || n=="meanrevvwapband" || n=="vwapband" || n=="stratmrvwapband")
+       return ST_MR_VWAP_BAND;
+   
+     if(n=="mrrangenr7ib" || n=="mrnr7ib" || n=="nr7ib" || n=="stratmrrangenr7ib")
+       return ST_MR_RANGE_NR7IB;
+   
+     // BREAKOUT
+     if(n=="breakoutsqueeze" || n=="squeeze" || n=="stratbreakoutsqueeze")
+       return ST_BREAKOUT_SQUEEZE;
+   
+     if(n=="breakoutorb" || n=="orb" || n=="stratbreakoutorb")
+       return ST_BREAKOUT_ORB;
+   
+     // REVERSAL
+     if(n=="reversalsweepchoch" || n=="sweepchoch" || n=="choch" || n=="stratreversalsweepchoch")
+       return ST_REV_SWEEP_CHOCH;
+   
+     if(n=="reversalvsaclimaxfade" || n=="vsaclimaxfade" || n=="vsa" || n=="stratreversalvsaclimaxfade")
+       return ST_REV_VSA_CLIMAX_FADE;
+   
+     // CORR/PAIRS
+     if(n=="corrdivergence" || n=="corrdiv" || n=="corr" || n=="stratcorrdivergence")
+       return ST_CORR_DIVERGENCE;
+   
+     if(n=="pairsspreadlite" || n=="pairslite" || n=="pairs" || n=="pairsspread_lite" || n=="stratpairsspreadlite")
+       return ST_PAIRS_SPREAD_LITE;
+   
+     // NEWS
+     if(n=="newsdeviation" || n=="newsdev" || n=="stratnewsdeviation")
+       return ST_NEWS_DEVIATION;
+   
+     if(n=="newspostfade" || n=="postfade" || n=="stratnewspostfade")
+       return ST_NEWS_POSTFADE;
+   
+     // ICT
+     if(n=="stratictpo3" || n=="ictpo3" || n=="po3")
+       return ST_ICT_PO3;
+   
+     if(n=="stratictsilverbullet" || n=="ictsilverbullet" || n=="silverbullet")
+       return ST_ICT_SILVERBULLET;
+   
+     if(n=="stratictwyckoffspringutad" || n=="ictwyckoffturn" || n=="wyckoffturn" || n=="springutad")
+       return ST_ICT_WYCKOFF_TURN;
+   
+     return ST_NONE;
+   }
+
    bool Config::IsStratEnabledByName(const Settings &cfg, string name)
    {
-     StringToLower(name);
+     const StratToggleId id = _StratIdByName(name);
    
-     if(name=="main_trading_logic")         return cfg.enable_strat_main;
+     switch(id)
+     {
+       case ST_MAIN:                 return cfg.enable_strat_main;
    
-     if(name=="trend_vwap")                 return cfg.enable_trend_vwap_pullback;     // mapping difference handled here
-     if(name=="trend_bos_continuation")     return cfg.enable_trend_bos_continuation;
+       case ST_TREND_VWAP_PULLBACK:  return cfg.enable_trend_vwap_pullback;
+       case ST_TREND_BOS_CONT:       return cfg.enable_trend_bos_continuation;
    
-     if(name=="meanrev_vwap_band")          return cfg.enable_mr_vwap_band;
-     if(name=="mr_range_nr7_ib")            return cfg.enable_mr_range_nr7ib;
+       case ST_MR_VWAP_BAND:         return cfg.enable_mr_vwap_band;
+       case ST_MR_RANGE_NR7IB:       return cfg.enable_mr_range_nr7ib;
    
-     if(name=="breakout_squeeze")           return cfg.enable_breakout_squeeze;
-     if(name=="breakout_orb")               return cfg.enable_breakout_orb;
+       case ST_BREAKOUT_SQUEEZE:     return cfg.enable_breakout_squeeze;
+       case ST_BREAKOUT_ORB:         return cfg.enable_breakout_orb;
    
-     if(name=="reversal_sweep_choch")       return cfg.enable_reversal_sweep_choch;
-     if(name=="reversal_vsa_climax_fade")   return cfg.enable_reversal_vsa_climax_fade;
+       case ST_REV_SWEEP_CHOCH:      return cfg.enable_reversal_sweep_choch;
+       case ST_REV_VSA_CLIMAX_FADE:  return cfg.enable_reversal_vsa_climax_fade;
    
-     if(name=="corr_divergence")            return cfg.enable_corr_divergence;
+       case ST_CORR_DIVERGENCE:      return cfg.enable_corr_divergence;
+       case ST_PAIRS_SPREAD_LITE:    return cfg.enable_pairs_spreadlite;
    
-     // accept either spelling in your tree
-     if(name=="pairs_spread_lite")          return cfg.enable_pairs_spreadlite;
+       case ST_NEWS_DEVIATION:       return cfg.enable_news_deviation;
+       case ST_NEWS_POSTFADE:        return cfg.enable_news_postfade;
    
-     if(name=="news_deviation")             return cfg.enable_news_deviation;
-     if(name=="news_postfade")              return cfg.enable_news_postfade;
+       case ST_ICT_PO3:              return cfg.enable_strat_ict_po3;
+       case ST_ICT_SILVERBULLET:     return cfg.enable_strat_ict_silverbullet;
+       case ST_ICT_WYCKOFF_TURN:     return cfg.enable_strat_ict_wyckoff_turn;
    
-     if(name=="strat_ict_po3")              return cfg.enable_strat_ict_po3;
-     if(name=="strat_ict_silverbullet")     return cfg.enable_strat_ict_silverbullet;
-     if(name=="strat_ict_wyckoff_springutad") return cfg.enable_strat_ict_wyckoff_turn;
+       case ST_NONE:
+       default:
+         break;
+     }
    
-     return true; // unmapped names default to allowed
+     // safer default:
+     #ifdef CFG_HAS_STRAT_MODE
+       const int sm = (int)cfg.strat_mode;
+       if(sm != (int)STRAT_COMBINED)
+         return false;
+     #endif
+     return true;
    }
    
    bool Config::EnableStrategyByName(Settings &cfg, string name, const bool on)
    {
-     StringToLower(name);
+     const StratToggleId id = _StratIdByName(name);
    
-     if(name=="main_trading_logic")         { cfg.enable_strat_main = on; return true; }
-   
-     if(name=="trend_vwap")                 { cfg.enable_trend_vwap_pullback = on;     return true; }
-     if(name=="trend_bos_continuation")     { cfg.enable_trend_bos_continuation = on;  return true; }
-   
-     if(name=="meanrev_vwap_band")          { cfg.enable_mr_vwap_band = on;            return true; }
-     if(name=="mr_range_nr7_ib")            { cfg.enable_mr_range_nr7ib = on;          return true; }
-   
-     if(name=="breakout_squeeze")           { cfg.enable_breakout_squeeze = on;        return true; }
-     if(name=="breakout_orb")               { cfg.enable_breakout_orb = on;            return true; }
-   
-     if(name=="reversal_sweep_choch")       { cfg.enable_reversal_sweep_choch = on;    return true; }
-     if(name=="reversal_vsa_climax_fade")   { cfg.enable_reversal_vsa_climax_fade = on;return true; }
-   
-     if(name=="corr_divergence")            { cfg.enable_corr_divergence = on;         return true; }
-     if(name=="pairs_spread_lite")          { cfg.enable_pairs_spreadlite = on;        return true; }
-   
-     if(name=="news_deviation")             { cfg.enable_news_deviation = on;          return true; }
-     if(name=="news_postfade")              { cfg.enable_news_postfade = on;           return true; }
-   
-     if(name=="strat_ict_po3")              { cfg.enable_strat_ict_po3 = on;           return true; }
-     if(name=="strat_ict_silverbullet")     { cfg.enable_strat_ict_silverbullet = on;  return true; }
-     if(name=="strat_ict_wyckoff_springutad")
+     switch(id)
      {
-       cfg.enable_strat_ict_wyckoff_turn = on;
-       return true;
-     }
+       case ST_MAIN:                 cfg.enable_strat_main = on; return true;
    
-     // Unknown strategy name: do nothing, signal failure
-     return false;
+       case ST_TREND_VWAP_PULLBACK:  cfg.enable_trend_vwap_pullback = on; return true;
+       case ST_TREND_BOS_CONT:       cfg.enable_trend_bos_continuation = on; return true;
+   
+       case ST_MR_VWAP_BAND:         cfg.enable_mr_vwap_band = on; return true;
+       case ST_MR_RANGE_NR7IB:       cfg.enable_mr_range_nr7ib = on; return true;
+   
+       case ST_BREAKOUT_SQUEEZE:     cfg.enable_breakout_squeeze = on; return true;
+       case ST_BREAKOUT_ORB:         cfg.enable_breakout_orb = on; return true;
+   
+       case ST_REV_SWEEP_CHOCH:      cfg.enable_reversal_sweep_choch = on; return true;
+       case ST_REV_VSA_CLIMAX_FADE:  cfg.enable_reversal_vsa_climax_fade = on; return true;
+   
+       case ST_CORR_DIVERGENCE:      cfg.enable_corr_divergence = on; return true;
+       case ST_PAIRS_SPREAD_LITE:    cfg.enable_pairs_spreadlite = on; return true;
+   
+       case ST_NEWS_DEVIATION:       cfg.enable_news_deviation = on; return true;
+       case ST_NEWS_POSTFADE:        cfg.enable_news_postfade = on; return true;
+   
+       case ST_ICT_PO3:              cfg.enable_strat_ict_po3 = on; return true;
+       case ST_ICT_SILVERBULLET:     cfg.enable_strat_ict_silverbullet = on; return true;
+       case ST_ICT_WYCKOFF_TURN:     cfg.enable_strat_ict_wyckoff_turn = on; return true;
+   
+       case ST_NONE:
+       default:
+         return false;
+     }
    }
 
    // ===== Moved from Types.mqh: inline helpers that require full Settings =====
@@ -874,6 +980,14 @@ namespace Config
          }
      }
      
+     // Manual selector (TradeSelector) -> internal direction enum (TDIR_*)
+    inline ENUM_TRADE_DIRECTION TradeSelectorToDirection(const TradeSelector sel)
+    {
+      if(sel == TRADE_BUY_ONLY)  return TDIR_BUY;
+      if(sel == TRADE_SELL_ONLY) return TDIR_SELL;
+      return TDIR_BOTH; // TRADE_BOTH_AUTO
+    }
+
      // -----------------------------------------------------------------------------
      // Helper: EffectiveDirectionSelector
      //
@@ -883,12 +997,12 @@ namespace Config
      inline ENUM_TRADE_DIRECTION EffectiveDirectionSelector(const Settings &cfg,
                                                              const ICT_Context &ctx)
      {
-         if(cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+         if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
          {
              // Old behaviour: manual BUY_ONLY / SELL_ONLY / BOTH_AUTO
-             return cfg.trade_direction_selector;
+             return TradeSelectorToDirection(cfg.trade_selector);
          }
-     
+              
          // Smart Money auto mode: map ICT bias → TDIR_*
          return ComputeDirectionFromICT(ctx);
      }
@@ -1166,6 +1280,11 @@ namespace Config
    inline void BuildExtrasDefaults(BuildExtras &x)
    {
      ZeroMemory(x);                        // bools=false, numbers=0
+     // Re-seat string fields (avoid “zeroed string handle” weirdness)
+     x.corr_ref_symbol   = "";
+     x.london_start_local= "";
+     x.london_end_local  = "";
+     
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
      x.adx_period=14; x.adx_min=20.0;
@@ -1208,6 +1327,45 @@ namespace Config
     #endif
     #ifdef CFG_HAS_REGIME_SGMIN
       if(cfg.regime_sg_min<=0.0) cfg.regime_sg_min = 0.10;
+    #endif
+  }
+  
+  // Apply strat_mode => enable_* toggles (no Normalize() call in here!)
+  inline void EnforceStrategyModeToggles(Settings &cfg)
+  {
+    #ifdef CFG_HAS_STRAT_MODE
+      #ifdef CFG_HAS_STRAT_TOGGLES
+          const StrategyMode sm = CfgStrategyMode(cfg);
+      
+          if(sm == STRAT_MAIN_ONLY)
+          {
+            // Disable PACK strategies (leave main + sub-ICT on)
+            cfg.enable_trend_vwap_pullback      = false;
+            cfg.enable_trend_bos_continuation   = false;
+            cfg.enable_mr_vwap_band             = false;
+            cfg.enable_mr_range_nr7ib           = false;
+            cfg.enable_breakout_squeeze         = false;
+            cfg.enable_breakout_orb             = false;
+            cfg.enable_reversal_sweep_choch     = false;
+            cfg.enable_reversal_vsa_climax_fade = false;
+            cfg.enable_corr_divergence          = false;
+            cfg.enable_pairs_spreadlite         = false;
+            cfg.enable_news_deviation           = false;
+            cfg.enable_news_postfade            = false;
+          }
+          else if(sm == STRAT_PACK_ONLY)
+          {
+            // Disable MAIN strategy + its sub toggles
+            cfg.enable_strat_main             = false;
+            cfg.enable_strat_ict_po3          = false;
+            cfg.enable_strat_ict_silverbullet = false;
+            cfg.enable_strat_ict_wyckoff_turn = false;
+          }
+          else
+          {
+            // STRAT_COMBINED: leave as-is (defaults already enable everything)
+          }
+      #endif 
     #endif
   }
 
@@ -1612,6 +1770,11 @@ namespace Config
     NormalizeStrategyToggles(cfg);
     NormalizeICTQualityThresholds(cfg);
     SyncLegacyICTToggles(cfg);
+   
+    // IMPORTANT: enforce strat_mode AFTER defaults + legacy sync,
+    // so MAIN_ONLY/PACK_ONLY can't be undone by NormalizeStrategyToggles().
+    EnforceStrategyModeToggles(cfg);
+   
     Postwire_StrategyVetoDefaults(cfg);
   }
   //──────────────────────────────────────────────────────────────────
@@ -2036,16 +2199,14 @@ namespace Config
   // ABI-safe helpers
   //──────────────────────────────────────────────────────────────────
   inline void ApplyStrategyMode(Settings &cfg, const int mode)
-  {
-    #ifdef CFG_HAS_STRAT_MODE
-      int m = (mode < 0 || mode > 2) ? 0 : mode;
-      #ifdef CFG_HAS_STRAT_MODE
-        const int mi = _ClampStratModeInt(mode);
-        _SetStratModeRef(cfg.strat_mode, mi);
-      #endif
-    #endif
-    Normalize(cfg);
-  }
+   {
+     #ifdef CFG_HAS_STRAT_MODE
+       const int mi = _ClampStratModeInt(mode);
+       _SetStratModeRef(cfg.strat_mode, mi);
+     #endif
+   
+     Normalize(cfg); // Normalize now enforces strat_mode toggles internally
+   }
 
   inline void ApplyTradeSelector(Settings &cfg, const TradeSelector sel)
   {
