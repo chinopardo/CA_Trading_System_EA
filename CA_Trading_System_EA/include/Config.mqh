@@ -13,10 +13,9 @@
 //====================================================================
 #ifndef CA_CONFIG_MQH
 #define CA_CONFIG_MQH
+struct Settings;
 
 #include "Types.mqh"
-
-struct Settings;
 
 // Core feature availability
 #ifndef CFG_HAS_CONFLUENCE
@@ -48,7 +47,7 @@ struct Settings;
 #endif
 
 #ifndef NEWSFILTER_AVAILABLE
-  #define NEWSFILTER_AVAILABLE 1
+  #define NEWSFILTER_AVAILABLE 0
 #endif
 
 #ifndef CFG_HAS_ADX_PARAMS
@@ -86,6 +85,10 @@ struct Settings;
 #ifndef CFG_HAS_TRADE_CD_SEC
   #define CFG_HAS_TRADE_CD_SEC 1
 #endif
+// Legacy ICT toggle fields (define these ONLY if the legacy Settings fields exist)
+// #define CFG_HAS_LEGACY_ICT_PO3
+// #define CFG_HAS_LEGACY_ICT_SILVERBULLET
+// #define CFG_HAS_LEGACY_ICT_WYCKOFF_UTAD
 #ifndef CFG_HAS_STRATEGY_KIND
   #define CFG_HAS_STRATEGY_KIND 1
 #endif
@@ -190,6 +193,12 @@ struct Settings;
 #ifndef PROFILE_SPEC_AVAILABLE
   #define PROFILE_SPEC_AVAILABLE 1
 #endif
+#ifndef CFG_HAS_ROUTER_HINTS
+  #define CFG_HAS_ROUTER_HINTS 1
+#endif
+#ifndef CFG_HAS_LIQPOOL_FIELDS
+  #define CFG_HAS_LIQPOOL_FIELDS 1
+#endif
 
 #ifndef CFG_HAS_ENABLE_HARD_GATE
   #define CFG_HAS_ENABLE_HARD_GATE 1
@@ -223,6 +232,10 @@ struct Settings;
 #ifndef CFG_HAS_ROUTER_FB_MIN
   #define CFG_HAS_ROUTER_FB_MIN 1
 #endif
+
+#ifndef ROUTER_GUESS_CORE_ID_WHEN_MISSING
+  #define ROUTER_GUESS_CORE_ID_WHEN_MISSING 1
+#endif 
 
 // --- Daily DD / profit taper feature flags (compile-safe) --------------------
 #ifndef CFG_HAS_MAX_DAILY_DD_PCT
@@ -273,12 +286,8 @@ struct Settings;
   #define CONFL_GATE_COUNT_NEWS 0
 #endif
 
-#ifdef NEWSFILTER_AVAILABLE
-  #include "NewsFilter.mqh"
-#endif
-#ifdef CFG_HAS_CONFLUENCE
-  #include "Confluence.mqh"
-#endif
+#include "NewsFilter.mqh"
+#include "Confluence.mqh"
 
 #ifndef CFG_HAS_WEEKLY_OPEN_RAMP
   #define CFG_HAS_WEEKLY_OPEN_RAMP 1
@@ -344,6 +353,8 @@ inline void FillICTLiquidityConfig(const Settings &cfg, ICTLiquidityConfig &out)
 }
 
 // ========= Minimal KV shim (uses Global Variables if you don't have a KV lib) =========
+#ifndef CA_KV_SHIM_GUARD
+#define CA_KV_SHIM_GUARD
 namespace KV {
   inline bool GetDouble(const string key, double &out){
     if(GlobalVariableCheck(key)){ out = GlobalVariableGet(key); return true; }
@@ -354,6 +365,7 @@ namespace KV {
     return false;
   }
 }
+#endif
 
 namespace Config
 {
@@ -400,8 +412,9 @@ namespace Config
   // FNV-1a 64-bit on 16-bit code units (MQL string)
   inline ulong FNV1a64_Str(const string s)
   {
-    const ulong FNV_OFFSET=(ulong)14695981039346656037;
-    const ulong FNV_PRIME =(ulong)1099511628211;
+    // Safe 64-bit construction (avoids signed-literal overflow in MQL5)
+    const ulong FNV_OFFSET = (((ulong)0xCBF29CE4) << 32) | 0x84222325;
+    const ulong FNV_PRIME  = (((ulong)0x00000100) << 32) | 0x000001B3;
     ulong h=FNV_OFFSET;
     const int len=(int)StringLen(s);
     for(int i=0;i<len;i++)
@@ -413,7 +426,12 @@ namespace Config
     return h;
   }
 
-  inline string U64ToHex(ulong v){ return StringFormat("%I64X",(long)v); }
+  inline string U64ToHex(const ulong v)
+  {
+    const uint hi = (uint)(v >> 32);
+    const uint lo = (uint)(v & 0xFFFFFFFF);
+    return StringFormat("%08X%08X", hi, lo);
+  }
 
   inline double ToDouble(const string s){ return StringToDouble(s); }
   inline int    ToInt(const string s){ return (int)StringToInteger(s); }
@@ -434,16 +452,16 @@ namespace Config
   {
     switch(s)
     {
-      case SESS_TOKYO_C3_TO_LONDON_OPEN:  return "TKY_C-3→LON_O";
-      case SESS_TOKYO_C3_TO_NY_OPEN:      return "TKY_C-3→NY_O";
-      case SESS_TOKYO_C3_TO_NY_CLOSE:     return "TKY_C-3→NY_C";
-      case SESS_LONDON_OPEN_TO_NY_OPEN:   return "LON_O→NY_O";
-      case SESS_LONDON_OPEN_TO_NY_CLOSE:  return "LON_O→NY_C";
+      case SESS_TOKYO_C3_TO_LONDON_OPEN:  return "TKY_C-3>LON_O";
+      case SESS_TOKYO_C3_TO_NY_OPEN:      return "TKY_C-3>NY_O";
+      case SESS_TOKYO_C3_TO_NY_CLOSE:     return "TKY_C-3>NY_C";
+      case SESS_LONDON_OPEN_TO_NY_OPEN:   return "LON_O>NY_O";
+      case SESS_LONDON_OPEN_TO_NY_CLOSE:  return "LON_O>NY_C";
       case SESS_LONDON_OPEN_ONLY:         return "LON_O";
       case SESS_NY_OPEN_ONLY:             return "NY_O";
       case SESS_LONDON_CLOSE_ONLY:        return "LON_C";
       case SESS_NY_CLOSE_ONLY:            return "NY_C";
-      case SESS_NY_C3_TO_TOKYO_CLOSE:     return "NY_C-3→TKY_C";
+      case SESS_NY_C3_TO_TOKYO_CLOSE:     return "NY_C-3>TKY_C";
       case SESS_ALL_MAJOR:                return "ALL_MAJOR";
       case SESS_OFF:
       default:                            return "OFF";
@@ -529,7 +547,7 @@ namespace Config
      bool log_veto_details; bool weekly_open_spread_ramp;
    };
    
-   class Config
+   class ConfigCore
    {
    public:
      // If Normalize is already implemented elsewhere as Config::Normalize,
@@ -543,7 +561,25 @@ namespace Config
      static bool EnableStrategyByName(Settings &cfg, string name, const bool on=true);
    };
 
-   void Config::Normalize(Settings &cfg)
+   // ----------------------------------------------------------------------------
+   // Public API wrappers (keeps call-sites stable: Config::DisableAllStrategies, etc.)
+   // ----------------------------------------------------------------------------
+   inline void DisableAllStrategies(Settings &cfg)
+   {
+     ConfigCore::DisableAllStrategies(cfg);
+   }
+   
+   inline bool IsStratEnabledByName(const Settings &cfg, string name)
+   {
+     return ConfigCore::IsStratEnabledByName(cfg, name);
+   }
+   
+   inline bool EnableStrategyByName(Settings &cfg, string name, const bool on=true)
+   {
+     return ConfigCore::EnableStrategyByName(cfg, name, on);
+   }
+
+   void ConfigCore::Normalize(Settings &cfg)
    {
      // Baseline hook intentionally left minimal.
      // All current normalization logic continues to live in the
@@ -552,7 +588,7 @@ namespace Config
    }
    
    // Turn everything off (scenarios turn specific ones back on)
-   void Config::DisableAllStrategies(Settings &cfg)
+   void ConfigCore::DisableAllStrategies(Settings &cfg)
    {
      cfg.enable_strat_main             = false;
    
@@ -577,6 +613,10 @@ namespace Config
      cfg.enable_strat_ict_po3          = false;
      cfg.enable_strat_ict_silverbullet = false;
      cfg.enable_strat_ict_wyckoff_turn = false; // maps to spring/UTAD internal name
+     
+     #ifdef CFG_HAS_STRAT_TOGGLES
+        cfg.strat_toggles_seeded = true; // lock defaults so Normalize() won't re-enable
+     #endif
    }
    
    enum StratToggleId
@@ -607,7 +647,7 @@ namespace Config
      ST_ICT_WYCKOFF_TURN
    };
 
-   inline StratToggleId _StratIdByName(const string name)
+   inline StratToggleId _StratIdByName(const string &name)
    {
      const string n = _Norm(name);
    
@@ -669,7 +709,7 @@ namespace Config
      return ST_NONE;
    }
 
-   bool Config::IsStratEnabledByName(const Settings &cfg, string name)
+   bool ConfigCore::IsStratEnabledByName(const Settings &cfg, string name)
    {
      const StratToggleId id = _StratIdByName(name);
    
@@ -713,7 +753,7 @@ namespace Config
      return true;
    }
    
-   bool Config::EnableStrategyByName(Settings &cfg, string name, const bool on)
+   bool ConfigCore::EnableStrategyByName(Settings &cfg, string name, const bool on)
    {
      const StratToggleId id = _StratIdByName(name);
    
@@ -851,12 +891,22 @@ namespace Config
      #endif
    }
    
-   inline int NewsPreMins(const Settings &c){
-     return (c.block_pre_m>0 ? c.block_pre_m : c.news_pre_mins);
+   inline int NewsPreMins(const Settings &c)
+   {
+     #ifdef CFG_HAS_NEWS_PRE_MINS
+       return (c.block_pre_m>0 ? c.block_pre_m : c.news_pre_mins);
+     #else
+       return c.block_pre_m;
+     #endif
    }
    
-   inline int NewsPostMins(const Settings &c){
-     return (c.block_post_m>0 ? c.block_post_m : c.news_post_mins);
+   inline int NewsPostMins(const Settings &c)
+   {
+     #ifdef CFG_HAS_NEWS_POST_MINS
+       return (c.block_post_m>0 ? c.block_post_m : c.news_post_mins);
+     #else
+       return c.block_post_m;
+     #endif
    }
    // ===== End moved helpers =====
    
@@ -1007,6 +1057,57 @@ namespace Config
          return ComputeDirectionFromICT(ctx);
      }
    
+   // ProfileSpec includes router hints + weights/throttles for known archetypes
+   struct ProfileSpec
+   {
+     // Router hints
+     double min_score; // e.g. 0.55
+     int    max_strats;// e.g. 12
+     // Router fallback hints (used by _SyncRouterFallbackAlias via router_profile_alias)
+     double fallback_min_confluence; // 0..1, 0 = don't override
+     int    fallback_max_span;       // bars, 0 = don't override
+
+     // Weights
+     double w_trend;           // Strat_Trend_VWAPPullback
+     double w_trend_bos;       // Strat_Trend_BOSContinuation
+     double w_mr;              // Strat_MR_VWAPBand
+     double w_mr_range;        // Strat_MR_RangeNR7IB
+     double w_squeeze;         // Strat_Breakout_Squeeze
+     double w_orb;             // Strat_Breakout_ORB
+     double w_sweepchoch;      // Strat_Reversal_SweepCHOCH
+     double w_vsa;             // Strat_Reversal_VSAClimaxFade
+     double w_corrdiv;         // Strat_Corr_Divergence
+     double w_pairslite;       // Strat_Pairs_SpreadLite
+     double w_news_dev;        // Strat_News_Deviation
+     double w_news_post;       // Strat_News_PostFade
+     
+     // ICT Weights
+     double w_ict_po3;          // Strat_ICT_PO3
+     double w_ict_silverbullet; // Strat_ICT_SilverBullet
+     double w_ict_wyckoff_turn; // Strat_ICT_Wyckoff_Turn
+
+     // Throttles (seconds)
+     int th_trend;
+     int th_trend_bos;
+     int th_mr;
+     int th_mr_range;
+     int th_squeeze;
+     int th_orb;
+     int th_sweepchoch;
+     int th_vsa;
+     int th_corrdiv;
+     int th_pairslite;
+     int th_news_dev;
+     int th_news_post;
+     
+     // ICT Throttles (seconds)
+     int th_ict_po3;
+     int th_ict_silverbullet;
+     int th_ict_wyckoff_turn;
+   };
+   
+   inline bool GetProfile(const string alias, ProfileSpec &out);
+  
    // Keep router fallback numeric knobs, legacy aliases, and
    // profile-based router hints in sync.
    inline void _SyncRouterFallbackAlias(Settings &io)
@@ -1059,10 +1160,11 @@ namespace Config
       // --------------------------------------------------------
       // 2) Sync profile alias → router hints (confluence/span)
       // --------------------------------------------------------
-      #ifdef SS_HAS_ROUTER_HINTS
+      #ifdef CFG_HAS_ROUTER_HINTS
          if(io.router_profile_alias != "")
            {
             ProfileSpec p;
+            ProfileSpecDefaults(p);     // or BuildProfileSpec(PROF_DEFAULT, p);
             if(GetProfile(io.router_profile_alias, p))
               {
                // Clamp confluence into [0,1] just in case
@@ -1073,6 +1175,16 @@ namespace Config
                if(p.fallback_max_span > 0)
                   io.router_fallback_max_span = p.fallback_max_span;
               }
+              
+            // Apply router primary hints from the profile alias ONLY when unset
+            #ifdef CFG_HAS_ROUTER_MIN_SCORE
+              if(io.router_min_score <= 0.0)
+                io.router_min_score = MathMin(1.0, MathMax(0.0, p.min_score));
+            #endif
+            #ifdef CFG_HAS_ROUTER_MAX_STRATS
+              if(io.router_max_strats <= 0)
+                io.router_max_strats = (p.max_strats > 0 ? p.max_strats : io.router_max_strats);
+            #endif
            }
       #endif
      }
@@ -1222,13 +1334,15 @@ namespace Config
        if(close_m>=0)  cfg.london_local_close_min = close_m;
      #endif
      
-     // Liquidity Pools (Lux-style)
-     if(x.liqPoolMinTouches      > 0)   cfg.liqPoolMinTouches      = x.liqPoolMinTouches;
-     if(x.liqPoolGapBars         > 0)   cfg.liqPoolGapBars         = x.liqPoolGapBars;
-     if(x.liqPoolConfirmWaitBars > 0)   cfg.liqPoolConfirmWaitBars = x.liqPoolConfirmWaitBars;
-     if(x.liqPoolLevelEpsATR     > 0.0) cfg.liqPoolLevelEpsATR     = x.liqPoolLevelEpsATR;
-     if(x.liqPoolMaxLookbackBars > 0)   cfg.liqPoolMaxLookbackBars = x.liqPoolMaxLookbackBars;
-     if(x.liqPoolMinSweepATR     > 0.0) cfg.liqPoolMinSweepATR     = x.liqPoolMinSweepATR;
+     #ifdef CFG_HAS_LIQPOOL_FIELDS
+        // Liquidity Pools (Lux-style)
+        if(x.liqPoolMinTouches      > 0)   cfg.liqPoolMinTouches      = x.liqPoolMinTouches;
+        if(x.liqPoolGapBars         > 0)   cfg.liqPoolGapBars         = x.liqPoolGapBars;
+        if(x.liqPoolConfirmWaitBars > 0)   cfg.liqPoolConfirmWaitBars = x.liqPoolConfirmWaitBars;
+        if(x.liqPoolLevelEpsATR     > 0.0) cfg.liqPoolLevelEpsATR     = x.liqPoolLevelEpsATR;
+        if(x.liqPoolMaxLookbackBars > 0)   cfg.liqPoolMaxLookbackBars = x.liqPoolMaxLookbackBars;
+        if(x.liqPoolMinSweepATR     > 0.0) cfg.liqPoolMinSweepATR     = x.liqPoolMinSweepATR;
+     #endif
    
      // ATR-as-delta proxy + vol regime floor
      #ifdef CFG_HAS_USE_ATR_AS_DELTA
@@ -1372,6 +1486,8 @@ namespace Config
   inline void NormalizeStrategyToggles(Settings &cfg)
   {
     #ifdef CFG_HAS_STRAT_TOGGLES
+      if(cfg.strat_toggles_seeded) return;
+      cfg.strat_toggles_seeded = true;
       cfg.enable_strat_main               = true;
       cfg.enable_trend_vwap_pullback      = true;
       cfg.enable_trend_bos_continuation   = true;
@@ -1418,19 +1534,25 @@ namespace Config
   {
     // If older flags are explicitly turned ON, make sure the new strat toggles are also ON.
     // We do NOT force them OFF if the legacy flag is false.
-    if(cfg.enable_ict_po3)
-      cfg.enable_strat_ict_po3 = true;
-
-    if(cfg.enable_ict_silverbullet)
-      cfg.enable_strat_ict_silverbullet = true;
-
-    if(cfg.enable_ict_wyckoff_utad)
-      cfg.enable_strat_ict_wyckoff_turn = true;
+    #ifdef CFG_HAS_LEGACY_ICT_PO3
+        if(cfg.enable_ict_po3)
+          cfg.enable_strat_ict_po3 = true;
+    #endif
+   
+    #ifdef CFG_HAS_LEGACY_ICT_SILVERBULLET
+        if(cfg.enable_ict_silverbullet)
+          cfg.enable_strat_ict_silverbullet = true;
+    #endif
+   
+    #ifdef CFG_HAS_LEGACY_ICT_WYCKOFF_UTAD
+        if(cfg.enable_ict_wyckoff_utad)
+          cfg.enable_strat_ict_wyckoff_turn = true;
+    #endif
   }
 
   inline void Normalize(Settings &cfg)
   {
-    Config::Normalize(cfg);
+    ConfigCore::Normalize(cfg);
     // Assets & TFs
     if(ArraySize(cfg.asset_list)<=0){ ArrayResize(cfg.asset_list,1); cfg.asset_list[0]=_Symbol; }
     if(cfg.tf_entry<PERIOD_M1) cfg.tf_entry=PERIOD_M5;
@@ -1485,7 +1607,17 @@ namespace Config
 
     // Trade selector
     if((int)cfg.trade_selector<0 || (int)cfg.trade_selector>2) cfg.trade_selector=TRADE_BOTH_AUTO;
+    
+    // Keep cached direction selector coherent with manual selector mode
+    if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+      cfg.trade_direction_selector = TradeSelectorToDirection(cfg.trade_selector);
+    else
+      cfg.trade_direction_selector = TDIR_BOTH;
 
+    // Defensive clamp (covers bad imports / external overrides)
+    if((int)cfg.trade_direction_selector < 0 || (int)cfg.trade_direction_selector > 2)
+      cfg.trade_direction_selector = TDIR_BOTH;
+      
     // Risk (cfg.* are in PERCENT units, e.g., 1.0 = 1%)
     if(cfg.risk_pct<0.0001) cfg.risk_pct=0.0001;
     if(cfg.risk_cap_pct<0.0001) cfg.risk_cap_pct=0.0001;
@@ -1522,6 +1654,11 @@ namespace Config
     // Legacy aliases / HTF slot
     if(cfg.risk_per_trade <= 0.0)
       cfg.risk_per_trade = cfg.risk_pct;
+      
+    #ifdef CFG_HAS_TRADE_CD_SEC
+        if(cfg.trade_cd_sec < 0) cfg.trade_cd_sec = 0;
+        if(cfg.trade_cd_sec > 86400) cfg.trade_cd_sec = 86400; // cap at 24h
+    #endif
 
     // Default HTF reference to D1 if unset
     if(cfg.tf_htf < PERIOD_M1)
@@ -1616,9 +1753,6 @@ namespace Config
     if(cfg.day_profit_stop_pct < cfg.day_profit_cap_pct)
        cfg.day_profit_stop_pct = cfg.day_profit_cap_pct;
 
-    if(cfg.taper_floor <= 0.0) cfg.taper_floor = 0.35;
-    if(cfg.taper_floor > 1.0)  cfg.taper_floor = 1.0;
-
     // Monthly target: only forbid negatives; defaulting is done via CfgMonthlyTargetPct.
     #ifdef CFG_HAS_MONTHLY_TARGET
       if(cfg.monthly_target_pct < 0.0)
@@ -1629,7 +1763,9 @@ namespace Config
     if(cfg.taper_floor > 1.0)  cfg.taper_floor = 1.0;
 
     // Account-wide DD: clamp non-negative; 0.0 keeps it disabled until set
-    if(cfg.max_account_dd_pct < 0.0) cfg.max_account_dd_pct = 0.0;
+    #ifdef CFG_HAS_CHALLENGE_INIT_EQUITY
+        if(cfg.challenge_init_equity < 0.0) cfg.challenge_init_equity = 0.0;
+    #endif
 
     // Position mgmt
     if(cfg.be_at_R<0.0) cfg.be_at_R=0.0;
@@ -1761,11 +1897,25 @@ namespace Config
 
     // Router hint defaults (compile-safe)
     #ifdef CFG_HAS_ROUTER_MIN_SCORE
-      if(cfg.router_min_score<=0.0) cfg.router_min_score = 0.55;
+      //if(cfg.router_min_score<=0.0) cfg.router_min_score = 0.55;
+      if(cfg.router_min_score < 0.0) cfg.router_min_score = 0.0;
+      if(cfg.router_min_score > 1.0) cfg.router_min_score = 1.0;
     #endif
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       if(cfg.router_max_strats<=0)  cfg.router_max_strats = 12;
     #endif
+   
+    #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+       if(cfg.router_fallback_min_score < 0.0) cfg.router_fallback_min_score = 0.0;
+       if(cfg.router_fallback_min_score > 1.0) cfg.router_fallback_min_score = 1.0;
+    #endif
+   
+    #ifdef CFG_HAS_ROUTER_FB_MIN
+       if(cfg.router_fb_min < 0.0) cfg.router_fb_min = 0.0;
+       if(cfg.router_fb_min > 1.0) cfg.router_fb_min = 1.0;
+    #endif
+    // Keep router fallback threshold and legacy alias in sync
+    _SyncRouterFallbackAlias(cfg);
     // Strategy toggles & ICT-specific thresholds
     NormalizeStrategyToggles(cfg);
     NormalizeICTQualityThresholds(cfg);
@@ -1803,7 +1953,19 @@ namespace Config
       if(KV::GetInt("router.max_strats", k))  cfg.router_max_strats = k;
     #endif
     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-      double fb=0.0; if(KV::GetDouble("router.fb_min", fb)) cfg.router_fallback_min_score = fb;
+      // router.fb_min should feed both aliases if present
+       {
+         double fb = 0.0;
+         if(KV::GetDouble("router.fb_min", fb))
+         {
+           #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+             cfg.router_fallback_min_score = fb;
+           #endif
+           #ifdef CFG_HAS_ROUTER_FB_MIN
+             cfg.router_fb_min = fb;
+           #endif
+         }
+       }
     #endif
     #ifdef CFG_HAS_ENABLE_HARD_GATE
       int h=0; if(KV::GetInt("router.hard_gate", h)) cfg.enable_hard_gate = (h!=0);
@@ -1823,6 +1985,8 @@ namespace Config
         cfg.monthly_target_pct = mt; // Store raw; accessor will clamp/default.
       }
     #endif
+    // KV can override only one side; keep aliases coherent
+    _SyncRouterFallbackAlias(cfg);
   }
   
   // -- Normalize/alias inputs for telemetry without mutating effective floors ----
@@ -1897,7 +2061,7 @@ namespace Config
     #ifdef CFG_HAS_MONTHLY_TARGET
       const double mt = CfgMonthlyTargetPct(cfg);
       if(mt > 0.50)
-        warns += "monthly_target_pct > 0.50; monthly gate may never trigger in realistic conditions.\n";
+        warns += "monthly target > 50%; monthly gate may never trigger in realistic conditions.\n";
     #endif
 
     // Sessions
@@ -1980,16 +2144,34 @@ namespace Config
      #endif
    
      // Baseline new fields (ABI-safe defaults)
-     cfg.trade_selector  = TRADE_BOTH_AUTO;
+     cfg.trade_selector = TRADE_BOTH_AUTO;
+     cfg.trade_direction_selector = TradeSelectorToDirection(cfg.trade_selector);
      cfg.session_preset  = SESS_OFF;
      cfg.tokyo_close_utc = 6*60;   // 06:00 UTC
      cfg.sydney_open_utc = 21*60;  // 21:00 UTC
      // If you have an enum profile, prefer a guard in Types.mqh; otherwise this is fine as bool.
-     cfg.profile = profile;
+     #ifdef CFG_HAS_PROFILE_ENUM
+        cfg.profile = (int)PROF_DEFAULT;
+     #else
+        cfg.profile = profile;
+     #endif
      
      // Directional bias:
      // default = manual so older behavior (trade_selector) remains unchanged
-     cfg.direction_bias_mode = DIRM_MANUAL_SELECTOR;
+     cfg.direction_bias_mode = (int)DIRM_MANUAL_SELECTOR;
+     
+     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+       cfg.router_fallback_min_score = 0.0;
+     #endif
+     #ifdef CFG_HAS_ROUTER_FB_MIN
+       cfg.router_fb_min = 0.0;
+     #endif
+     // Router profile hint fields: start clean (extras may override)
+     #ifdef CFG_HAS_ROUTER_HINTS
+       cfg.router_profile_alias          = "";
+       cfg.router_fallback_min_confluence= 0.0;
+       cfg.router_fallback_max_span      = 0;
+     #endif
 
      // ICT strategy kind profile: default "core" until a given strategy
      // (Silver Bullet / PO3 / Continuation / Wyckoff Turn) overrides it.
@@ -2045,6 +2227,10 @@ namespace Config
      cfg.block_pre_m      = block_pre;
      cfg.block_post_m     = block_post;
      cfg.news_impact_mask = impact_mask;
+     
+     // Diagnostics
+     cfg.debug   = debug;
+     cfg.filelog = filelog;
    
      // Convenience alias for the NewsFilter module (if compiled)
      cfg.newsFilterEnabled = (news_on && (NEWSFILTER_AVAILABLE != 0));
@@ -2211,6 +2397,8 @@ namespace Config
   inline void ApplyTradeSelector(Settings &cfg, const TradeSelector sel)
   {
     cfg.trade_selector = ((int)sel<0 || (int)sel>2 ? TRADE_BOTH_AUTO : sel);
+    if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+       cfg.trade_direction_selector = TradeSelectorToDirection(cfg.trade_selector);
   }
 
   inline void ApplySessionPreset(Settings &cfg,
@@ -2267,6 +2455,9 @@ namespace Config
     s+=",h4="+IntegerToString((int)c.tf_h4);
     s+=",d1="+IntegerToString((int)c.tf_d1);
     s+=",tradeSel="+IntegerToString((int)c.trade_selector);
+    #ifdef CFG_HAS_TRADE_CD_SEC
+        s+=",cd="+IntegerToString((int)c.trade_cd_sec);
+    #endif
 
     s+=",risk="+DoubleToString(c.risk_pct,6);
     s+=",cap="+DoubleToString(c.risk_cap_pct,6);
@@ -2348,7 +2539,9 @@ namespace Config
 
     s+=",dbg="+BoolStr(c.debug);
     s+=",fl="+BoolStr(c.filelog);
-    s+=",prof="+BoolStr(c.profile); // diagnostics flag (bool)
+    #ifndef CFG_HAS_PROFILE_ENUM
+      s+=",prof="+BoolStr(c.profile); // diagnostics flag (bool build only)
+    #endif
 
     s+=",atrp="+IntegerToString(c.atr_period);
     s+=",tpq="+DoubleToString(c.tp_quantile,3);
@@ -2465,8 +2658,13 @@ namespace Config
      s+=",routerFBMin="+DoubleToString(c.router_fallback_min_score,3);
    #else
       #ifdef CFG_HAS_ROUTER_FB_MIN
-     s+=",routerFBMin="+DoubleToString(c.router_fb_min,3);
+        s+=",routerFBMin="+DoubleToString(c.router_fb_min,3);
+      #endif
    #endif
+   #ifdef CFG_HAS_ROUTER_HINTS
+     s+=",fbConf="+DoubleToString(c.router_fallback_min_confluence,3);
+     s+=",fbSpan="+IntegerToString(c.router_fallback_max_span);
+     s+=",routerAlias="+c.router_profile_alias;
    #endif
 
     // Optional magic number (GV key prefix)
@@ -2503,7 +2701,7 @@ namespace Config
       case PROF_DEFAULT:
       default:         return "Balanced";
     }
-    return ProfileName((TradingProfile)p);
+    return "Balanced";
   }
   
   inline string StrategyModeNameLocal(const int m){
@@ -2583,45 +2781,11 @@ namespace Config
     #endif
   }
 
-  // ProfileSpec includes router hints + weights/throttles for known archetypes
-  struct ProfileSpec
-  {
-    // Router hints
-    double min_score; // e.g. 0.55
-    int    max_strats;// e.g. 12
-
-    // Weights
-    double w_trend;           // Strat_Trend_VWAPPullback
-    double w_trend_bos;       // Strat_Trend_BOSContinuation
-    double w_mr;              // Strat_MR_VWAPBand
-    double w_mr_range;        // Strat_MR_RangeNR7IB
-    double w_squeeze;         // Strat_Breakout_Squeeze
-    double w_orb;             // Strat_Breakout_ORB
-    double w_sweepchoch;      // Strat_Reversal_SweepCHOCH
-    double w_vsa;             // Strat_Reversal_VSAClimaxFade
-    double w_corrdiv;         // Strat_Corr_Divergence
-    double w_pairslite;       // Strat_Pairs_SpreadLite
-    double w_news_dev;        // Strat_News_Deviation
-    double w_news_post;       // Strat_News_PostFade
-
-    // Throttles (seconds)
-    int th_trend;
-    int th_trend_bos;
-    int th_mr;
-    int th_mr_range;
-    int th_squeeze;
-    int th_orb;
-    int th_sweepchoch;
-    int th_vsa;
-    int th_corrdiv;
-    int th_pairslite;
-    int th_news_dev;
-    int th_news_post;
-  };
-
   inline void ProfileSpecDefaults(ProfileSpec &p)
   {
     p.min_score = 0.55; p.max_strats=12;
+    p.fallback_min_confluence = 0.0;
+    p.fallback_max_span       = 0;
 
     p.w_trend=1.0; p.w_trend_bos=1.0; p.w_mr=1.0; p.w_mr_range=1.0;
     p.w_squeeze=1.0; p.w_orb=0.8; p.w_sweepchoch=0.8; p.w_vsa=0.8;
@@ -2630,6 +2794,15 @@ namespace Config
     p.th_trend=0; p.th_trend_bos=0; p.th_mr=0; p.th_mr_range=0;
     p.th_squeeze=300; p.th_orb=1800; p.th_sweepchoch=900; p.th_vsa=900;
     p.th_corrdiv=600; p.th_pairslite=600; p.th_news_dev=0; p.th_news_post=0;
+    
+    // ICT defaults (balanced)
+    p.w_ict_po3          = 1.00;
+    p.w_ict_silverbullet = 1.00;
+    p.w_ict_wyckoff_turn = 1.00;
+
+    p.th_ict_po3          = 0;
+    p.th_ict_silverbullet = 0;
+    p.th_ict_wyckoff_turn = 0;
   }
 
   inline void BuildProfileSpec(const TradingProfile prof, ProfileSpec &out)
@@ -2637,22 +2810,46 @@ namespace Config
     ProfileSpecDefaults(out);
     if(prof==PROF_TREND)
     {
+      out.fallback_min_confluence = 0.55;
+      out.fallback_max_span       = 6;
       out.w_trend=1.30; out.w_trend_bos=1.20;
       out.w_mr=0.70; out.w_mr_range=0.70;
       out.w_squeeze=1.10; out.w_orb=1.00;
       out.min_score = 0.58;
       out.th_trend=60; out.th_trend_bos=120; out.th_mr=180; out.th_mr_range=300;
+      
+      // ICT: trend profile de-emphasizes reversals, keeps SB moderate
+      out.w_ict_po3          = 0.90;
+      out.w_ict_silverbullet = 1.00;
+      out.w_ict_wyckoff_turn = 0.70;
+
+      out.th_ict_po3          = 120;
+      out.th_ict_silverbullet = 90;
+      out.th_ict_wyckoff_turn = 300;
     }
     else if(prof==PROF_MR)
     {
+      out.fallback_min_confluence = 0.52;
+      out.fallback_max_span       = 6;
       out.w_trend=0.70; out.w_trend_bos=0.70;
       out.w_mr=1.25; out.w_mr_range=1.20;
       out.w_squeeze=1.05; out.w_orb=0.70;
       out.min_score = 0.56;
       out.th_trend=240; out.th_trend_bos=300; out.th_mr=60; out.th_mr_range=90;
+      
+      // ICT: MR profile leans into Wyckoff turns
+      out.w_ict_po3          = 0.95;
+      out.w_ict_silverbullet = 0.90;
+      out.w_ict_wyckoff_turn = 1.15;
+
+      out.th_ict_po3          = 180;
+      out.th_ict_silverbullet = 180;
+      out.th_ict_wyckoff_turn = 120;
     }
     else if(prof==PROF_SCALP)
     {
+      out.fallback_min_confluence = 0.50;
+      out.fallback_max_span       = 4;
       out.w_trend=1.05; out.w_trend_bos=0.90;
       out.w_mr=1.10; out.w_mr_range=1.10;
       out.w_squeeze=1.10; out.w_orb=0.60;
@@ -2660,12 +2857,23 @@ namespace Config
       out.th_trend=30; out.th_trend_bos=45; out.th_mr=30; out.th_mr_range=45;
       out.th_squeeze=180; out.th_orb=900; out.th_sweepchoch=300; out.th_vsa=300;
       out.th_corrdiv=300; out.th_pairslite=300;
+      
+      // ICT: scalp profile favors Silver Bullet style entries
+      out.w_ict_po3          = 0.90;
+      out.w_ict_silverbullet = 1.25;
+      out.w_ict_wyckoff_turn = 0.85;
+
+      out.th_ict_po3          = 90;
+      out.th_ict_silverbullet = 30;
+      out.th_ict_wyckoff_turn = 180;
     }
     else if(prof==PROF_PROP_SAFE)
     {
      // Router hints: narrow & strict
      out.min_score  = 0.65;
      out.max_strats = 1;
+     out.fallback_min_confluence = 0.70;
+     out.fallback_max_span       = 3;
    
      // Weights bias:
      // continuation > main > silver-bullet-ish (map via breakout), reversals small
@@ -2682,9 +2890,41 @@ namespace Config
      // Keep most defaults; we only enforce a meaningful news post-fade.
      // (Global trade cooldown is set directly on Settings in ApplyTradingProfile.)
      out.th_news_post   = 900;   // 15 minutes post high-impact news
+     
+     // ICT: PropSafe is picky. Prefer SB/Continuation-like, downweight turns.
+     out.w_ict_po3          = 0.85;
+     out.w_ict_silverbullet = 1.05;
+     out.w_ict_wyckoff_turn = 0.60;
+
+     // Throttle ICT attempts to avoid overtrading in challenge mode
+     out.th_ict_po3          = 300;
+     out.th_ict_silverbullet = 120;
+     out.th_ict_wyckoff_turn = 600;
     }
     // PROF_DEFAULT via defaults
   }
+
+  // Lookup profile spec by string alias (for router_profile_alias)
+   inline bool GetProfile(const string alias, ProfileSpec &out)
+   {
+     const string n = _Norm(alias);
+   
+     if(n=="trend" || n=="proftrend")
+     { BuildProfileSpec(PROF_TREND, out); return true; }
+   
+     if(n=="meanreversion" || n=="mr" || n=="profmr")
+     { BuildProfileSpec(PROF_MR, out); return true; }
+   
+     if(n=="scalp" || n=="scalpfast" || n=="profscalp")
+     { BuildProfileSpec(PROF_SCALP, out); return true; }
+   
+     if(n=="propsafe" || n=="prop" || n=="challenge" || n=="prop_safe")
+     { BuildProfileSpec(PROF_PROP_SAFE, out); return true; }
+   
+     // Default fallback
+     BuildProfileSpec(PROF_DEFAULT, out);
+     return true;
+   }
 
   // Router hints accessors
   inline void GetRouterHints(const ProfileSpec &p, double &min_score, int &max_strats)
@@ -2707,12 +2947,23 @@ namespace Config
       if(overwrite || cfg.router_fb_min<=0.0)
         cfg.router_fb_min = MathMax(0.0, p.min_score - 0.05);
     #endif
+    #ifdef CFG_HAS_ROUTER_HINTS
+       if(overwrite || cfg.router_fallback_min_confluence <= 0.0)
+         cfg.router_fallback_min_confluence = MathMin(1.0, MathMax(0.0, p.fallback_min_confluence));
+   
+       if(overwrite || cfg.router_fallback_max_span <= 0)
+         cfg.router_fallback_max_span = (p.fallback_max_span > 0 ? p.fallback_max_span : cfg.router_fallback_max_span);
+    #endif
   }
 
   // Name normalization for lookup
   inline string _Norm(const string s)
   {
-    string t=s; string junk[]={" ","_","/","-"}; for(int i=0;i<ArraySize(junk);++i) StringReplace(t,junk[i],"");
+    string t = s;
+    StringReplace(t, " ", "");
+    StringReplace(t, "_", "");
+    StringReplace(t, "/", "");
+    StringReplace(t, "-", "");
     StringToLower(t);
     return t;
   }
@@ -2738,6 +2989,12 @@ namespace Config
     // News
     if(n=="newsdeviation" || n=="newsdev") { weight_out=p.w_news_dev; return true; }
     if(n=="newspostfade"  || n=="postfade") { weight_out=p.w_news_post; return true; }
+    
+    // ICT
+    if(n=="ictpo3" || n=="po3" || n=="stratictpo3") { weight_out=p.w_ict_po3; return true; }
+    if(n=="ictsilverbullet" || n=="silverbullet" || n=="stratictsilverbullet") { weight_out=p.w_ict_silverbullet; return true; }
+    if(n=="ictwyckoffturn" || n=="wyckoffturn" || n=="springutad" || n=="stratictwyckoffspringutad") { weight_out=p.w_ict_wyckoff_turn; return true; }
+
     return false;
   }
 
@@ -2762,8 +3019,47 @@ namespace Config
     // News
     if(n=="newsdeviation" || n=="newsdev") { throttle_s_out=p.th_news_dev; return true; }
     if(n=="newspostfade"  || n=="postfade") { throttle_s_out=p.th_news_post; return true; }
+    // ICT
+    if(n=="ictpo3" || n=="po3" || n=="stratictpo3") { throttle_s_out=p.th_ict_po3; return true; }
+    if(n=="ictsilverbullet" || n=="silverbullet" || n=="stratictsilverbullet") { throttle_s_out=p.th_ict_silverbullet; return true; }
+    if(n=="ictwyckoffturn" || n=="wyckoffturn" || n=="springutad" || n=="stratictwyckoffspringutad") { throttle_s_out=p.th_ict_wyckoff_turn; return true; }
     return false;
   }
+
+  // ---------------------------------------------------------------------------
+   // Settings-level wrappers (so Router/Registry can query weight/throttle directly)
+   // ---------------------------------------------------------------------------
+   inline bool GetProfileSpecForSettings(const Settings &cfg, ProfileSpec &out)
+   {
+     // If profile is an enum field, use it; otherwise fall back to defaults.
+     #ifdef CFG_HAS_PROFILE_ENUM
+       BuildProfileSpec((TradingProfile)cfg.profile, out);
+       return true;
+     #else
+       BuildProfileSpec(PROF_DEFAULT, out);
+       return true;
+     #endif
+   }
+   
+   inline double ProfileWeightForSettings(const Settings &cfg,
+                                         const string strategy_name,
+                                         const double fallback=1.0)
+   {
+     ProfileSpec p; GetProfileSpecForSettings(cfg, p);
+     double w=0.0;
+     if(ProfileWeightByName(p, strategy_name, w)) return w;
+     return fallback;
+   }
+   
+   inline int ProfileThrottleForSettings(const Settings &cfg,
+                                        const string strategy_name,
+                                        const int fallback_sec=0)
+   {
+     ProfileSpec p; GetProfileSpecForSettings(cfg, p);
+     int th=0;
+     if(ProfileThrottleByName(p, strategy_name, th)) return th;
+     return fallback_sec;
+   }
 
   // CSV & save helpers for ProfileSpec (auditability)
   inline string ProfileSpecCSV(const TradingProfile prof, const ProfileSpec &p)
@@ -2785,6 +3081,10 @@ namespace Config
     s+=",w_pairslite="+DoubleToString(p.w_pairslite,2);
     s+=",w_news_dev="+DoubleToString(p.w_news_dev,2);
     s+=",w_news_post="+DoubleToString(p.w_news_post,2);
+    
+    s+=",w_ict_po3="+DoubleToString(p.w_ict_po3,2);
+    s+=",w_ict_silverbullet="+DoubleToString(p.w_ict_silverbullet,2);
+    s+=",w_ict_wyckoff_turn="+DoubleToString(p.w_ict_wyckoff_turn,2);
 
     s+=",th_trend="+IntegerToString(p.th_trend);
     s+=",th_trend_bos="+IntegerToString(p.th_trend_bos);
@@ -2798,6 +3098,10 @@ namespace Config
     s+=",th_pairslite="+IntegerToString(p.th_pairslite);
     s+=",th_news_dev="+IntegerToString(p.th_news_dev);
     s+=",th_news_post="+IntegerToString(p.th_news_post);
+    
+    s+=",th_ict_po3="+IntegerToString(p.th_ict_po3);
+    s+=",th_ict_silverbullet="+IntegerToString(p.th_ict_silverbullet);
+    s+=",th_ict_wyckoff_turn="+IntegerToString(p.th_ict_wyckoff_turn);
     return s;
   }
 
@@ -2859,6 +3163,29 @@ namespace Config
      // Global trade cooldown (Policies will read via CfgTradeCooldownSec)
      #ifdef CFG_HAS_TRADE_CD_SEC
        cfg.trade_cd_sec = 900;  // 15 minutes
+     #endif
+     
+     // Prefer ICT-driven direction in PropSafe (less manual overtrading)
+     cfg.direction_bias_mode = (int)DIRM_AUTO_SMARTMONEY;
+     cfg.trade_direction_selector = TDIR_BOTH;
+
+     // Hard gate and minimum features (only if those fields exist)
+     #ifdef CFG_HAS_ENABLE_HARD_GATE
+       cfg.enable_hard_gate = true;
+     #endif
+     #ifdef CFG_HAS_MIN_FEATURES_MET
+       if(cfg.min_features_met <= 0) cfg.min_features_met = 2;
+     #endif
+
+     // Require filters (compile-safe)
+     #ifdef CFG_HAS_REQUIRE_TREND_FILTER
+       cfg.require_trend_filter = true;
+     #endif
+     #ifdef CFG_HAS_REQUIRE_ADX_REGIME
+       cfg.require_adx_regime = true;
+     #endif
+     #ifdef CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB
+       cfg.require_struct_or_pattern_ob = true;
      #endif
    }
 
@@ -3056,6 +3383,9 @@ namespace Config
       else if(k=="h4") cfg.tf_h4=(ENUM_TIMEFRAMES)ToInt(v);
       else if(k=="d1") cfg.tf_d1=(ENUM_TIMEFRAMES)ToInt(v);
       else if(k=="tradeSel") cfg.trade_selector=(TradeSelector)ToInt(v);
+      #ifdef CFG_HAS_TRADE_CD_SEC
+            else if(k=="cd") cfg.trade_cd_sec = ToInt(v);
+      #endif
 
       else if(k=="risk") cfg.risk_pct=ToDouble(v);
       else if(k=="cap") cfg.risk_cap_pct=ToDouble(v);
@@ -3103,12 +3433,17 @@ namespace Config
       else if(k=="ny"){ string ab[]; if(StringSplit(v,'-',ab)==2){ cfg.ny_open_utc=ToInt(ab[0]); cfg.ny_close_utc=ToInt(ab[1]); } }
 
       else if(k=="preset") cfg.session_preset=(SessionPreset)ToInt(v);
+      
+      #ifdef CFG_HAS_PROFILE_ENUM
+            else if(k=="profile")
+              cfg.profile = (int)ToInt(v);
+      #endif
       else if(k=="tkyC") cfg.tokyo_close_utc=ToInt(v);
       else if(k=="sydO") cfg.sydney_open_utc=ToInt(v);
 
       // Directional bias mode (manual vs ICT auto)
       else if(k=="dirBias")
-        cfg.direction_bias_mode = (DirectionBiasMode)ToInt(v);
+         cfg.direction_bias_mode = ToInt(v);
 
       // ICT strategy kind profile (for FVG strictness per-playbook)
       #ifdef CFG_HAS_STRATEGY_KIND
@@ -3127,7 +3462,9 @@ namespace Config
 
       else if(k=="dbg") cfg.debug=ToBool(v);
       else if(k=="fl") cfg.filelog=ToBool(v);
-      else if(k=="prof") cfg.profile=ToBool(v); // diagnostic flag
+      #ifndef CFG_HAS_PROFILE_ENUM
+            else if(k=="prof") cfg.profile=ToBool(v); // diagnostic flag (bool build only)
+      #endif
 
       else if(k=="atrp") cfg.atr_period=ToInt(v);
       else if(k=="tpq") cfg.tp_quantile=ToDouble(v);
@@ -3147,84 +3484,129 @@ namespace Config
       else if(k=="p2r") cfg.p2_at_R=ToDouble(v);
       else if(k=="p2p") cfg.p2_close_pct=ToDouble(v);
 
-      else if(k=="calLb") cfg.cal_lookback_mins=ToInt(v);
-      else if(k=="calH") cfg.cal_hard_skip=ToDouble(v);
-      else if(k=="calK") cfg.cal_soft_knee=ToDouble(v);
-      else if(k=="calMin") cfg.cal_min_scale=ToDouble(v);
+      else if(k=="calLb") cfg.cal_lookback_mins = ToInt(v);
+      else if(k=="calH")  cfg.cal_hard_skip     = ToDouble(v);
+      else if(k=="calK")  cfg.cal_soft_knee     = ToDouble(v);
+      else if(k=="calMin") cfg.cal_min_scale    = ToDouble(v);
 
-      else if(k=="qHigh") cfg.qualityThresholdHigh       = ToDouble(v);
+      // ICT quality thresholds
+      else if(k=="qHigh") cfg.qualityThresholdHigh = ToDouble(v);
       else if(k=="qCont") cfg.qualityThresholdContinuation = ToDouble(v);
-      else if(k=="qRev")  cfg.qualityThresholdReversal   = ToDouble(v);
+      else if(k=="qRev")  cfg.qualityThresholdReversal = ToDouble(v);
 
-      else if(k=="fibDepth")   cfg.fibDepth              = ToInt(v);
-      else if(k=="fibATR")     cfg.fibATRPeriod          = ToInt(v);
-      else if(k=="fibDev")     cfg.fibDevATRMult         = ToDouble(v);
-      else if(k=="fibBack")    cfg.fibMaxBarsBack        = ToInt(v);
-      else if(k=="fibUseConf") cfg.fibUseConfluence      = ToBool(v);
+      // Fib / OTE config
+      else if(k=="fibDepth")   cfg.fibDepth = ToInt(v);
+      else if(k=="fibATR")     cfg.fibATRPeriod = ToInt(v);
+      else if(k=="fibDev")     cfg.fibDevATRMult = ToDouble(v);
+      else if(k=="fibBack")    cfg.fibMaxBarsBack = ToInt(v);
+      else if(k=="fibUseConf") cfg.fibUseConfluence = ToBool(v);
       else if(k=="fibMinConf") cfg.fibMinConfluenceScore = ToDouble(v);
-      else if(k=="fibOTETol")  cfg.fibOTEToleranceATR    = ToDouble(v);
+      else if(k=="fibOTETol")  cfg.fibOTEToleranceATR = ToDouble(v);
       else if(k=="fibBonusRev") cfg.fibOTEQualityBonusReversal = ToDouble(v);
-      else if(k=="fibMinRR")    cfg.minRRFibAllowed      = ToDouble(v);
-      else if(k=="fibRRHard")   cfg.fibRRHardReject      = ToBool(v);
+      else if(k=="fibMinRR")   cfg.minRRFibAllowed = ToDouble(v);
+      else if(k=="fibRRHard")  cfg.fibRRHardReject = ToBool(v);
 
-      else if(k=="zEdge") cfg.vwap_z_edge=ToDouble(v);
-      else if(k=="zAvoid") cfg.vwap_z_avoidtrend=ToDouble(v);
-      else if(k=="pLook") cfg.pattern_lookback=ToInt(v);
-      else if(k=="pTau") cfg.pattern_tau=ToDouble(v);
+      // Confluence / VWAP / pattern
+      else if(k=="zEdge")  cfg.vwap_z_edge = ToDouble(v);
+      else if(k=="zAvoid") cfg.vwap_z_avoidtrend = ToDouble(v);
+      else if(k=="pLook")  cfg.pattern_lookback = ToInt(v);
+      else if(k=="pTau")   cfg.pattern_tau = ToDouble(v);
+      else if(k=="vwL")    cfg.vwap_lookback = ToInt(v);
+      else if(k=="vwSig")  cfg.vwap_sigma = ToDouble(v);
 
-      else if(k=="vwL") cfg.vwap_lookback=ToInt(v);
-      else if(k=="vwSig") cfg.vwap_sigma=ToDouble(v);
+      // Feature toggles
+      else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
+      else if(k=="vsaMax") cfg.vsa_penalty_max = ToDouble(v);
+      else if(k=="struct") cfg.structure_enable = ToBool(v);
+      else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
+      else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
 
-      else if(k=="vsa") cfg.vsa_enable=ToBool(v);
-      else if(k=="vsaMax") cfg.vsa_penalty_max=ToDouble(v);
-      else if(k=="struct") cfg.structure_enable=ToBool(v);
-      else if(k=="liq") cfg.liquidity_enable=ToBool(v);
-      else if(k=="corrS") cfg.corr_softveto_enable=ToBool(v);
-
-      else if(k=="liqMinTouch") cfg.liqPoolMinTouches      = ToInt(v);
-      else if(k=="liqGap")      cfg.liqPoolGapBars        = ToInt(v);
+      // Liquidity Pools (Lux-style)
+      else if(k=="liqMinTouch") cfg.liqPoolMinTouches = ToInt(v);
+      else if(k=="liqGap")      cfg.liqPoolGapBars = ToInt(v);
       else if(k=="liqWait")     cfg.liqPoolConfirmWaitBars = ToInt(v);
-      else if(k=="liqEpsATR")   cfg.liqPoolLevelEpsATR    = ToDouble(v);
+      else if(k=="liqEpsATR")   cfg.liqPoolLevelEpsATR = ToDouble(v);
       else if(k=="liqLookback") cfg.liqPoolMaxLookbackBars = ToInt(v);
-      else if(k=="liqSweepATR") cfg.liqPoolMinSweepATR    = ToDouble(v);
+      else if(k=="liqSweepATR") cfg.liqPoolMinSweepATR = ToDouble(v);
 
-      #ifdef CFG_HAS_CARRY_ENABLE
-         else if(k=="carry") cfg.carry_enable=ToBool(v);
-      #endif
-      #ifdef CFG_HAS_CARRY_BOOST_MAX
-         else if(k=="carryBoost") cfg.carry_boost_max=ToDouble(v);
-      #endif
-      #ifdef CFG_HAS_CARRY_RISK_SPAN
-         else if(k=="carrySpan") cfg.carry_risk_span=ToDouble(v);
-      #endif
-      
-      #ifdef CFG_HAS_STRAT_MODE
-         else if(k=="sMode")
-         {
-           const int mi = _ClampStratModeInt(ToInt(v));
-           _SetStratModeRef(cfg.strat_mode, mi);
-         }
-      #endif
-
+      // Confluence blends
       #ifdef CFG_HAS_CONFL_BLEND_TREND
-         else if(k=="cbTrend") cfg.confl_blend_trend=ToDouble(v);
+        else if(k=="cbTrend") cfg.confl_blend_trend = ToDouble(v);
       #endif
       #ifdef CFG_HAS_CONFL_BLEND_MR
-         else if(k=="cbMR") cfg.confl_blend_mr=ToDouble(v);
+        else if(k=="cbMR") cfg.confl_blend_mr = ToDouble(v);
       #endif
       #ifdef CFG_HAS_CONFL_BLEND_OTHERS
-         else if(k=="cbOther") cfg.confl_blend_others=ToDouble(v);
+        else if(k=="cbOther") cfg.confl_blend_others = ToDouble(v);
       #endif
 
+      // Carry knobs
+      #ifdef CFG_HAS_CARRY_ENABLE
+        else if(k=="carry") cfg.carry_enable = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_CARRY_BOOST_MAX
+        else if(k=="carryBoost") cfg.carry_boost_max = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_CARRY_RISK_SPAN
+        else if(k=="carrySpan") cfg.carry_risk_span = ToDouble(v);
+      #endif
+
+      // Router hints / gates
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
-         else if(k=="routerMin") cfg.router_min_score=ToDouble(v);
+        else if(k=="routerMin") cfg.router_min_score = ToDouble(v);
       #endif
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
-         else if(k=="routerCap") cfg.router_max_strats=ToInt(v);
+        else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
       #endif
 
+      // hard gate + required features
+      #ifdef CFG_HAS_ENABLE_HARD_GATE
+        else if(k=="hardGate") cfg.enable_hard_gate = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_MIN_FEATURES_MET
+        else if(k=="minFeat") cfg.min_features_met = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_REQUIRE_TREND_FILTER
+        else if(k=="reqTrend") cfg.require_trend_filter = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_REQUIRE_ADX_REGIME
+        else if(k=="reqADX") cfg.require_adx_regime = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB
+        else if(k=="reqStructOrOB") cfg.require_struct_or_pattern_ob = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_LONDON_LIQ_POLICY
+        else if(k=="lonPolicy") cfg.london_liquidity_policy = ToBool(v);
+      #endif
+
+      // Router fallback min key (serializer writes routerFBMin no matter which alias exists)
+      else if(k=="routerFBMin")
+      {
+        const double fb = ToDouble(v);
+        #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+          cfg.router_fallback_min_score = fb;
+        #endif
+        #ifdef CFG_HAS_ROUTER_FB_MIN
+          cfg.router_fb_min = fb;
+        #endif
+      }
+
+      #ifdef CFG_HAS_ROUTER_HINTS
+        else if(k=="fbConf") cfg.router_fallback_min_confluence = ToDouble(v);
+        else if(k=="fbSpan") cfg.router_fallback_max_span = ToInt(v);
+        else if(k=="routerAlias") cfg.router_profile_alias = v;
+      #endif
+
+      // Strategy mode (if serialized)
+      #ifdef CFG_HAS_STRAT_MODE
+        else if(k=="sMode")
+          _SetStratModeRef(cfg.strat_mode, ToInt(v));
+      #endif
+
+      // Optional magic number
       #ifdef CFG_HAS_MAGIC_NUMBER
-         else if(k=="magic") cfg.magic_number=ToLong(v);
+        else if(k=="magic")
+          cfg.magic_number = (long)ToLong(v);
       #endif
       
       #ifdef CFG_HAS_ENABLE_HARD_GATE
@@ -3245,33 +3627,18 @@ namespace Config
       #ifdef CFG_HAS_LONDON_LIQ_POLICY
          else if(k=="lonPolicy") cfg.london_liquidity_policy = ToBool(v);
       #endif
-      
-      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-         else if(k=="routerFBMin") cfg.router_fallback_min_score = ToDouble(v);
-      #else
-         #ifdef CFG_HAS_ROUTER_FB_MIN
-           else if(k=="routerFBMin") cfg.router_fb_min            = ToDouble(v);
-         #endif
+      #ifdef CFG_HAS_ROUTER_HINTS
+        else if(k=="fbConf") cfg.router_fallback_min_confluence = ToDouble(v);
+        else if(k=="fbSpan") cfg.router_fallback_max_span = ToInt(v);
       #endif
     }
-
+    
     Normalize(cfg);
     _SyncRouterFallbackAlias(cfg);
     FinalizeThresholds(cfg);
-    string warns=""; Validate(cfg, warns); if(warns!="") Print("LoadSettingsCSV warnings:\n", warns);
+    string warns=""; Validate(cfg, warns); if(warns!="") Print("LoadSettingsCSV warnings:\n", warns); if(warns!="") Print("Config warnings:\n", warns);
     Print("Settings loaded from CSV: ", fn);
     return true;
-  }
-  
-  // Global convenience wrappers: delegate to the richer Config::Config versions
-  inline void DisableAllStrategies(Settings &cfg)
-  {
-    Config::DisableAllStrategies(cfg);
-  }
-   
-  inline bool EnableStrategyByName(Settings &cfg, string name, const bool on)
-  {
-    return Config::EnableStrategyByName(cfg, name, on);
   }
 } // namespace Config
 
@@ -3753,6 +4120,11 @@ struct Settings
   #ifdef CFG_HAS_ROUTER_FB_MIN
     double           router_fb_min; // alias for older writers; same meaning as router_fallback_min_score
   #endif
+  #ifdef CFG_HAS_ROUTER_HINTS
+     string router_profile_alias;           // profile alias used for fallback hinting ("trend", "mr", ...)
+     double router_fallback_min_confluence; // 0..1; 0 = ignore / unused
+     int    router_fallback_max_span;       // bars; 0 = ignore / unused
+   #endif
 
   // --- Pairs / correlation (pairs-lite) -------------------------------------
   #ifdef CFG_HAS_PAIRS_Z_EDGE
@@ -3816,6 +4188,7 @@ struct Settings
    // These let you switch individual sub-strategies on/off from inputs.
    // Router / StrategyRegistry respect these, and won't even attempt Evaluate()
    // if one is disabled.
+   bool strat_toggles_seeded;             // defaults applied once; prevents Normalize() from undoing user choices
    bool enable_strat_main;                // legacy main logic
    bool enable_strat_ict_silverbullet;    // ICT_SilverBullet intraday raid scalp
    bool enable_strat_ict_po3;             // ICT_PO3 session model

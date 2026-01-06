@@ -4,7 +4,9 @@
 
 // Make Execution.mqh compile-safe: it checks this macro for persistence hooks.
 #define CA_POLICIES_AVAILABLE 1
-
+#ifndef POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL
+#define POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL 1
+#endif
 //=============================================================================
 // Policies.mqh — Core gates, filters & orchestration (Persistent)
 //-----------------------------------------------------------------------------
@@ -88,7 +90,9 @@ namespace Policies
     GATE_CONFLICT   = 21,
     GATE_ADR        = 22,
     GATE_ACCOUNT_DD = 23,
-    GATE_MONTH_TARGET = 24
+    GATE_MONTH_TARGET = 24,
+    GATE_MAX_LOSSES_DAY = 25,
+    GATE_MAX_TRADES_DAY = 26
   };
 
   inline string ReasonString(const int r)
@@ -110,11 +114,147 @@ namespace Policies
       case GATE_ADR:        return "ADR_CAP";
       case GATE_ACCOUNT_DD: return "ACCOUNT_DD_FLOOR";
       case GATE_MONTH_TARGET: return "MONTH_TARGET";
+      case GATE_MAX_LOSSES_DAY: return "MAX_LOSSES_DAY";
+      case GATE_MAX_TRADES_DAY: return "MAX_TRADES_DAY";
       default:              return "UNKNOWN";
     }
   }
   
   inline string GateReasonToString(const int r){ return ReasonString(r); }
+  
+    // ----------------------------------------------------------------------------
+  // Structured policy decision result (single source of truth)
+  // ----------------------------------------------------------------------------
+
+  // Bitmask constants (ulong) — stable ordering
+  #define CA_POLMASK_DAYLOSS         (((ulong)1) << 0)
+  #define CA_POLMASK_DAILYDD         (((ulong)1) << 1)
+  #define CA_POLMASK_ACCOUNT_DD      (((ulong)1) << 2)
+  #define CA_POLMASK_MONTH_TARGET    (((ulong)1) << 3)
+  #define CA_POLMASK_COOLDOWN        (((ulong)1) << 4)
+  #define CA_POLMASK_MOD_SPREAD      (((ulong)1) << 5)
+  #define CA_POLMASK_SPREAD          (((ulong)1) << 6)
+  #define CA_POLMASK_VOLATILITY      (((ulong)1) << 7)
+  #define CA_POLMASK_ADR             (((ulong)1) << 8)
+  #define CA_POLMASK_CALM            (((ulong)1) << 9)
+  #define CA_POLMASK_REGIME          (((ulong)1) << 10)
+  #define CA_POLMASK_MAX_LOSSES_DAY  (((ulong)1) << 11)
+  #define CA_POLMASK_MAX_TRADES_DAY  (((ulong)1) << 12)
+  #define CA_POLMASK_SESSION         (((ulong)1) << 13)
+  #define CA_POLMASK_NEWS            (((ulong)1) << 14)
+  #define CA_POLMASK_LIQUIDITY       (((ulong)1) << 15)
+
+  struct PolicyResult
+  {
+    bool   allowed;
+    int    primary_reason; // GateReason
+    ulong  veto_mask;
+
+    // Common / context
+    datetime ts;
+
+    // Spread
+    double spread_pts;
+    int    spread_cap_pts;
+    double spread_adapt_mult;
+    bool   weekly_ramp_on;
+    double mod_spread_mult;
+    int    mod_spread_cap_pts;
+
+    // Session
+    bool   session_filter_on;
+    bool   in_session_window;
+
+    // News
+    bool   news_blocked;
+    int    news_mins_left;
+    int    news_impact_mask;
+    int    news_pre_mins;
+    int    news_post_mins;
+
+    // Cooldowns
+    int    cd_trade_left_sec;
+    int    cd_loss_left_sec;
+    int    trade_cd_sec;
+    int    loss_cd_min;
+
+    // Daily loss stop
+    bool   day_stop_latched;
+    double day_loss_money;
+    double day_loss_pct;
+    double day_loss_cap_money;
+    double day_loss_cap_pct;
+    double day_eq0;
+
+    // Daily DD
+    double day_dd_pct;
+    double day_dd_limit_pct;
+
+    // Account DD
+    bool   acct_stop_latched;
+    double acct_dd_pct;
+    double acct_dd_limit_pct;
+    double acct_eq0;
+
+    // Monthly target
+    bool   month_target_hit;
+    double month_profit_pct;
+    double month_target_pct;
+    double month_eq0;
+
+    // ATR / Volatility
+    double atr_short_pts;
+    double atr_long_pts;
+    double vol_ratio;
+    double vol_limit;
+    
+    // Regime (exact veto values)
+    double regime_tq;
+    double regime_sg;
+    double regime_tq_min;
+    double regime_sg_min;
+
+    // ADR cap
+    bool   adr_cap_hit;
+    double adr_pts;
+    double adr_today_range_pts;
+    double adr_cap_limit_pts;
+
+    // Calm
+    double calm_min_atr_pips;
+    double calm_min_atr_pts;
+    double calm_min_ratio;
+    double calm_atr_to_spread;
+
+    // Liquidity
+    double liq_ratio;
+    double liq_floor;
+
+    // Daily counters (for veto print precision)
+    int    entries_today;
+    int    losses_today;
+    int    max_trades_day;
+    int    max_losses_day;
+  };
+
+  inline void _PolicyReset(PolicyResult &r)
+  {
+    ZeroMemory(r);
+    r.allowed        = true;
+    r.primary_reason = GATE_OK;
+    r.veto_mask      = 0;
+    r.ts             = TimeCurrent();
+  }
+
+  inline void _PolicyVeto(PolicyResult &r, const int gate_reason, const ulong mask_bit)
+  {
+    if(r.allowed)
+    {
+      r.allowed        = false;
+      r.primary_reason = gate_reason;
+    }
+    r.veto_mask |= mask_bit;
+  }
 
   // ----------------------------------------------------------------------------
   // Math helpers
@@ -1464,6 +1604,559 @@ namespace Policies
                 sym, reason, GateReasonToString(reason), msg);
   }
   
+  // ----------------------------------------------------------------------------
+  // Guaranteed veto logger (NOT debug-gated) — prevents silent vetoing.
+  // Throttles identical veto spam to once per second per (reason+mask).
+  // ----------------------------------------------------------------------------
+  inline bool _ShouldVetoLogOncePerSec(const string sym, const int reason, const ulong mask)
+  {
+    static datetime s_last_ts    = 0;
+    static int      s_last_reason= -999;
+    static ulong    s_last_mask  = 0;
+    static string   s_last_sym   = "";
+
+    const datetime now = TimeCurrent();
+    if(sym == s_last_sym && reason == s_last_reason && mask == s_last_mask && (now - s_last_ts) < 1)
+      return false;
+
+    s_last_ts     = now;
+    s_last_reason = reason;
+    s_last_mask   = mask;
+    s_last_sym    = sym;
+    return true;
+  }
+
+  inline void PolicyVetoLog(const PolicyResult &r)
+   {
+     const string sym = _Symbol;
+   
+     if(_ShouldVetoLogOncePerSec(sym, r.primary_reason, r.veto_mask) == false)
+       return;
+
+    // Gate-specific “exact values” prints
+    switch(r.primary_reason)
+    {
+      case GATE_SPREAD:
+      case GATE_MOD_SPREAD:
+        Print("[Policy][VETO] reason=", GateReasonToString(r.primary_reason),
+              " sym=", sym,
+              " spread=", DoubleToString(r.spread_pts,1),
+              " cap=", (string)r.spread_cap_pts,
+              " adapt=", DoubleToString(r.spread_adapt_mult,3),
+              " modMult=", DoubleToString(r.mod_spread_mult,3),
+              " modCap=", (string)r.mod_spread_cap_pts,
+              " inSession=", (r.in_session_window?"1":"0"),
+              " weeklyRamp=", (r.weekly_ramp_on?"1":"0"),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_NEWS:
+        Print("[Policy][VETO] reason=NEWS sym=", sym,
+              " block=", (r.news_blocked?"1":"0"),
+              " minutes=", (string)r.news_mins_left,
+              " impactMask=", (string)r.news_impact_mask,
+              " pre=", (string)r.news_pre_mins,
+              " post=", (string)r.news_post_mins,
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_SESSION:
+        Print("[Policy][VETO] reason=SESSION sym=", sym,
+              " sessionFilter=", (r.session_filter_on?"1":"0"),
+              " inWindow=", (r.in_session_window?"1":"0"),
+              " server=", TimeToString(TimeCurrent(), TIME_SECONDS),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_COOLDOWN:
+        Print("[Policy][VETO] reason=COOLDOWN sym=", sym,
+              " trade_left_sec=", (string)r.cd_trade_left_sec,
+              " loss_left_sec=", (string)r.cd_loss_left_sec,
+              " trade_cd_sec=", (string)r.trade_cd_sec,
+              " loss_cd_min=", (string)r.loss_cd_min,
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_DAILYDD:
+        Print("[Policy][VETO] reason=DAILY_DD sym=", sym,
+              " dd_pct=", DoubleToString(r.day_dd_pct,3),
+              " limit=", DoubleToString(r.day_dd_limit_pct,3),
+              " dayEq0=", DoubleToString(r.day_eq0,2),
+              " eq=", DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY),2),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_DAYLOSS:
+        Print("[Policy][VETO] reason=DAY_LOSS_STOP sym=", sym,
+              " loss_money=", DoubleToString(r.day_loss_money,2),
+              " loss_pct=", DoubleToString(r.day_loss_pct,3),
+              " cap_money=", DoubleToString(r.day_loss_cap_money,2),
+              " cap_pct=", DoubleToString(r.day_loss_cap_pct,3),
+              " dayEq0=", DoubleToString(r.day_eq0,2),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_ACCOUNT_DD:
+        Print("[Policy][VETO] reason=ACCOUNT_DD_FLOOR sym=", sym,
+              " dd_pct=", DoubleToString(r.acct_dd_pct,3),
+              " limit=", DoubleToString(r.acct_dd_limit_pct,3),
+              " acctEq0=", DoubleToString(r.acct_eq0,2),
+              " eq=", DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY),2),
+              " latched=", (r.acct_stop_latched?"1":"0"),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MONTH_TARGET:
+        Print("[Policy][VETO] reason=MONTH_TARGET sym=", sym,
+              " month_pct=", DoubleToString(r.month_profit_pct,3),
+              " target=", DoubleToString(r.month_target_pct,3),
+              " monthEq0=", DoubleToString(r.month_eq0,2),
+              " eq=", DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY),2),
+              " latched=", (r.month_target_hit?"1":"0"),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_VOLATILITY:
+        Print("[Policy][VETO] reason=VOLATILITY_BREAKER sym=", sym,
+              " atr_s=", DoubleToString(r.atr_short_pts,1),
+              " atr_l=", DoubleToString(r.atr_long_pts,1),
+              " ratio=", DoubleToString(r.vol_ratio,3),
+              " limit=", DoubleToString(r.vol_limit,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_ADR:
+        Print("[Policy][VETO] reason=ADR_CAP sym=", sym,
+              " adr_pts=", DoubleToString(r.adr_pts,1),
+              " today_pts=", DoubleToString(r.adr_today_range_pts,1),
+              " limit_pts=", DoubleToString(r.adr_cap_limit_pts,1),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_CALM:
+        Print("[Policy][VETO] reason=CALM sym=", sym,
+              " atr_s=", DoubleToString(r.atr_short_pts,1),
+              " spread=", DoubleToString(r.spread_pts,1),
+              " atr_to_spread=", DoubleToString(r.calm_atr_to_spread,3),
+              " min_atr_pips=", DoubleToString(r.calm_min_atr_pips,2),
+              " min_atr_pts=", DoubleToString(r.calm_min_atr_pts,1),
+              " min_ratio=", DoubleToString(r.calm_min_ratio,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_LIQUIDITY:
+        Print("[Policy][VETO] reason=LIQUIDITY sym=", sym,
+              " ratio=", DoubleToString(r.liq_ratio,3),
+              " floor=", DoubleToString(r.liq_floor,3),
+              " atr_s=", DoubleToString(r.atr_short_pts,1),
+              " spread=", DoubleToString(r.spread_pts,1),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MAX_LOSSES_DAY:
+        Print("[Policy][VETO] reason=MAX_LOSSES_DAY sym=", sym,
+              " losses=", (string)r.losses_today,
+              " max=", (string)r.max_losses_day,
+              " entries=", (string)r.entries_today,
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MAX_TRADES_DAY:
+        Print("[Policy][VETO] reason=MAX_TRADES_DAY sym=", sym,
+              " entries=", (string)r.entries_today,
+              " max=", (string)r.max_trades_day,
+              " losses=", (string)r.losses_today,
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_REGIME:
+        Print("[Policy][VETO] reason=REGIME sym=", sym,
+              " tq=", DoubleToString(r.regime_tq,3),
+              " sg=", DoubleToString(r.regime_sg,3),
+              " tq_min=", DoubleToString(r.regime_tq_min,3),
+              " sg_min=", DoubleToString(r.regime_sg_min,3),
+              " mask=", (string)r.veto_mask);
+        break;
+        
+      default:
+        Print("[Policy][VETO] reason=", GateReasonToString(r.primary_reason),
+              " sym=", sym, " mask=", (string)r.veto_mask);
+        break;
+    }
+  }
+
+    // ----------------------------------------------------------------------------
+  // Unified evaluators (Fast + Audit)
+  // ----------------------------------------------------------------------------
+
+  inline void _ApplyRuntimeKnobsFromCfg(const Settings &cfg)
+  {
+    SetMoDMultiplier       (CfgModSpreadMult(cfg));
+    SetSpreadATRAdapt      (CfgATRShort(cfg), CfgATRLong(cfg),
+                            CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
+    SetVolBreakerLimit     (CfgVolBreakerLimit(cfg));
+    SetLiquidityParams     (CfgLiqMinRatio(cfg));
+    SetLossCooldownParams  (CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
+    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
+  }
+
+  inline void _FillSpreadDiag(const Settings &cfg, PolicyResult &r)
+  {
+    r.weekly_ramp_on     = CfgWeeklyRampOn(cfg);
+    r.mod_spread_mult    = s_mod_mult_outside;
+
+    const int cap_base   = EffMaxSpreadPts(cfg, _Symbol);
+    const double adapt   = SpreadCapAdaptiveMult(cfg);
+    r.spread_adapt_mult  = adapt;
+
+    double cap_eff = (double)cap_base * adapt;
+    if(r.weekly_ramp_on)
+      cap_eff = AdjustSpreadCapWeeklyOpenPts(cfg, cap_eff);
+
+    r.spread_cap_pts     = (int)MathFloor(cap_eff);
+    r.mod_spread_cap_pts = (int)MathFloor(r.mod_spread_mult * (double)r.spread_cap_pts);
+    r.spread_pts         = MarketData::SpreadPoints(_Symbol);
+  }
+
+  inline void _FillATRDiag(const Settings &cfg, PolicyResult &r)
+  {
+    const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
+    r.atr_short_pts = AtrPts(_Symbol, tf, cfg, CfgATRShort(cfg), 1);
+    r.atr_long_pts  = AtrPts(_Symbol, tf, cfg, CfgATRLong(cfg),  1);
+    r.vol_ratio     = (r.atr_long_pts > 0.0 ? (r.atr_short_pts / r.atr_long_pts) : 0.0);
+    r.vol_limit     = s_vb_limit;
+  }
+
+  inline void _FillADRCapDiag(const Settings &cfg, PolicyResult &r)
+  {
+    r.adr_cap_hit = false;
+    r.adr_pts     = ADRPoints(_Symbol, CfgADRLookbackDays(cfg));
+
+    r.adr_today_range_pts = 0.0;
+    r.adr_cap_limit_pts   = 0.0;
+
+    #ifdef CFG_HAS_ADR_CAP_MULT
+    const double cap_mult = CfgADRCapMult(cfg);
+    if(cap_mult > 0.0 && r.adr_pts > 0.0)
+    {
+      r.adr_cap_limit_pts = r.adr_pts * cap_mult;
+
+      MqlRates d1[]; ArraySetAsSeries(d1,true);
+      if(CopyRates(_Symbol, PERIOD_D1, 0, 1, d1) == 1)
+      {
+        double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+        if(pt <= 0.0) pt = _Point;
+        if(pt > 0.0)
+          r.adr_today_range_pts = MathAbs(d1[0].high - d1[0].low) / pt;
+      }
+    }
+    #endif
+  }
+
+  inline void _FillCalmDiag(const Settings &cfg, PolicyResult &r)
+  {
+    r.calm_min_atr_pips    = CfgCalmMinATRPips(cfg);
+    r.calm_min_ratio       = CfgCalmMinATRtoSpread(cfg);
+    r.calm_min_atr_pts     = 0.0;
+
+    const string sym=_Symbol;
+    const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
+    r.atr_short_pts = AtrPts(sym, tf, cfg, CfgATRShort(cfg), 1);
+    r.spread_pts    = MarketData::SpreadPoints(sym);
+
+    if(r.calm_min_atr_pips > 0.0)
+      r.calm_min_atr_pts = MarketData::PointsFromPips(sym, r.calm_min_atr_pips);
+
+    r.calm_atr_to_spread = (r.spread_pts > 0.0 ? r.atr_short_pts / r.spread_pts : 0.0);
+  }
+
+  inline void _FillLiquidityDiag(const Settings &cfg, PolicyResult &r)
+  {
+    _FillATRDiag(cfg, r); // ensures atr_short_pts available
+    r.spread_pts = MarketData::SpreadPoints(_Symbol);
+
+    const double floorR = EffLiqMinRatio(cfg, _Symbol, s_liq_min_ratio);
+    r.liq_floor  = floorR;
+
+    if(r.spread_pts > 0.0)
+      r.liq_ratio = (r.atr_short_pts / r.spread_pts);
+    else
+      r.liq_ratio = 0.0;
+  }
+
+  inline bool _EvaluateCoreEx(const Settings &cfg, PolicyResult &out, const bool audit)
+  {
+    _EnsureLoaded(cfg);
+    _EnsureMonthState();
+    _EnsureDayState();
+    _EnsureAccountBaseline(cfg);
+
+    _PolicyReset(out);
+    _ApplyRuntimeKnobsFromCfg(cfg);
+
+    out.session_filter_on = EffSessionFilter(cfg, _Symbol);
+    out.in_session_window = TimeUtils::InTradingWindow(cfg, TimeCurrent());
+
+    out.trade_cd_sec      = s_trade_cd_sec;
+    out.loss_cd_min       = s_cooldown_min;
+    out.cd_trade_left_sec = TradeCooldownSecondsLeft();
+    out.cd_loss_left_sec  = LossCooldownSecondsLeft();
+
+    out.day_eq0           = s_dayEqStart;
+    out.day_dd_limit_pct  = CfgMaxDailyDDPct(cfg);
+
+    out.acct_eq0          = s_acctEqStart;
+    out.acct_dd_limit_pct = CfgMaxAccountDDPct(cfg);
+
+    out.month_eq0         = s_monthStartEq;
+    out.month_target_pct  = CfgMonthlyTargetPct(cfg);
+
+    // 1) Realised day-loss stop
+    {
+      double loss_money=0.0, loss_pct=0.0;
+      if(DailyLossStopHit(cfg, loss_money, loss_pct))
+      {
+        out.day_stop_latched  = true;
+        out.day_loss_money    = loss_money;
+        out.day_loss_pct      = loss_pct;
+        out.day_loss_cap_money= CfgDayLossCapMoney(cfg);
+
+        double cap_pct = CfgDayLossCapPct(cfg);
+        const double dd_cap = CfgMaxDailyDDPct(cfg);
+        if(cap_pct <= 0.0) cap_pct = dd_cap;
+        else if(dd_cap > 0.0) cap_pct = MathMax(cap_pct, dd_cap);
+        out.day_loss_cap_pct = cap_pct;
+
+        _PolicyVeto(out, GATE_DAYLOSS, CA_POLMASK_DAYLOSS);
+        if(!audit) return false;
+      }
+    }
+
+    // 2) Daily equity DD
+    {
+      double dd_pct=0.0;
+      if(DailyEquityDDHit(cfg, dd_pct))
+      {
+        out.day_dd_pct = dd_pct;
+        _PolicyVeto(out, GATE_DAILYDD, CA_POLMASK_DAILYDD);
+        if(!audit) return false;
+      }
+    }
+
+    // 3) Account DD floor
+    {
+      double acct_dd=0.0;
+      if(AccountEquityDDHit(cfg, acct_dd))
+      {
+        out.acct_stop_latched = true;
+        out.acct_dd_pct       = acct_dd;
+        _PolicyVeto(out, GATE_ACCOUNT_DD, CA_POLMASK_ACCOUNT_DD);
+        if(!audit) return false;
+      }
+    }
+
+    // 4) Monthly target
+    {
+      double month_pct=0.0;
+      if(MonthlyProfitTargetHit(cfg, month_pct))
+      {
+        out.month_target_hit = true;
+        out.month_profit_pct = month_pct;
+        _PolicyVeto(out, GATE_MONTH_TARGET, CA_POLMASK_MONTH_TARGET);
+        if(!audit) return false;
+      }
+    }
+
+    // 5) Cooldowns
+    if(LossCooldownActive() || TradeCooldownActive())
+    {
+      out.cd_trade_left_sec = TradeCooldownSecondsLeft();
+      out.cd_loss_left_sec  = LossCooldownSecondsLeft();
+      _PolicyVeto(out, GATE_COOLDOWN, CA_POLMASK_COOLDOWN);
+      if(!audit) return false;
+    }
+
+    // 6) Spread / MoD spread
+    {
+      int spread_reason=GATE_OK;
+      if(!MoDSpreadOK(cfg, spread_reason))
+      {
+        _FillSpreadDiag(cfg, out);
+        if(spread_reason == GATE_MOD_SPREAD)
+          _PolicyVeto(out, GATE_MOD_SPREAD, CA_POLMASK_MOD_SPREAD);
+        else
+          _PolicyVeto(out, GATE_SPREAD, CA_POLMASK_SPREAD);
+
+        if(!audit) return false;
+      }
+    }
+
+    // 7) London-local liquidity policy tweak (kept identical to your Check())
+    #ifdef CFG_HAS_LONDON_LIQ_POLICY
+    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
+    {
+      const bool in_lon =
+          _WithinLocalWindowMins(cfg.london_local_open_min,
+                                 cfg.london_local_close_min,
+                                 TimeLocal());
+
+      if(cfg.london_liquidity_policy)
+      {
+        const double base = CfgLiqMinRatio(cfg);
+        const double mult = (in_lon ? 0.95 : 1.05);
+        SetLiquidityParams(base * mult);
+      }
+    }
+    #endif
+    #endif
+
+    // 8) Volatility breaker
+    {
+      double vb_ratio=0.0;
+      if(VolatilityBreaker(cfg, vb_ratio))
+      {
+        _FillATRDiag(cfg, out);
+        out.vol_ratio = vb_ratio;
+        _PolicyVeto(out, GATE_VOLATILITY, CA_POLMASK_VOLATILITY);
+        if(!audit) return false;
+      }
+    }
+
+    // 9) ADR cap
+    {
+      double adr_pts=0.0; int adr_reason=GATE_OK;
+      if(!ADRCapOK(cfg, adr_reason, adr_pts))
+      {
+        _FillADRCapDiag(cfg, out);
+        out.adr_cap_hit = true;
+        _PolicyVeto(out, GATE_ADR, CA_POLMASK_ADR);
+        if(!audit) return false;
+      }
+    }
+
+    // 10) Calm
+    {
+      int calm_reason=GATE_OK;
+      if(!CalmModeOK(cfg, calm_reason))
+      {
+        _FillCalmDiag(cfg, out);
+        _PolicyVeto(out, GATE_CALM, CA_POLMASK_CALM);
+        if(!audit) return false;
+      }
+    }
+
+    // 11) Regime
+    EnableRegimeGate(CfgRegimeGateOn(cfg));
+    SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
+    if(!RegimeConsensusOK(cfg))
+    {
+      // Capture exact values for guaranteed veto logs (NOT debug gated)
+      out.regime_tq_min = s_reg_tq_min;
+      out.regime_sg_min = s_reg_sg_min;
+
+      const string sym=_Symbol;
+      const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
+      out.regime_tq = RegimeX::TrendQuality(sym, tf, 60);
+      out.regime_sg = Corr::HysteresisSlopeGuard(sym, tf, 14, 23.0, 15.0);
+
+      _PolicyVeto(out, GATE_REGIME, CA_POLMASK_REGIME);
+      if(!audit) return false;
+    }
+
+    return out.allowed;
+  }
+
+  inline bool _EvaluateFullEx(const Settings &cfg, PolicyResult &out, const bool audit)
+  {
+    const bool ok_core = _EvaluateCoreEx(cfg, out, audit);
+    if(!audit && !ok_core) return false;
+
+    // A) Day max-losses
+    if(MaxLossesReachedToday(cfg))
+    {
+      out.max_losses_day = 0;
+      out.entries_today  = 0;
+      out.losses_today   = 0;
+
+      #ifdef CFG_HAS_MAX_LOSSES_DAY
+        out.max_losses_day = cfg.max_losses_day;
+        int entries=0, losses=0;
+        const long mf = _MagicFilterFromCfg(cfg);
+        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        out.entries_today = entries;
+        out.losses_today  = losses;
+      #endif
+
+      _PolicyVeto(out, GATE_MAX_LOSSES_DAY, CA_POLMASK_MAX_LOSSES_DAY);
+      if(!audit) return false;
+    }
+
+    // B) Day max-trades
+    if(MaxTradesReachedToday(cfg))
+    {
+      out.max_trades_day = 0;
+      out.entries_today  = 0;
+      out.losses_today   = 0;
+
+      #ifdef CFG_HAS_MAX_TRADES_DAY
+        out.max_trades_day = cfg.max_trades_day;
+        int entries=0, losses=0;
+        const long mf = _MagicFilterFromCfg(cfg);
+        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        out.entries_today = entries;
+        out.losses_today  = losses;
+      #endif
+
+      _PolicyVeto(out, GATE_MAX_TRADES_DAY, CA_POLMASK_MAX_TRADES_DAY);
+      if(!audit) return false;
+    }
+
+    // C) Session veto (full)
+    if(out.session_filter_on && !out.in_session_window)
+    {
+      _PolicyVeto(out, GATE_SESSION, CA_POLMASK_SESSION);
+      if(!audit) return false;
+    }
+
+    // D) News veto
+    out.news_blocked     = false;
+    out.news_mins_left   = 0;
+    out.news_impact_mask = EffNewsImpactMask(cfg, _Symbol);
+    out.news_pre_mins    = CfgNewsBlockPreMins(cfg);
+    out.news_post_mins   = CfgNewsBlockPostMins(cfg);
+
+    {
+      int mins_left=0;
+      if(NewsBlockedNow(cfg, mins_left))
+      {
+        out.news_blocked   = true;
+        out.news_mins_left = mins_left;
+        _PolicyVeto(out, GATE_NEWS, CA_POLMASK_NEWS);
+        if(!audit) return false;
+      }
+    }
+
+    // E) Liquidity veto
+    {
+      double liqR=0.0;
+      if(!LiquidityOK(cfg, liqR))
+      {
+        _FillLiquidityDiag(cfg, out);
+        out.liq_ratio = liqR;
+        _PolicyVeto(out, GATE_LIQUIDITY, CA_POLMASK_LIQUIDITY);
+        if(!audit) return false;
+      }
+    }
+
+    return out.allowed;
+  }
+
+  // Public API
+  inline bool EvaluateCore(const Settings &cfg, PolicyResult &out)      { return _EvaluateCoreEx(cfg, out, false); }
+  inline bool EvaluateCoreAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateCoreEx(cfg, out, true);  }
+  inline bool EvaluateFull(const Settings &cfg, PolicyResult &out)      { return _EvaluateFullEx(cfg, out, false); }
+  inline bool EvaluateFullAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateFullEx(cfg, out, true);  }
+
   // ---------------------------------------------------------------------------
   // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)
   // ---------------------------------------------------------------------------
@@ -1808,7 +2501,7 @@ namespace Policies
        bd.score_final = ss.score;
      #else
        // pass-through when news module is absent
-       (void)sym; (void)bd;
+       if(false) { Print(sym); Print(bd.score_final); }
      #endif
    }
 
@@ -1870,82 +2563,14 @@ namespace Policies
       #endif
     }
 
-    if(!Check(cfg, reason)) return false;
+    PolicyResult r;
+    const bool ok = EvaluateFull(cfg, r);
 
-    // Day-level trade-count limits (max losses / max trades per day)
-    // Re-use GATE_DAYLOSS so HUD / logging stays compact.
-    if(MaxLossesReachedToday(cfg))
-    {
-      reason = GATE_DAYLOSS;
+    reason = r.primary_reason;
+    minutes_left_news = r.news_mins_left;
 
-      #ifdef CFG_HAS_MAX_LOSSES_DAY
-        int entries=0, losses=0;
-        const long mf = _MagicFilterFromCfg(cfg);
-        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
-        _GateDetail(cfg, reason, _Symbol,
-                    StringFormat("max_losses_day=%d losses=%d entries=%d",
-                                 cfg.max_losses_day, losses, entries));
-      #else
-        _GateDetail(cfg, reason, _Symbol, "max losses reached");
-      #endif
-
-      return false;
-    }
-
-    if(MaxTradesReachedToday(cfg))
-    {
-      reason = GATE_DAYLOSS;
-
-      #ifdef CFG_HAS_MAX_TRADES_DAY
-        int entries=0, losses=0;
-        const long mf = _MagicFilterFromCfg(cfg);
-        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
-        _GateDetail(cfg, reason, _Symbol,
-                    StringFormat("max_trades_day=%d entries=%d losses=%d",
-                                 cfg.max_trades_day, entries, losses));
-      #else
-        _GateDetail(cfg, reason, _Symbol, "max trades reached");
-      #endif
-
-      return false;
-    }
-    
-    if(EffSessionFilter(cfg, _Symbol))
-    {
-      const bool sess_on  = EffSessionFilter(cfg, _Symbol);
-      const bool in_win   = TimeUtils::InTradingWindow(cfg, TimeCurrent());
-      const bool allowed  = (!sess_on || in_win);
-      if(!allowed)
-      {
-        reason=GATE_SESSION;
-        _GateDetail(cfg, reason, _Symbol,
-                    StringFormat("sess_on=%s in_win=%s server=%s",
-                                 (sess_on?"YES":"NO"), (in_win?"YES":"NO"),
-                                 TimeToString(TimeCurrent(), TIME_SECONDS)));
-        return false;
-      }
-    }
-
-    if(NewsBlockedNow(cfg, minutes_left_news))
-    {
-      reason=GATE_NEWS;
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("mins_left=%d mask=%d pre=%d post=%d",
-                               minutes_left_news,
-                               EffNewsImpactMask(cfg, _Symbol),
-                               CfgNewsBlockPreMins(cfg),
-                               CfgNewsBlockPostMins(cfg)));
-      return false;
-    }
-
-    double liqR=0.0;
-    if(!LiquidityOK(cfg, liqR))
-    { reason=GATE_LIQUIDITY; return false; }
-    
-    if(CfgDebugGates(cfg))
-      PrintFormat("Policies | WeeklyOpenRamp=%s", (CfgWeeklyRampOn(cfg) ? "ON" : "OFF"));
-
-    reason=GATE_OK; return true;
+    if(!ok) PolicyVetoLog(r);
+    return ok;
   }
 
   // ---------- Daily counters (symbol + optional magic filter) ----------
@@ -2032,7 +2657,7 @@ namespace Policies
       return (entries >= cfg.max_trades_day);
     #else
       // Field not compiled in → no daily trade-count cap.
-      (void)cfg;
+      if(false) Print((long)CfgMagicNumber(cfg));
       return false;
     #endif
   }
@@ -2054,19 +2679,19 @@ namespace Policies
         if(gr==GATE_SPREAD || gr==GATE_MOD_SPREAD)
                                 { code_out = POLICY_SPREAD_HIGH;  return false; }
 
-        // Max losses vs max trades are both GATE_DAYLOSS in CheckFull; disambiguate cheaply:
-        if(gr==GATE_DAYLOSS)
-        {
-          if(MaxTradesReachedToday(cfg)) { code_out = POLICY_MAX_TRADES; return false; }
-          code_out = POLICY_MAX_LOSSES; return false;
-        }
+        // Max losses vs max trades are both GATE_MAX_LOSSES_DAY & GATE_MAX_TRADES_DAY in CheckFull; disambiguate cheaply:
+        if(gr==GATE_MAX_LOSSES_DAY) { code_out = POLICY_MAX_LOSSES; return false; }
+        if(gr==GATE_MAX_TRADES_DAY) { code_out = POLICY_MAX_TRADES; return false; }
+
+        // True day-loss stop is not “max losses” — treat as generic block in legacy ABI
+        if(gr==GATE_DAYLOSS)        { code_out = POLICY_BLOCKED_OTHER; return false; }
 
         code_out = POLICY_BLOCKED_OTHER;
         return false;
       }
       code_out = POLICY_OK;
       return true;
-    #endif
+    #else
     
     if(CfgDebugGates(cfg))
     {
@@ -2109,6 +2734,7 @@ namespace Policies
                        mlEnabled, mlScore, mlThresh);
       #endif
     }
+    #endif
 
     _EnsureLoaded(cfg);
     code_out = POLICY_OK;
@@ -2215,94 +2841,48 @@ namespace Policies
     _EnsureLoaded(cfg);
     ZeroMemory(t);
 
-    // Session context for HUD
-    t.in_session_window = TimeUtils::InTradingWindow(cfg, TimeCurrent());
+    PolicyResult pr;
+    EvaluateFullAudit(cfg, pr);
 
-    int reason=GATE_OK, mleft=0;
-    // run lighter gates for snapshot; don’t mutate anything beyond day stop latch
-    Check(cfg, reason);
-    t.gate_reason = reason;
+    t.gate_reason        = pr.primary_reason;
+    t.news_mins_left     = pr.news_mins_left;
+    t.cd_trade_sec_left  = pr.cd_trade_left_sec;
+    t.cd_loss_sec_left   = pr.cd_loss_left_sec;
+
+    t.day_stop_latched   = pr.day_stop_latched;
+    t.day_loss_money     = pr.day_loss_money;
+    t.day_loss_pct       = pr.day_loss_pct;
+    t.day_dd_pct         = pr.day_dd_pct;
+
+    t.acct_stop_latched  = pr.acct_stop_latched;
+    t.acct_dd_pct        = pr.acct_dd_pct;
+    t.acct_dd_limit_pct  = pr.acct_dd_limit_pct;
+
+    t.spread_pts         = pr.spread_pts;
+    t.spread_cap_pts     = pr.spread_cap_pts;
+
+    t.atr_short_pts      = pr.atr_short_pts;
+    t.atr_long_pts       = pr.atr_long_pts;
+    t.vol_ratio          = pr.vol_ratio;
+
+    t.liq_ratio          = pr.liq_ratio;
+
+    t.adr_pts            = pr.adr_pts;
+    t.adr_cap_limit_pts  = pr.adr_cap_limit_pts;
+    t.adr_cap_hit        = pr.adr_cap_hit;
+
+    t.in_session_window  = pr.in_session_window;
+
+    t.month_target_hit   = pr.month_target_hit;
+    t.month_start_equity = pr.month_eq0;
+    t.month_profit_pct   = pr.month_profit_pct;
+
 
     // day PL & stops
     double pl=0.0; int w=0,l=0;
     if(DailyRealizedPL(cfg, pl, w, l)){ t.day_pl = pl; t.day_wins=w; t.day_losses=l; }
 
-    double ddPct=0.0; t.day_dd_pct=0.0;
-    if(DailyEquityDDHit(cfg, ddPct)) t.day_dd_pct = ddPct;
-
-    double lossM=0.0, lossPct=0.0;
-    t.day_stop_latched = DailyLossStopHit(cfg, lossM, lossPct);
-    if(t.day_stop_latched){ t.day_loss_money=lossM; t.day_loss_pct=lossPct; }
-
-    // account-wide (challenge) DD floor
-    t.acct_stop_latched = false;
-    t.acct_dd_pct       = 0.0;
-    t.acct_dd_limit_pct = 0.0;
-
-    double acct_dd=0.0;
-    if(AccountEquityDDHit(cfg, acct_dd))
-    {
-      t.acct_stop_latched = true;
-      t.acct_dd_pct       = acct_dd;
-    }
-
-    const double acct_lim = CfgMaxAccountDDPct(cfg);
-    if(acct_lim > 0.0)
-      t.acct_dd_limit_pct = acct_lim;
-      
-    // cooldowns
-    t.cd_trade_sec_left = TradeCooldownSecondsLeft();
-    t.cd_loss_sec_left  = LossCooldownSecondsLeft();
-
-    // spreads & ATRs
-    t.spread_pts = MarketData::SpreadPoints(_Symbol);
-    const double mult = SpreadCapAdaptiveMult(cfg);
-    double cap_eff = (double)EffMaxSpreadPts(cfg, _Symbol) * mult;
-    if(CfgWeeklyRampOn(cfg))
-      cap_eff = AdjustSpreadCapWeeklyOpenPts(cfg, cap_eff);     // weekly ramp
-    t.spread_cap_pts = (int)MathFloor(cap_eff);
-
-    const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
-    t.atr_short_pts = AtrPts(_Symbol, tf, cfg, CfgATRShort(cfg), 1);
-    t.atr_long_pts  = AtrPts(_Symbol, tf, cfg, CfgATRLong(cfg),  1);
-    t.vol_ratio     = (t.atr_long_pts>0.0 ? t.atr_short_pts/t.atr_long_pts : 0.0);
-
-    double liqR=0.0; LiquidityOK(cfg, liqR); t.liq_ratio=liqR;
-
-    t.adr_pts = ADRPoints(_Symbol, CfgADRLookbackDays(cfg));
-    // --- ADR cap diagnostics ---
-    t.adr_cap_limit_pts = 0.0;
-    t.adr_cap_hit       = false;
-   
-    #ifdef CFG_HAS_ADR_CAP_MULT
-    {
-      const double cap_mult = CfgADRCapMult(cfg);
-      if(cap_mult > 0.0 && t.adr_pts > 0.0)
-        t.adr_cap_limit_pts = t.adr_pts * cap_mult;     // ADR * multiplier (points)
-    }
-    #endif
-   
-    // Use the actual gate function so "hit" matches runtime behavior
-    {
-      int    adr_reason = GATE_OK;
-      double adr_pts_tmp = 0.0; // not used further; gate recomputes safely
-      const bool ok = ADRCapOK(cfg, adr_reason, adr_pts_tmp);
-      t.adr_cap_hit = (!ok && adr_reason == GATE_ADR);
-    }
-
-    // --- Monthly profit target HUD ---
-    {
-      double month_pct = 0.0;
-      bool   month_hit = false;
-      MonthlyProfitStats(cfg, month_pct, month_hit);
-
-      t.month_target_hit   = month_hit;
-      t.month_start_equity = s_monthStartEq;
-      t.month_profit_pct   = month_pct;
-    }
-    
-    // news & attempts
-    NewsBlockedNow(cfg, mleft); t.news_mins_left = mleft;
+    // attempts + last attempt + last retcode
     t.attempts_today = _GVGetI(_Key("ATTEMPTS_D"), 0);
     t.last_attempt_ts= (datetime)_GVGetD(_Key("LAST_ATTEMPT_TS"), 0.0);
     t.last_retcode   = (uint)_GVGetI(_Key("LAST_EXEC_RC"), 0);
@@ -2357,13 +2937,6 @@ namespace Policies
 
     ResetIntent(out_intent);
     out_intent.symbol = symbol;
-
-    SetMoDMultiplier(CfgModSpreadMult(cfg));
-    SetSpreadATRAdapt(CfgATRShort(cfg), CfgATRLong(cfg), CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
-    SetVolBreakerLimit(CfgVolBreakerLimit(cfg));
-    SetLiquidityParams(CfgLiqMinRatio(cfg));
-    SetLossCooldownParams(CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
-    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
 
     int mins_left=0;
     if(!CheckFull(cfg, gate_reason, mins_left))
@@ -2431,13 +3004,6 @@ namespace Policies
 
     ResetIntent(out_intent);
     if(n<=0){ gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
-
-    SetMoDMultiplier(CfgModSpreadMult(cfg));
-    SetSpreadATRAdapt(CfgATRShort(cfg), CfgATRLong(cfg), CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
-    SetVolBreakerLimit(CfgVolBreakerLimit(cfg));
-    SetLiquidityParams(CfgLiqMinRatio(cfg));
-    SetLossCooldownParams(CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
-    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
 
     int mins_left=0;
     if(!CheckFull(cfg, gate_reason, mins_left))

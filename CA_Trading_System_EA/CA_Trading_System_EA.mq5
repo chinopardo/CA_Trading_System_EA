@@ -579,7 +579,7 @@ input int              InpThrottle_NewsPost_Sec     = 900;
 input int              InpTradeCooldown_Sec     = 900; // Policy Cooldown
 
 // Routing choice
-input bool             InpUseRegistryRouting    = true; // Registry Routing
+input bool             InpUseRegistryRouting    = false; // Registry Routing
 input double           InpRegimeThreshold       = 0.55; // Regime Threshold
 
 // --------- Profiles (top-level presets) ----------
@@ -856,6 +856,33 @@ void MirrorInputsToSettings(Settings &cfg)
 
   // ---- Assets / TFs / cadence ----
   cfg.tf_entry = InpEntryTF; cfg.tf_h1=InpHTF_H1; cfg.tf_h4=InpHTF_H4; cfg.tf_d1=InpHTF_D1;
+  // ---- ICT / Smart Money mirror (keeps legacy S aligned with router g_cfg) ----
+  #ifdef CFG_HAS_TF_HTF
+    cfg.tf_htf = InpTfHTF;
+  #endif
+  #ifdef CFG_HAS_RISK_PER_TRADE
+    cfg.risk_per_trade = InpRiskPerTradePct;
+  #endif
+  #ifdef CFG_HAS_TRADE_DIRECTION_SELECTOR
+    cfg.trade_direction_selector = InpTradeDirectionSelector;
+  #endif
+  #ifdef CFG_HAS_DIRECTION_BIAS_MODE
+    cfg.direction_bias_mode = InpDirectionBiasMode;
+  #endif
+
+  #ifdef CFG_HAS_MODE_USE_SILVERBULLET
+    cfg.mode_use_silverbullet = (InpEnable_SilverBulletMode ? 1 : 0);
+  #endif
+  #ifdef CFG_HAS_MODE_USE_PO3
+    cfg.mode_use_po3 = (InpEnable_PO3Mode ? 1 : 0);
+  #endif
+  #ifdef CFG_HAS_MODE_ENFORCE_KILLZONE
+    cfg.mode_enforce_killzone = (InpEnforceKillzone ? 1 : 0);
+  #endif
+  #ifdef CFG_HAS_MODE_USE_ICT_BIAS
+    cfg.mode_use_ICT_bias = (InpUseICTBias ? 1 : 0);
+  #endif
+
   cfg.only_new_bar = InpOnlyNewBar; cfg.timer_ms = InpTimerMS;
   cfg.server_offset_min = InpServerOffsetMinutes;
 
@@ -932,7 +959,7 @@ void MirrorInputsToSettings(Settings &cfg)
   // ---- Extra (post-main) gate ----
   cfg.extra_enable     = InpCF_Extra_Enable;
   cfg.extra_min_needed = MathMax(0, InpExtra_MinScore);
-  cfg.extra_min_score  = MathMax(0.0, InpExtra_MinScore);
+  cfg.extra_min_score  = MathMax(0.0, InpConf_MinScore);
 
   // ---- Extras toggles + weights ----
   cfg.extra_volume_footprint = InpExtra_VolumeFootprint;
@@ -1450,6 +1477,23 @@ bool NewBarFor(const string sym, const ENUM_TIMEFRAMES tf)
    return false;
   }
 
+// Router path new-bar gate (separate from DebugChecklist IsNewBar)
+static datetime g_router_lastBar = 0;
+
+bool IsNewBarRouter(const string sym, const ENUM_TIMEFRAMES tf)
+{
+   const datetime t0 = iTime(sym, tf, 0);
+   if(t0<=0)
+      return false;
+
+   if(g_router_lastBar != t0)
+   {
+      g_router_lastBar = t0;
+      return true;
+   }
+   return false;
+}
+
 // ---------------- Indicator micro-benchmark ----------------
 void RunIndicatorBenchmarks()
   {
@@ -1496,7 +1540,7 @@ void MaybeEvaluate()
 
    // Run router once (direct router mode)
    ICT_Context ictCtx = StateGetICTContext(g_state);
-   ZeroMemory(ictCtx);                 // stub context: fibTargets etc. default to "off"
+   // do not wipe ictCtx here; it is meant to carry current bias/phase/session context
 
    Routing::RouteResult rr;
    ZeroMemory(rr);
@@ -1511,26 +1555,45 @@ void MaybeEvaluate()
 //--------------------------------------------------------------------
 void BuildSettingsFromInputs(Settings &cfg)
 {
-   // 0) Start from the same base as S (risk, sessions, router, etc.)
-   ZeroMemory(cfg);
-   MirrorInputsToSettings(cfg);
+   // 0) Start from finalized runtime S (after profile/overrides/normalize)
+   cfg = S;
 
    // --- Core / generic ICT config ---
-   cfg.tf_entry                  = InpTfEntry;          // ICT entry TF
-   cfg.tf_htf                    = InpTfHTF;            // ICT HTF
-   cfg.risk_per_trade            = InpRiskPerTradePct;  // ICT risk slider
-   cfg.newsFilterEnabled         = InpNewsOn;           // reuse NewsOn input
-   cfg.trade_direction_selector  = InpTradeDirectionSelector;
+   cfg.tf_entry                  = InpEntryTF;          // ICT entry TF - SINGLE source of truth for entry TF (matches MirrorInputsToSettings)
+   #ifdef CFG_HAS_TF_HTF
+      cfg.tf_htf = InpTfHTF;     // ICT HTF
+   #endif
+   #ifdef CFG_HAS_RISK_PER_TRADE
+      cfg.risk_per_trade = InpRiskPerTradePct;     // ICT risk slider
+   #endif
+   #ifdef CFG_HAS_NEWS_FILTER_ENABLED
+      cfg.newsFilterEnabled = InpNewsOn;        // reuse NewsOn input
+   #endif
+   #ifdef CFG_HAS_TRADE_DIRECTION_SELECTOR
+      cfg.trade_direction_selector = InpTradeDirectionSelector;
+   #endif
 
    // Direction bias mode:
-   cfg.direction_bias_mode       = InpDirectionBiasMode;
+   #ifdef CFG_HAS_DIRECTION_BIAS_MODE
+      cfg.direction_bias_mode = InpDirectionBiasMode;
+   #endif
 
    // --- Strategy enable toggles ---
-   cfg.enable_strat_main             = InpEnable_MainLogic;
-   cfg.enable_strat_ict_silverbullet = InpEnable_ICT_SilverBullet;
-   cfg.enable_strat_ict_po3          = InpEnable_ICT_PO3;
-   cfg.enable_strat_ict_continuation = InpEnable_ICT_Continuation;
-   cfg.enable_strat_ict_wyckoff_turn = InpEnable_ICT_WyckoffTurn;
+   #ifdef CFG_HAS_ENABLE_STRAT_MAIN
+      cfg.enable_strat_main = InpEnable_MainLogic;
+   #endif
+   #ifdef CFG_HAS_ENABLE_STRAT_ICT_SILVERBULLET
+      cfg.enable_strat_ict_silverbullet = InpEnable_ICT_SilverBullet;
+   #endif
+   #ifdef CFG_HAS_ENABLE_STRAT_ICT_PO3
+      cfg.enable_strat_ict_po3 = InpEnable_ICT_PO3;
+   #endif
+   #ifdef CFG_HAS_ENABLE_STRAT_ICT_CONTINUATION
+      cfg.enable_strat_ict_continuation = InpEnable_ICT_Continuation;
+   #endif
+   #ifdef CFG_HAS_ENABLE_STRAT_ICT_WYCKOFF_TURN
+      cfg.enable_strat_ict_wyckoff_turn = InpEnable_ICT_WyckoffTurn;
+   #endif
 
    // --- Magic bases (per-strategy ranges) ---
    cfg.magic_main_base        = InpMagic_MainBase;
@@ -1645,7 +1708,9 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
                                      classicalScore,
                                      ictScore);
 
-   Panel::PublishFibContext(ictCtx);
+   #ifdef PANEL_HAS_PUBLISH_FIB_CONTEXT
+      Panel::PublishFibContext(ictCtx);
+   #endif
 
    string j = "{";
    j += "\"sym\":\""      + Telemetry::_Esc(_Symbol)           + "\",";
@@ -1655,7 +1720,9 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
    j += "\"armed\":\""    + Telemetry::_Esc(armedName)         + "\"";
    j += "}";
 
-   Telemetry::KV("ict.ctx", j);
+   #ifdef TELEMETRY_HAS_KV
+      Telemetry::KV("ict.ctx", j);
+   #endif
 }
 
 // ================== Lifecycle ==================
@@ -1750,6 +1817,8 @@ int OnInit()
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
    g_use_registry   = InpUseRegistryRouting;
+   LogX::Info(StringFormat("Execution path: %s",
+                        (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
 
    Sanity::SetDebug(InpDebug);
    LogX::SetMinLevel(InpDebug ? LogX::LVL_DEBUG : LogX::LVL_INFO);
@@ -1911,13 +1980,13 @@ int OnInit()
    else
       BootRegistry_NoProfile(S);
 
+   // Housekeeping BEFORE registry boot so weights/throttles see normalized settings
+   Config::Normalize(S);
+   StratReg::SyncRouterFromSettings(S);
+   
    // Optional tester preset overlay
    TesterPresets::ApplyPresetByName(S, InpTesterPreset);
    TesterCases::ApplyTestCase(S, InpTestCase);
-   
-   // Housekeeping post-apply
-   Config::Normalize(S);
-   StratReg::SyncRouterFromSettings(S);
    
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
@@ -1926,6 +1995,15 @@ int OnInit()
    // Watchlist parse
    ParseAssetList(InpAssetList, g_symbols);
    g_symCount = ArraySize(g_symbols);
+   
+   if(g_use_registry && g_symCount > 1)
+   {
+      LogX::Warn("[MultiSymbol] Current strategy stack evaluates on chart symbol only; forcing watchlist to CURRENT.");
+      g_symCount = 1;
+      ArrayResize(g_symbols, 1);
+      g_symbols[0] = _Symbol;
+   }
+   
    if(g_symCount<=0)
      {
       g_symCount=1;
@@ -1954,9 +2032,11 @@ int OnInit()
    // Optional benchmark
    RunIndicatorBenchmarks();
 
-   // --- Telemetry wiring (new) ---
-   Telemetry::Configure(512*1024, /*to_common*/true, /*gv_breadcrumbs*/true, "CA_TEL", /*weekly*/false);
-   Telemetry::SetHUDBarGuardTF(S.tf_entry);  // emit HUD/snapshots once per new bar on entry TF
+   // --- Telemetry wiring ---
+   #ifdef TELEMETRY_HAS_CONFIGURE
+      Telemetry::Configure(512*1024, /*to_common*/true, /*gv_breadcrumbs*/true, "CA_TEL", /*weekly*/false);
+      Telemetry::SetHUDBarGuardTF(S.tf_entry);  // emit HUD/snapshots once per new bar on entry TF
+   #endif
 
    #ifdef TELEMETRY_HAS_INIT
       Telemetry::Init(S);
@@ -1979,27 +2059,13 @@ int OnInit()
    
    // 1. Copy all extern/input params into g_cfg
    BuildSettingsFromInputs(g_cfg);
+   //g_cfg.tf_entry = S.tf_entry;
+   //g_cfg.tf_h1 = S.tf_h1;
+   //g_cfg.tf_h4 = S.tf_h4;
+   //g_cfg.tf_d1 = S.tf_d1;
 
-   g_cfg.adx_period     = InpADX_Period;
-   g_cfg.adx_min_trend  = InpADX_Min;
-   g_cfg.adx_upper      = InpADX_Upper;
-
-   g_cfg.corr_ref_symbol= InpCorr_RefSymbol;
-   g_cfg.corr_lookback  = InpCorr_Lookback;
-   g_cfg.corr_min_abs   = InpCorr_MinAbs;
-   g_cfg.corr_max_pen   = InpCorr_MaxPen;
-   g_cfg.corr_ema_tf    = InpCorr_TF;
-
-   g_cfg.block_pre_m    = InpNewsBlockPreMins;
-   g_cfg.block_post_m   = InpNewsBlockPostMins;
-   g_cfg.news_impact_mask = InpNewsImpactMask;
-
-   g_cfg.w_adx_regime   = InpW_ADXRegime;
-   g_cfg.w_corr_pen     = InpW_CorrPen;
-   g_cfg.w_news         = InpW_News;
-
-   // 2. Initialize State
-   StateInit(g_state, S);
+   // 2. Initialize State (pair with router config)
+   StateInit(g_state, g_cfg);
 
    MarketData::EnsureWarmup_ADX(_Symbol, g_cfg.tf_entry, g_cfg.adx_period, 1);
    ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)Policies::CfgCorrTF(S);
@@ -2086,9 +2152,12 @@ void OnTick()
    }
    
    if(!_ready) return;
+   
+   MaybeResetStreaksDaily(TimeUtils::NowServer());
 
    // Lower-TF/HTF history must be present before any Evaluate()
-   if(!Warmup::DataReadyForEntry(S))
+   const Settings gate_cfg = (g_use_registry ? S : g_cfg);
+   if(!Warmup::DataReadyForEntry(gate_cfg))
      {
       Panel::Render(S);
       return;
@@ -2096,13 +2165,13 @@ void OnTick()
 
    if(InpOnlyNewBar)
      {
-      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(S);
-      if(!IsNewBar(_Symbol, tf))
+      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+      if(!IsNewBarRouter(_Symbol, tf))
          return;
      }
      
    static datetime _hb_last_bar = 0;
-   const datetime _bar_time = iTime(_Symbol, S.tf_entry, 0);
+   const datetime _bar_time = iTime(_Symbol, g_cfg.tf_entry, 0);
    if(_bar_time != _hb_last_bar)
    {
      _hb_last_bar = _bar_time;
@@ -2113,7 +2182,6 @@ void OnTick()
    // Centralized router eval (legacy path) – disabled; RouterEvaluateAll() now owns ICT flow.
    // if(!g_use_registry)
    //    MaybeEvaluate();
-
    const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
 
    // When registry routing is ON, keep using ProcessSymbol() path.
@@ -2137,7 +2205,18 @@ void OnTick()
 
          if(InpOnlyNewBar && !IsNewBar(_Symbol, InpEntryTF))
             return;
-     }
+         } // end else (multi-symbol)
+   } // end if(g_use_registry)
+   
+   // If using registry routing, ProcessSymbol() is the execution path.
+   // Do not also run RouterEvaluateAll() in the same tick.
+   if(g_use_registry)
+   {
+      return;
+   }
+   
+   // Router mode still needs position management every tick (safer than relying on timer only)
+   PM::ManageAll(S);
 
    // 1. Refresh low-level market data into State.
    //    This should update things like:
@@ -2164,30 +2243,16 @@ void OnTick()
    #endif
 
    // 3.2 Query which strat is currently armed (last eligible)
-   string armedName =
+   string armedName = "-";
    #ifdef ROUTER_HAS_LAST_ARMED_NAME
-      RouterGetLastArmedName(g_router);
-   #else
-      "-";
+      armedName = RouterGetLastArmedName(g_router);
    #endif
 
    // 3.3 Push to the UI
    PushICTTelemetryToReviewUI(ictCtx, classicalScore, ictScore, armedName);
 
    // 4. Sync runtime execution policies into g_cfg each tick.
-   g_cfg.mode_use_silverbullet =
-      (InpEnable_SilverBulletMode && g_cfg.enable_strat_ict_silverbullet);
-
-   g_cfg.mode_use_po3 =
-      (InpEnable_PO3Mode && g_cfg.enable_strat_ict_po3);
-
-   g_cfg.mode_enforce_killzone = InpEnforceKillzone;
-   g_cfg.mode_use_ICT_bias     = InpUseICTBias;
-
-   if(InpUseICTBias)
-      g_cfg.direction_bias_mode = Config::DIRM_AUTO_SMARTMONEY;
-   else
-      g_cfg.direction_bias_mode = Config::DIRM_MANUAL_SELECTOR;
+   SyncRuntimeCfgFlags(g_cfg);
 
    // 5. Dispatch strategies via router (ICT-aware path)
    //    - Telemetry is always updated (above).
@@ -2195,7 +2260,7 @@ void OnTick()
    int router_gate_reason = 0;
    const datetime now_srv = TimeUtils::NowServer();
 
-   if((RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason)) || !g_use_registry)
+   if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
    {
       RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
    }
@@ -2216,7 +2281,6 @@ void OnTick()
                           InpDebugChecklistDryRun);
      }
   }
-}
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -2227,7 +2291,9 @@ void OnDeinit(const int reason)
    Exec::Deinit();
    MarketData::Deinit();
    Panel::Deinit();
-   ReviewUI_ICT_Deinit();   // optional, cleans labels
+   #ifdef REVIEWUI_HAS_ICT_DEINIT
+      ReviewUI_ICT_Deinit();   // optional, cleans labels
+   #endif
    
    // Your cleanup / panel teardown / file flush logic.
    ReviewUI_Deinit();
@@ -2293,11 +2359,26 @@ void OnTimer()
    
    if(!_ready) return;
 
+   // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
       return;
    // Legacy centralized router eval on timer – disabled.
    // if(!g_use_registry)
    //    MaybeEvaluate();
+   
+   // If ticks are sparse, allow timer-driven router eval (chart symbol only)
+   int gate_reason = 0;
+   datetime now_srv = TimeUtils::NowServer();
+   MaybeResetStreaksDaily(now_srv);
+   
+   SyncRuntimeCfgFlags(g_cfg);
+   if(RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
+   {
+      StateOnTickUpdate(g_state);
+      RefreshICTContext(g_state);
+      ICT_Context ictCtx = StateGetICTContext(g_state);
+      RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+   }
   }
 
    // --- Minimal Trading Path (MVP): intent → risk → execute ---
@@ -2405,7 +2486,23 @@ void CheckStopTradeAtPrice()
      }
   }
 
-// -------- NEW: streak lot multiplier (applied to risk_mult safely) ------
+// -------- Reset streaks once per server day (live-safe, tester-safe) ------
+static int g_streak_day_key = -1;
+
+void MaybeResetStreaksDaily(const datetime now_srv)
+{
+   MqlDateTime dt;
+   TimeToStruct(now_srv, dt);
+   const int key = dt.year*10000 + dt.mon*100 + dt.day;
+   if(g_streak_day_key != key)
+   {
+      g_streak_day_key = key;
+      g_consec_wins    = 0;
+      g_consec_losses  = 0;
+   }
+}
+
+// -------- Streak lot multiplier (applied to risk_mult safely) ------
 double StreakRiskScale()
   {
    double mult = 1.0;
@@ -2418,6 +2515,19 @@ double StreakRiskScale()
 
    return mult;
   }
+
+void SyncRuntimeCfgFlags(Settings &cfg)
+{
+   cfg.mode_use_silverbullet = (InpEnable_SilverBulletMode && cfg.enable_strat_ict_silverbullet);
+   cfg.mode_use_po3          = (InpEnable_PO3Mode && cfg.enable_strat_ict_po3);
+   cfg.mode_enforce_killzone = InpEnforceKillzone;
+   cfg.mode_use_ICT_bias     = InpUseICTBias;
+
+   if(!InpUseICTBias)
+      cfg.direction_bias_mode = Config::DIRM_MANUAL_SELECTOR;
+   else
+      cfg.direction_bias_mode = InpDirectionBiasMode;
+}
 
 // -------- Router-friendly gate wrapper (no duplication of exec logic) --------
 bool RouterGateOK(const string sym,
@@ -2462,9 +2572,9 @@ bool RouterGateOK(const string sym,
    // 4) Price gates (arm + stop)
    if(!PriceArmOK())
       return false;
+
    CheckStopTradeAtPrice();
-   // After stop-trigger, PriceArmOK() will refuse to arm again
-   if(!PriceArmOK())
+   if(g_stopped_by_price)
       return false;
 
    // 5) News hard block (uses cfg.* copied from inputs into g_cfg)
@@ -2564,6 +2674,9 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       return;
      }
 
+   if(sym != _Symbol)
+   return;
+   
    // Always keep managing open positions
    PM::ManageAll(S);
 
@@ -2648,7 +2761,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    StratScore SS = pick.ss;
    SS.risk_mult *= risk_mult;
 
-   // NEW: streak scaling (before ML so downstream can log final)
+   // Streak scaling (before ML so downstream can log final)
    SS.risk_mult *= StreakRiskScale();
 
    ApplyMetaLayers(pick.dir, SS, pick.bd);
@@ -2687,7 +2800,6 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 datetime g_dbg_lastBar=0;
 bool IsNewBar(const string sym, const ENUM_TIMEFRAMES tf)
   {
-   static datetime last = 0;
    datetime t[];
    ArraySetAsSeries(t,true);
    if(CopyTime(sym, tf, 0, 1, t) != 1)
@@ -2729,26 +2841,25 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
    // Streak accounting (simple per-position logic)
    if(tx.type==TRADE_TRANSACTION_DEAL_ADD)
      {
-      long   deal_type = 0;
-      HistoryDealGetInteger(tx.deal, DEAL_TYPE, deal_type);
+      long entry = 0;
+      HistoryDealGetInteger(tx.deal, DEAL_ENTRY, entry);
       double profit    = 0.0;
       HistoryDealGetDouble(tx.deal, DEAL_PROFIT, profit);
-
-      // Count only closes (outcome known)
-      if(deal_type==DEAL_TYPE_SELL || deal_type==DEAL_TYPE_BUY ||
-         deal_type==DEAL_TYPE_BALANCE)
-        {
+      
+      // Only count exits (and in/out if you want partial close behavior included)
+      if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_INOUT)
+      {
          if(profit > 0.0)
-           {
+         {
             g_consec_wins++;
             g_consec_losses=0;
-           }
+         }
          else if(profit < 0.0)
-           {
+         {
             g_consec_losses++;
             g_consec_wins=0;
-           }
-        }
+         }
+      }
      }
 
    // --- FLOW breadcrumb (#F[..]) ---
@@ -2790,23 +2901,6 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
                      tx.symbol, (isBuy?"BUY":"SELL"), (int)tf,
                      (long)iTime(tx.symbol, tf, 1),
                      (long)tx.deal, DoubleToString(dPrice, dg), dVol);
-        }
-      // Optional: plain confirmation line (no duplication, correct data)
-      if(tx.type==TRADE_TRANSACTION_DEAL_ADD)
-        {
-         long dType=0;
-         HistoryDealGetInteger(tx.deal, DEAL_TYPE, dType);
-         const bool buy = (dType==DEAL_TYPE_BUY || rq.type==ORDER_TYPE_BUY);
-         const string tag = FlowTag(tx.symbol, (ENUM_TIMEFRAMES)S.tf_entry, buy);
-
-         const int dg = (int)SymbolInfoInteger(tx.symbol, SYMBOL_DIGITS);
-         double dPrice=0.0;
-         HistoryDealGetDouble(tx.deal, DEAL_PRICE,  dPrice);
-         double dVol  =0.0;
-         HistoryDealGetDouble(tx.deal, DEAL_VOLUME, dVol);
-
-         PrintFormat("%s DEAL fill symbol=%s type=%d price=%s vol=%.2f ticket=%I64d",
-                     tag, tx.symbol, (int)dType, DoubleToString(dPrice, dg), dVol, (long)tx.deal);
         }
      }
 
@@ -2855,6 +2949,7 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
                if(K=='N')
                  {
                   S.news_on=!S.news_on;
+                  g_cfg.news_on = S.news_on;     // keep router path consistent with legacy path
                   PrintFormat("[UI] News hard-block %s",(S.news_on?"ON":"OFF"));
                  }
                else
