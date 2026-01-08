@@ -632,6 +632,15 @@ input bool             InpDebug                 = true; // Diagnostics / UX: Deb
 input bool             InpFileLog               = false; // Diagnostics / UX: File Log
 input bool             InpProfile               = false; // Diagnostics / UX: Profile
 
+// Warmup gate control (tester-safe, prevents permanent stall)
+input bool             InpWarmupGate            = true;    // Gate trading until warmup is ready
+input int              InpWarmupSoftLatchMs     = 5000;    // Tester: latch open after N ms
+input int              InpWarmupSoftLatchTicks  = 250;     // Tester: latch open after N ticks
+
+// Execution failure visibility (Journal)
+input bool             InpExecFailJournal       = true;    // Print execution failures to Journal
+input int              InpExecFailThrottleSec   = 60;      // Throttle journal spam (seconds)
+
 // ——— DebugChecklist switches (safe to leave OFF in production)
 input bool             InpDebugChecklistOn      = false;   // Debug: master switch
 input bool             InpDebugChecklistOverlay = true;    // Debug: draw rectangles/labels on chart
@@ -671,6 +680,81 @@ static double g_last_mid_stop      = 0.0;
 // NEW: streak state (reset daily by Risk day cache or session start)
 static int    g_consec_wins        = 0;
 static int    g_consec_losses      = 0;
+
+// ---------------- Unified warmup gate (single source of truth) ----------------
+bool WarmupGateOK()
+{
+   if(!InpWarmupGate)
+      return true;
+
+   static bool latched = false;
+   static uint t0_ms   = 0;
+   static int  ticks   = 0;
+
+   if(latched)
+      return true;
+
+   if(t0_ms == 0)
+      t0_ms = GetTickCount();
+
+   ticks++;
+
+   // Primary readiness: same gates you already use elsewhere
+   bool ready = Warmup::GateReadyOnce(InpDebug) && Warmup::DataReadyForEntry(S);
+   if(ready)
+   {
+      latched = true;
+      return true;
+   }
+
+   // Tester/optimization soft latch only (do NOT weaken live behavior)
+   const bool in_tester = (MQLInfoInteger(MQL_TESTER) != 0) || (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   if(in_tester)
+   {
+      const uint elapsed = GetTickCount() - t0_ms;
+      const uint soft_ms = (InpWarmupSoftLatchMs > 0 ? (uint)InpWarmupSoftLatchMs : 0);
+
+      if((soft_ms > 0 && elapsed > soft_ms) || (InpWarmupSoftLatchTicks > 0 && ticks > InpWarmupSoftLatchTicks))
+      {
+         if(InpDebug)
+            Print("[Warmup] soft-latch engaged; proceeding.");
+         latched = true;
+         return true;
+      }
+   }
+
+   return false;
+}
+
+// ---------------- Exec failure journal (throttled) ----------------
+void LogExecFailThrottled(const string sym,
+                          const int dir,
+                          const OrderPlan &plan,
+                          const Exec::Outcome &ex,
+                          const int slippage_points)
+{
+   if(ex.ok)
+      return;
+
+   if(!InpExecFailJournal)
+      return;
+
+   static datetime last = 0;
+   datetime now = TimeCurrent();
+
+   if((now - last) < InpExecFailThrottleSec)
+      return;
+
+   last = now;
+
+   string side = (dir == DIR_BUY ? "BUY" : "SELL");
+
+   // NOTE: In this MQ5 file, Exec::Outcome is only used with: ex.ok, ex.retcode, ex.ticket.
+   // Do not reference ex.code_text / ex.ret_text here unless you confirm they exist in your Exec::Outcome struct.
+   PrintFormat("[ExecFail] %s %s retcode=%u ticket=%I64d lots=%.2f price=%.5f sl=%.5f tp=%.5f slip=%d",
+               sym, side, ex.retcode, (long)ex.ticket,
+               plan.lots, plan.price, plan.sl, plan.tp, slippage_points);
+}
 
 // ================== Helpers ==================
 void ApplyRouterConfig()  // manual-input version
@@ -800,6 +884,7 @@ void EvaluateOneSymbol(const string sym)
 
 // 4) Execute
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, cur);
+   LogExecFailThrottled(sym, pick.dir, plan, ex, cur.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
 
@@ -1544,8 +1629,8 @@ void RunIndicatorBenchmarks()
 // --- One-eval-per-bar dispatcher (RouterX) ---
 void MaybeEvaluate()
   {
-   // History gate(s)
-   if(!Warmup::GateReadyOnce(InpDebug))
+   // Unified warmup gate (tester-safe; single source of truth)
+   if(!WarmupGateOK())
       return;
    // Short series gate for VWAP/patterns/ATR (from Warmup.mqh patch)
    if(!Warmup::DataReadyForEntry(S))
@@ -2157,41 +2242,8 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   // ── Warm-up with soft latch (prevents permanent stall in tester) ──
-   static int  _wu_ticks  = 0;
-   static uint _wu_t0_ms  = 0;
-   
-   // Legacy router tick hook; RouterEvaluateAll() below now owns eval.
-   // Router::OnTickRoute(g_cfg, g_state, _Symbol, g_strategies);
-   
-   if(_wu_t0_ms == 0) _wu_t0_ms = GetTickCount();
-   const uint _wu_elapsed = GetTickCount() - _wu_t0_ms;
-   
-   bool _ready = Warmup::GateReadyOnce(InpDebug);
-   
-   // If not ready after a while, soft-latch to proceed (tester-safe)
-   if(!_ready)
-   {
-     _wu_ticks++;
-     // 5 seconds or 250 ticks – whichever comes first
-     if(_wu_elapsed > 5000 || _wu_ticks > 250)
-     {
-       if(InpDebug) Print("[Warmup] soft-latch engaged; proceeding.");
-       _ready = true;
-     }
-   }
-   
-   if(!_ready) return;
-   // Keep price gates responsive even in OnlyNewBar mode
-   PriceArmOK();
-   CheckStopTradeAtPrice();
-   
-   MaybeResetStreaksDaily(TimeUtils::NowServer());
-   PM::ManageAll(S);
-
-   // Lower-TF/HTF history must be present before any Evaluate()
-   const Settings gate_cfg = (g_use_registry ? S : g_cfg);
-   if(!Warmup::DataReadyForEntry(gate_cfg))
+   // Unified warmup gate (tester-safe; avoids permanent stall)
+   if(!WarmupGateOK())
      {
       Panel::Render(S);
       return;
@@ -2199,6 +2251,7 @@ void OnTick()
 
    if(InpOnlyNewBar)
      {
+      const Settings gate_cfg = (g_use_registry ? S : g_cfg);
       const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
       if(!IsNewBarRouter(_Symbol, tf))
       {
@@ -2370,30 +2423,6 @@ void OnTimer()
    Risk::Heartbeat(TimeUtils::NowServer());
    PM::ManageAll(S);
    Panel::Render(S);
-
-   // [WARMUP GATE]
-   // ── Warm-up with soft latch (prevents permanent stall in tester) ──
-   static int  _wu_ticks  = 0;
-   static uint _wu_t0_ms  = 0;
-   
-   if(_wu_t0_ms == 0) _wu_t0_ms = GetTickCount();
-   const uint _wu_elapsed = GetTickCount() - _wu_t0_ms;
-   
-   bool _ready = Warmup::GateReadyOnce(InpDebug);
-   
-   // If not ready after a while, soft-latch to proceed (tester-safe)
-   if(!_ready)
-   {
-     _wu_ticks++;
-     // 5 seconds or 250 ticks – whichever comes first
-     if(_wu_elapsed > 5000 || _wu_ticks > 250)
-     {
-       if(InpDebug) Print("[Warmup] soft-latch engaged; proceeding.");
-       _ready = true;
-     }
-   }
-   
-   if(!_ready) return;
 
    // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
@@ -2914,19 +2943,13 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       return;
    }
 
-   // Runtime gate: wait for history warmup
-     {
-      const int need = Warmup::NeededBars(S);
-      if(!Warmup::Ready(sym, S.tf_entry, need)
-         || !Warmup::Ready(sym, Warmup::TF_H1(S),  MathMax(need, 300))
-         || !Warmup::Ready(sym, Warmup::TF_H4(S),  MathMax(need/2, 250))
-         || !Warmup::Ready(sym, Warmup::TF_D1(S),  200))
-        {
-         PM::ManageAll(S);
-         Panel::Render(S);
-         return;
-        }
-     }
+    // Runtime gate: unified warmup (tester-safe; prevents permanent stall)
+    if(!WarmupGateOK())
+      {
+       PM::ManageAll(S);
+       Panel::Render(S);
+       return;
+      }
 
    // 2) Policies::Evaluate (or router fallback) → intent/pick
    StratReg::RoutedPick pick;
@@ -2953,7 +2976,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    static int veto_total = 0;
    if(pick.bd.veto)
       {
-         const int mask = (pick.bd.veto_mask & 15);
+         const int mask = (int)(pick.bd.veto_mask & 15);
          veto_counts[mask]++;
          veto_total++;
    #ifdef TELEMETRY_HAS_EVENT
@@ -3004,6 +3027,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    }
    
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   LogExecFailThrottled(sym, pick.dir, plan, ex, S.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
    
