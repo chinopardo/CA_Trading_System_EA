@@ -46,7 +46,7 @@
 #include "include/NewsFilter.mqh"
 #define CONFLUENCE_API_BYNAME
 //#define UNIT_TEST_ROUTER_GATE
-#include "include/Confluence.mqh"      // <-- Must come before strategies
+#include "include/Confluence.mqh"
 
 // Optional meta-layers
 #include "include/MLBlender.mqh"
@@ -152,6 +152,10 @@ inline double ConflBaseRulesScoreSafe(const Direction dir,
 #include "include/strategies/StrategyRegistry.mqh"
 
 // -------- Strategy ID compatibility shims (keep last among includes) -------
+#ifndef STRAT_MAIN_LOGIC
+   // Local-only ID used for logging + overrides. Not required to be in StratReg.
+   #define STRAT_MAIN_LOGIC (StrategyID)9990
+#endif
 #ifndef STRAT_TREND_VWAP
 #define STRAT_TREND_VWAP (StrategyID)0
 #endif
@@ -208,7 +212,6 @@ input ENUM_TIMEFRAMES  InpHTF_H1                = PERIOD_H1; // Low HTF
 input ENUM_TIMEFRAMES  InpHTF_H4                = PERIOD_H4; // Mid HTF
 input ENUM_TIMEFRAMES  InpHTF_D1                = PERIOD_D1; // High HTF
 // --- Timeframe / risk core ---
-input ENUM_TIMEFRAMES InpTfEntry          = PERIOD_M15; // ICT: Entry TF
 input ENUM_TIMEFRAMES InpTfHTF            = PERIOD_H4;  // ICT: HTF
 input double          InpRiskPerTradePct  = 0.40;       // ICT: Risk Per Trade
 
@@ -662,7 +665,8 @@ static datetime g_lastBarTime[];   // per-symbol last closed-bar time on entry T
 // NEW: price/time gates state
 static bool   g_armed_by_price     = false;
 static bool   g_stopped_by_price   = false;
-static double g_last_mid           = 0.0;
+static double g_last_mid_arm       = 0.0;
+static double g_last_mid_stop      = 0.0;
 
 // NEW: streak state (reset daily by Risk day cache or session start)
 static int    g_consec_wins        = 0;
@@ -772,6 +776,8 @@ void EvaluateOneSymbol(const string sym)
      }
 
    StratScore ss = pick.ss;
+   Settings trade_cfg = cur;
+   ApplyPickOverrides(pick, trade_cfg, ss);
    ss.risk_mult *= risk_mult;
    ss.risk_mult *= StreakRiskScale();
 
@@ -1132,6 +1138,18 @@ void BootRegistry_NoProfile(const Settings &cfg)
 void BootRegistry_WithProfile(const Settings &cfg, const Config::ProfileSpec &ps)
   {
    StratReg::Init(cfg);
+   // Scenario prune: disable strategies that don't belong to the selected test case
+   {
+      int ids[];
+      StratReg::FillRegisteredIds(ids, /*only_enabled=*/false);
+      for(int k=ArraySize(ids)-1; k>=0; --k)
+      {
+         string nm="";
+         StratReg::GetStrategyNameById((StrategyID)ids[k], nm);
+         if(!TesterCases::AllowStrategyIdForScenario(InpTestCase, nm))
+            StratReg::Enable((StrategyID)ids[k], false);
+      }
+   }
    //StratReg::AutoRegisterBuiltins();
 
 // Enable/disable as usual (profile defines weights/throttles; toggles remain inputs)
@@ -1345,6 +1363,10 @@ bool RouteRegistryPick(const Settings &cfg, StratReg::RoutedPick &pick)
 bool RouteManualRegimePick(const Settings &cfg, StratReg::RoutedPick &pick)
   {
    ZeroMemory(pick);
+   const StrategyMode sm = Config::CfgStrategyMode(cfg);
+   if(sm == STRAT_MAIN_ONLY)
+      return RouteMainOnlyPick(cfg, pick);
+   
    const double reg    = RegimeX::TrendQuality(_Symbol, cfg.tf_entry, 60);
    const double reg_th = (InpRegimeThreshold>0.0 ? InpRegimeThreshold : 0.55);
    const StrategyID choice_id = (reg>=reg_th ? STRAT_TREND_VWAP : STRAT_MR_VWAPBAND);
@@ -1530,7 +1552,8 @@ void MaybeEvaluate()
       return;
 
    static datetime last_bar = 0;
-   const datetime bt = iTime(_Symbol, Warmup::TF_Entry(S), 0);
+   const Settings cfg_ref = (g_use_registry ? S : g_cfg);
+   const datetime bt = iTime(_Symbol, Warmup::TF_Entry(cfg_ref), 0);
 
    if(InpOnlyNewBar && bt == last_bar)
       return;
@@ -1560,6 +1583,10 @@ void BuildSettingsFromInputs(Settings &cfg)
 
    // --- Core / generic ICT config ---
    cfg.tf_entry                  = InpEntryTF;          // ICT entry TF - SINGLE source of truth for entry TF (matches MirrorInputsToSettings)
+   // Keep ICT/router Settings fully populated for multi-TF model pieces
+   cfg.tf_h1                     = InpHTF_H1;
+   cfg.tf_h4                     = InpHTF_H4;
+   cfg.tf_d1                     = InpHTF_D1;
    #ifdef CFG_HAS_TF_HTF
       cfg.tf_htf = InpTfHTF;     // ICT HTF
    #endif
@@ -1974,14 +2001,15 @@ int OnInit()
          S.carry_risk_span = 0.0;
    #endif
 
+   // Housekeeping BEFORE registry boot so weights/throttles see normalized settings
+   Config::Normalize(S);
+
    // ----- Boot strategy registry with/without profile -----
    if(InpProfileApply)
       BootRegistry_WithProfile(S, ps);
    else
       BootRegistry_NoProfile(S);
 
-   // Housekeeping BEFORE registry boot so weights/throttles see normalized settings
-   Config::Normalize(S);
    StratReg::SyncRouterFromSettings(S);
    
    // Optional tester preset overlay
@@ -2045,7 +2073,9 @@ int OnInit()
    DebugChecklist::Init(_Symbol, InpDbgChkMinScore, InpDbgChkZoneProxATR, InpDbgChkOBProxATR);
 
    // init price gates
-   g_last_mid = (SymbolInfoDouble(_Symbol, SYMBOL_BID) + SymbolInfoDouble(_Symbol, SYMBOL_ASK))*0.5;
+   const double _mid0 = (SymbolInfoDouble(_Symbol, SYMBOL_BID) + SymbolInfoDouble(_Symbol, SYMBOL_ASK))*0.5;
+   g_last_mid_arm  = _mid0;
+   g_last_mid_stop = _mid0;
    g_armed_by_price   = (InpTradeAtPrice<=0.0); // if no arming price, we are armed by default
    g_stopped_by_price = false;
 
@@ -2152,8 +2182,12 @@ void OnTick()
    }
    
    if(!_ready) return;
+   // Keep price gates responsive even in OnlyNewBar mode
+   PriceArmOK();
+   CheckStopTradeAtPrice();
    
    MaybeResetStreaksDaily(TimeUtils::NowServer());
+   PM::ManageAll(S);
 
    // Lower-TF/HTF history must be present before any Evaluate()
    const Settings gate_cfg = (g_use_registry ? S : g_cfg);
@@ -2165,9 +2199,12 @@ void OnTick()
 
    if(InpOnlyNewBar)
      {
-      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
       if(!IsNewBarRouter(_Symbol, tf))
+      {
+         Panel::Render(S);
          return;
+      }
      }
      
    static datetime _hb_last_bar = 0;
@@ -2175,9 +2212,12 @@ void OnTick()
    if(_bar_time != _hb_last_bar)
    {
      _hb_last_bar = _bar_time;
-     PrintFormat("[HB] %s M%d new bar %s",
-                 _Symbol, (int)(PeriodSeconds(S.tf_entry)/60),
-                 TimeToString(_bar_time, TIME_DATE|TIME_MINUTES));
+     if(InpDebug)
+     {
+        PrintFormat("[HB] %s M%d new bar %s",
+                    _Symbol, (int)(PeriodSeconds(S.tf_entry)/60),
+                    TimeToString(_bar_time, TIME_DATE|TIME_MINUTES));
+     }
    }
    // Centralized router eval (legacy path) – disabled; RouterEvaluateAll() now owns ICT flow.
    // if(!g_use_registry)
@@ -2207,13 +2247,6 @@ void OnTick()
             return;
          } // end else (multi-symbol)
    } // end if(g_use_registry)
-   
-   // If using registry routing, ProcessSymbol() is the execution path.
-   // Do not also run RouterEvaluateAll() in the same tick.
-   if(g_use_registry)
-   {
-      return;
-   }
    
    // Router mode still needs position management every tick (safer than relying on timer only)
    PM::ManageAll(S);
@@ -2254,20 +2287,23 @@ void OnTick()
    // 4. Sync runtime execution policies into g_cfg each tick.
    SyncRuntimeCfgFlags(g_cfg);
 
+   if(!g_use_registry)
+   {
    // 5. Dispatch strategies via router (ICT-aware path)
    //    - Telemetry is always updated (above).
    //    - Actual routing / order planning only runs if all gates are OK.
-   int router_gate_reason = 0;
-   const datetime now_srv = TimeUtils::NowServer();
-
-   if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
-   {
-      RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
-   }
-   else
-   {
-      if(InpDebug)
-         PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d", router_gate_reason);
+      int router_gate_reason = 0;
+      const datetime now_srv = TimeUtils::NowServer();
+   
+      if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
+      {
+         RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+      }
+      else
+      {
+         if(InpDebug)
+            PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d", router_gate_reason);
+      }
    }
 
    // DebugChecklist tracer on entry TF once per new bar (no early return so telemetry still runs)
@@ -2362,6 +2398,9 @@ void OnTimer()
    // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
       return;
+   
+   if(g_use_registry)
+      return;
    // Legacy centralized router eval on timer – disabled.
    // if(!g_use_registry)
    //    MaybeEvaluate();
@@ -2371,6 +2410,9 @@ void OnTimer()
    datetime now_srv = TimeUtils::NowServer();
    MaybeResetStreaksDaily(now_srv);
    
+   if(!Warmup::DataReadyForEntry(g_cfg))
+      return;
+      
    SyncRuntimeCfgFlags(g_cfg);
    if(RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
    {
@@ -2381,58 +2423,177 @@ void OnTimer()
    }
   }
 
+   bool   RouteMainOnlyPick(const Settings &cfg,
+                         StratReg::RoutedPick &pick_out);
+
+   void   ApplyPickOverrides(const StratReg::RoutedPick &pick,
+                             Settings &cfg_io,
+                             StratScore &ss_io);
+                          
+   #ifndef MAINSTRAT_COMPUTEONE_DECLARED
+   #define MAINSTRAT_COMPUTEONE_DECLARED
+   // Must be provided by Strat_MainTradingLogic.mqh (or an adapter inside it).
+   // Replace lines 2436–2440 with this full definition:
+   bool MainStrat_ComputeOne(const Direction dir,
+                             const Settings &cfg,
+                             StratScore &ss,
+                             ConfluenceBreakdown &bd,
+                             const double min_sc)
+   {
+      ZeroMemory(ss);
+      ZeroMemory(bd);
+   
+      // Minimal default scoring path (uses the guarded helper already in this file)
+      const double sc = ConflBaseRulesScoreSafe(dir, bd, cfg, ss);
+   
+      // Keep outputs consistent for downstream selection/logging
+      ss.id = STRAT_MAIN_LOGIC;
+      ss.score = sc;
+   
+      // Match the EA’s general gating style: veto blocks, score threshold required
+      ss.eligible = (!bd.veto && (ss.score >= min_sc));
+   
+      if(ss.risk_mult <= 0.0)
+         ss.risk_mult = 1.0;
+   
+      return ss.eligible;
+   }
+   #endif
+
+   bool RouteMainOnlyPick(const Settings &cfg,
+                       StratReg::RoutedPick &pick_out)
+   {
+      ZeroMemory(pick_out);
+   
+      // Respect your input toggle
+      if(!InpEnable_MainLogic)
+         return false;
+   
+      RouterConfig rc = StratReg::GetGlobalRouterConfig();
+      const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
+   
+      bool okB=false, okS=false;
+   
+      StratScore ssB; ConfluenceBreakdown bdB;
+      StratScore ssS; ConfluenceBreakdown bdS;
+      ZeroMemory(ssB); ZeroMemory(bdB);
+      ZeroMemory(ssS); ZeroMemory(bdS);
+   
+      if(cfg.trade_selector != TRADE_SELL_ONLY)
+         okB = MainStrat_ComputeOne(DIR_BUY, cfg, ssB, bdB, min_sc);
+   
+      if(cfg.trade_selector != TRADE_BUY_ONLY)
+         okS = MainStrat_ComputeOne(DIR_SELL, cfg, ssS, bdS, min_sc);
+   
+      if(!okB && !okS)
+         return false;
+   
+      const double scB = (okB ? ssB.score : 0.0);
+      const double scS = (okS ? ssS.score : 0.0);
+   
+      pick_out.ok  = true;
+      pick_out.id  = STRAT_MAIN_LOGIC;
+   
+      if(scB >= scS)
+      {
+         pick_out.dir = DIR_BUY;
+         pick_out.ss  = ssB;
+         pick_out.bd  = bdB;
+      }
+      else
+      {
+         pick_out.dir = DIR_SELL;
+         pick_out.ss  = ssS;
+         pick_out.bd  = bdS;
+      }
+   
+      // Make sure ss carries a stable ID (helps logging/telemetry consistency)
+      pick_out.ss.id = STRAT_MAIN_LOGIC;
+   
+      if(StringLen(pick_out.bd.meta) == 0)
+         pick_out.bd.meta = "main";
+   
+      LogX::Decision(_Symbol, pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, 0, "router=main");
+      return true;
+   }
+
    // --- Minimal Trading Path (MVP): intent → risk → execute ---
    bool TryMinimalPathIntent(const string sym,
                              const Settings &cfg,
                              StratReg::RoutedPick &pick_out)
      {
-      ZeroMemory(pick_out);
    
-   // 1) Single call into the registry router (no direct MainTradingLogic usage)
-   //    Prefer StratReg::Route(...). If your registry exposes only EvaluateMany/SelectBest,
-   //    you can keep your RouteRegistryAll/RouteRegistryPick fallback (see note below).
-      bool okRoute = false;
-      RouterConfig rc = StratReg::GetGlobalRouterConfig();
-   
-   // Primary path: one-shot route
-   #ifdef STRATREG_HAS_ROUTE
-      okRoute = (StratReg::Route(cfg, pick_out) && pick_out.ok);
-   #else
-      // Fallback to your existing helpers ...
-      if(g_use_registry)
-        {
-         string top;
-         okRoute = RouteRegistryAll(cfg, pick_out, top);
-         if(okRoute)
-            LogX::Info(StringFormat("Router.Top: %s", top));
-         if(!okRoute)
-            okRoute = RouteRegistryPick(cfg, pick_out);
-        }
-      else
-        {
-         okRoute = RouteManualRegimePick(cfg, pick_out);
-        }
-   #endif
+   ZeroMemory(pick_out);
 
-   if(!okRoute)
-      return false;
-
-   // 2) Enforce eligibility/threshold here (single place)
+   RouterConfig rc = StratReg::GetGlobalRouterConfig();
    const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
+   
+   const StrategyMode sm = Config::CfgStrategyMode(cfg);
+   bool okRoute = false;
+   
+   // MAIN_ONLY: bypass registry/manual pack routing completely
+   if(sm == STRAT_MAIN_ONLY)
+   {
+      okRoute = RouteMainOnlyPick(cfg, pick_out);
+   }
+   else
+   {
+      // COMBINED: main-first, pack-fallback
+      if(sm != STRAT_PACK_ONLY)
+      {
+         StratReg::RoutedPick main_pick;
+         ZeroMemory(main_pick);
+   
+         if(RouteMainOnlyPick(cfg, main_pick))
+         {
+            const bool main_valid =
+               (!main_pick.bd.veto && main_pick.ss.eligible && main_pick.ss.score >= min_sc);
+   
+            if(main_valid)
+            {
+               pick_out = main_pick;
+               okRoute = true;
+            }
+         }
+      }
+   
+      // PACK routing only if needed
+      if(!okRoute)
+      {
+   #ifdef STRATREG_HAS_ROUTE
+         okRoute = (StratReg::Route(cfg, pick_out) && pick_out.ok);
+   #else
+         if(g_use_registry)
+         {
+            string top;
+            okRoute = RouteRegistryAll(cfg, pick_out, top);
+            if(okRoute) LogX::Info(StringFormat("Router.Top: %s", top));
+            if(!okRoute) okRoute = RouteRegistryPick(cfg, pick_out);
+         }
+         else
+         {
+            okRoute = RouteManualRegimePick(cfg, pick_out);
+         }
+   #endif
+      }
+   }
+   
+   // Enforce eligibility/threshold here (single place)
    if(pick_out.bd.veto || !pick_out.ss.eligible || pick_out.ss.score < min_sc)
       return false;
-
-   // 3) Normal UI hooks
+   
+   // Normal UI hooks
    Panel::PublishBreakdown(pick_out.bd);
    Panel::PublishScores(pick_out.ss);
+   
    #ifdef TELEMETRY_HAS_EVENT
-      string j_intent = "{";
-      j_intent += "\"dir\":\""   + (pick_out.dir==DIR_BUY ? "BUY" : "SELL") + "\",";
-      j_intent += "\"score\":"   + DoubleToString(pick_out.ss.score,3);
-      j_intent += "}";
-      Telemetry::KV("intent_ok", j_intent);
+   string j_intent = "{";
+   j_intent += "\"dir\":\""   + (pick_out.dir==DIR_BUY ? "BUY" : "SELL") + "\",";
+   j_intent += "\"score\":"   + DoubleToString(pick_out.ss.score,3);
+   j_intent += "}";
+   Telemetry::KV("intent_ok", j_intent);
    #endif
-
+   
    return true;
 }
 
@@ -2460,9 +2621,9 @@ bool PriceArmOK()
      }
 
    const double mid = (SymbolInfoDouble(_Symbol, SYMBOL_BID) + SymbolInfoDouble(_Symbol, SYMBOL_ASK))*0.5;
-   bool crossed = ((g_last_mid < InpTradeAtPrice && mid >= InpTradeAtPrice) ||
-                   (g_last_mid > InpTradeAtPrice && mid <= InpTradeAtPrice));
-   g_last_mid = mid;
+   bool crossed = ((g_last_mid_arm < InpTradeAtPrice && mid >= InpTradeAtPrice) ||
+                (g_last_mid_arm > InpTradeAtPrice && mid <= InpTradeAtPrice));
+   g_last_mid_arm = mid;
    if(crossed)
       g_armed_by_price = true;
    return g_armed_by_price;
@@ -2476,9 +2637,9 @@ void CheckStopTradeAtPrice()
       return;
 
    const double mid = (SymbolInfoDouble(_Symbol, SYMBOL_BID) + SymbolInfoDouble(_Symbol, SYMBOL_ASK))*0.5;
-   bool crossed = ((g_last_mid < InpStopTradeAtPrice && mid >= InpStopTradeAtPrice) ||
-                   (g_last_mid > InpStopTradeAtPrice && mid <= InpStopTradeAtPrice));
-   g_last_mid = mid;
+   bool crossed = ((g_last_mid_stop < InpStopTradeAtPrice && mid >= InpStopTradeAtPrice) ||
+                (g_last_mid_stop > InpStopTradeAtPrice && mid <= InpStopTradeAtPrice));
+   g_last_mid_stop = mid;
    if(crossed)
      {
       g_stopped_by_price = true;
@@ -2507,14 +2668,42 @@ double StreakRiskScale()
   {
    double mult = 1.0;
 
+   const double max_boost = MathMax(1.0, InpStreakMaxBoost);
+   const double min_scale = MathMin(1.0, MathMax(0.01, InpStreakMinScale));
+
    if(InpStreakWinsToDouble>0 && g_consec_wins >= InpStreakWinsToDouble)
-      mult = MathMin(InpStreakMaxBoost, 2.0);
+      mult = MathMin(max_boost, 2.0);
 
    if(InpStreakLossesToHalve>0 && g_consec_losses >= InpStreakLossesToHalve)
-      mult = MathMax(InpStreakMinScale, mult*0.5);
+      mult = MathMax(min_scale, mult*0.5);
 
    return mult;
   }
+
+void ApplyPickOverrides(const StratReg::RoutedPick &pick,
+                        Settings &cfg_io,
+                        StratScore &ss_io)
+{
+   // Main strategy overrides (legacy path needs this glue)
+   if(pick.id == STRAT_MAIN_LOGIC)
+   {
+      // Per-strategy risk multiplier
+      if(cfg_io.risk_mult_main > 0.0)
+         ss_io.risk_mult *= cfg_io.risk_mult_main;
+
+      // Per-strategy magic base (if your execution uses magic_base)
+      if(cfg_io.magic_main_base > 0)
+         cfg_io.magic_base = cfg_io.magic_main_base;
+
+      // If Exec uses magic_number, keep it consistent (guarded)
+      #ifdef CFG_HAS_MAGIC_NUMBER
+         cfg_io.magic_number = cfg_io.magic_base;
+      #endif
+   }
+
+   // Pack strategies: usually already consistent through StratReg weights/throttles.
+   // If later you add more per-pick overrides, extend here.
+}
 
 void SyncRuntimeCfgFlags(Settings &cfg)
 {
@@ -2523,10 +2712,12 @@ void SyncRuntimeCfgFlags(Settings &cfg)
    cfg.mode_enforce_killzone = InpEnforceKillzone;
    cfg.mode_use_ICT_bias     = InpUseICTBias;
 
+   #ifdef CFG_HAS_DIRECTION_BIAS_MODE
    if(!InpUseICTBias)
       cfg.direction_bias_mode = Config::DIRM_MANUAL_SELECTOR;
    else
       cfg.direction_bias_mode = InpDirectionBiasMode;
+   #endif
 }
 
 // -------- Router-friendly gate wrapper (no duplication of exec logic) --------
@@ -2537,13 +2728,21 @@ bool RouterGateOK(const string sym,
 {
    gate_reason_out = 0;
 
+   // Local gate reason codes (keep stable; Panel uses these)
+   const int GATE_POLICIES    = 1;
+   const int GATE_SESSION     = 2;
+   const int GATE_TIMEWINDOW  = 3;
+   const int GATE_PRICE_ARM   = 4;
+   const int GATE_PRICE_STOP  = 5;
+   const int GATE_NEWS        = 6;
+   const int GATE_EXEC_LOCK   = 7;
+
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
    if(!Policies::Check(cfg, gate_reason_out))
    {
       Panel::SetGate(gate_reason_out);
       return false;
    }
-   Panel::SetGate(gate_reason_out);
 
    // 2) Session gate (legacy preset + TimeUtils)
    if(CfgSessionFilter(cfg))
@@ -2560,6 +2759,8 @@ bool RouterGateOK(const string sym,
          {
             if(InpDebug)
                PrintFormat("[RouterGate] Session gate: session_on=1 in_window=0 → skip %s", sym);
+            gate_reason_out = GATE_SESSION;
+            Panel::SetGate(gate_reason_out);
             return false;
          }
       }
@@ -2567,16 +2768,28 @@ bool RouterGateOK(const string sym,
 
    // 3) Hard time window (start/expiry)
    if(!TimeGateOK(now_srv))
+   {
+      gate_reason_out = GATE_TIMEWINDOW;
+      Panel::SetGate(gate_reason_out);
       return false;
+   }
 
    // 4) Price gates (arm + stop)
    if(!PriceArmOK())
+   {
+      gate_reason_out = GATE_PRICE_ARM;
+      Panel::SetGate(gate_reason_out);
       return false;
+   }
 
    CheckStopTradeAtPrice();
    if(g_stopped_by_price)
+   {
+      gate_reason_out = GATE_PRICE_STOP;
+      Panel::SetGate(gate_reason_out);
       return false;
-
+   }
+      
    // 5) News hard block (uses cfg.* copied from inputs into g_cfg)
    int mins_left = 0;
    if(cfg.news_on &&
@@ -2588,6 +2801,8 @@ bool RouterGateOK(const string sym,
    {
       if(InpDebug)
          PrintFormat("[RouterGate] News hard block (%d mins left) → skip %s", mins_left, sym);
+      gate_reason_out = GATE_NEWS;
+      Panel::SetGate(gate_reason_out);
       return false;
    }
 
@@ -2596,6 +2811,8 @@ bool RouterGateOK(const string sym,
    {
       if(InpDebug)
          PrintFormat("[RouterGate] Exec lock active → skip %s", sym);
+      gate_reason_out = GATE_EXEC_LOCK;
+      Panel::SetGate(gate_reason_out);
       return false;
    }
 
@@ -2628,7 +2845,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    // Session filter (legacy union or preset)
    if (CfgSessionFilter(S))
    {
-     const bool sess_on = Policies::EffSessionFilter(S, _Symbol);
+     const bool sess_on = Policies::EffSessionFilter(S, sym);
      if (sess_on)
      {
        TimeUtils::SessionContext sc;
@@ -2636,8 +2853,9 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
        const bool allowed = (CfgSessionPreset(S) != SESS_OFF ? sc.preset_in_window : sc.in_window);
        if (!allowed)
        {
+         Panel::SetGate(2);
          if (InpDebug)
-           PrintFormat("[EA] Session gate: session_on=1 in_window=0 → skip %s", _Symbol);
+           PrintFormat("[EA] Session gate: session_on=1 in_window=0  skip %s", sym);
          PM::ManageAll(S);
          return;
        }
@@ -2646,49 +2864,55 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 
    // Time window (hard start/expiry in server time)
    if(!TimeGateOK(now_srv))
-     {
-      PM::ManageAll(S);
-      Panel::Render(S);
-      return;
-     }
+   {
+    Panel::SetGate(3);
+    PM::ManageAll(S);
+    Panel::Render(S);
+    return;
+   }
 
    // Price gates
    if(!PriceArmOK())
-     {
+   {
+      Panel::SetGate(4);
       PM::ManageAll(S);
       Panel::Render(S);
       return;
-     }
+   }
+   
    CheckStopTradeAtPrice();
    if(g_stopped_by_price)
-     {
-      PM::ManageAll(S);
-      Panel::Render(S);
-      return;
-     }
+   {
+     Panel::SetGate(5);
+     PM::ManageAll(S);
+     Panel::Render(S);
+     return;
+   }
    // News hard-block window
    int mins_left=0;
    if(S.news_on && News::IsBlocked(now_srv, sym, S.news_impact_mask, S.block_pre_m, S.block_post_m, mins_left))
-     {
+   {
+      Panel::SetGate(6);
       PM::ManageAll(S);
       return;
-     }
-
-   if(sym != _Symbol)
-   return;
+   }
    
    // Always keep managing open positions
    PM::ManageAll(S);
 
    // NOTE: current strategies rely on _Symbol internally; only evaluate on chart symbol.
    if(sym != _Symbol)
-      return;
-
-   if(Exec::IsLocked(sym))
-     {
+   {
       Panel::Render(S);
       return;
-     }
+   }
+   
+   if(Exec::IsLocked(sym))
+   {
+      Panel::SetGate(7);
+      Panel::Render(S);
+      return;
+   }
 
    // Runtime gate: wait for history warmup
      {
@@ -2759,34 +2983,32 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
      }
 
    StratScore SS = pick.ss;
+   Settings trade_cfg = S;              // local, per-trade settings (do NOT mutate global S)
+   ApplyPickOverrides(pick, trade_cfg, SS);
    SS.risk_mult *= risk_mult;
 
    // Streak scaling (before ML so downstream can log final)
    SS.risk_mult *= StreakRiskScale();
 
    ApplyMetaLayers(pick.dir, SS, pick.bd);
+   
    // -------- Carry integration (strict or mild) ----------
-   if(S.carry_enable && InpCarry_StrictRiskOnly)
-      StrategiesCarry::RiskMod01(pick.dir, S, SS.risk_mult);
-
-   Panel::PublishBreakdown(pick.bd);
-   Panel::PublishScores(SS);
-
-   // 4) Risk sizing → SL/TP & lot size
+   if(trade_cfg.carry_enable && InpCarry_StrictRiskOnly)
+      StrategiesCarry::RiskMod01(pick.dir, trade_cfg, SS.risk_mult);
+   
    OrderPlan plan;
-   if(!Risk::ComputeOrder(pick.dir, S, SS, plan, pick.bd))
-     {
+   if(!Risk::ComputeOrder(pick.dir, trade_cfg, SS, plan, pick.bd))
+   {
       Panel::Render(S);
       return;
-     }
-
-   // 5) Execution
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, S);
+   }
+   
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
    if(ex.ok)
       Policies::NotifyTradePlaced();
-
+   
    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-              ex.ok, ex.retcode, ex.ticket, S.slippage_points);
+              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points);
 
    #ifdef TELEMETRY_HAS_TRADEPLAN
       string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
@@ -3195,6 +3417,7 @@ void OnTesterInit()
    // Reset streaks at tester run start for deterministic behavior
    g_consec_wins=0;
    g_consec_losses=0;
+   g_streak_day_key = -1;
   }
 
 //+------------------------------------------------------------------+

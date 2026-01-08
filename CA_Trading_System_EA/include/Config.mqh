@@ -372,6 +372,7 @@ namespace Config
   //──────────────────────────────────────────────────────────────────
   // Small utils
   //──────────────────────────────────────────────────────────────────
+  inline string _Norm(const string s);
   inline string Trim(const string s){ string t=s; StringTrimLeft(t); StringTrimRight(t); return t; }
   inline string BoolStr(const bool v){ return (v?"1":"0"); }
   
@@ -487,7 +488,7 @@ namespace Config
    inline bool _parse_hhmm(const string s, int &out_min)
    {
      string t=s; StringTrimLeft(t); StringTrimRight(t);
-     string toks[]; int n=StringSplit(t,':',toks);
+     string toks[]; int n=StringSplit(t, (ushort)':', toks);
      if(n<2 || n>3) return false;
      int h=(int)StringToInteger(toks[0]), m=(int)StringToInteger(toks[1]);
      if(h<0||h>23||m<0||m>59) return false;
@@ -1107,6 +1108,7 @@ namespace Config
    };
    
    inline bool GetProfile(const string alias, ProfileSpec &out);
+   inline void ProfileSpecDefaults(ProfileSpec &p);
   
    // Keep router fallback numeric knobs, legacy aliases, and
    // profile-based router hints in sync.
@@ -1167,6 +1169,10 @@ namespace Config
             ProfileSpecDefaults(p);     // or BuildProfileSpec(PROF_DEFAULT, p);
             if(GetProfile(io.router_profile_alias, p))
               {
+               // Defensive clamp on profile-provided router hints
+               p.min_score = MathMin(1.0, MathMax(0.0, p.min_score));
+               if(p.max_strats < 0) p.max_strats = 0;
+               
                // Clamp confluence into [0,1] just in case
                io.router_fallback_min_confluence =
                   MathMin(1.0, MathMax(0.0, p.fallback_min_confluence));
@@ -1950,7 +1956,10 @@ namespace Config
     #endif
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       int k=0;
-      if(KV::GetInt("router.max_strats", k))  cfg.router_max_strats = k;
+      if(KV::GetInt("router.max_strats", k))
+      {
+        if(k > 0) cfg.router_max_strats = k;
+      }
     #endif
     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
       // router.fb_min should feed both aliases if present
@@ -1958,6 +1967,7 @@ namespace Config
          double fb = 0.0;
          if(KV::GetDouble("router.fb_min", fb))
          {
+           fb = MathMin(MathMax(fb, 0.0), 1.0);
            #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
              cfg.router_fallback_min_score = fb;
            #endif
@@ -2242,13 +2252,15 @@ namespace Config
      cfg.atr_sl_mult   = atr_sl_mult;
      
      // Liquidity Pools (Lux-style)
-     cfg.liqPoolMinTouches          = 2;     // LC_MIN_TOUCHES
-     cfg.liqPoolGapBars             = 5;     // LC_GAP_BARS
-     cfg.liqPoolConfirmWaitBars     = 10;    // LC_CONFIRM_WAIT_BARS
-     cfg.liqPoolLevelEpsATR         = 0.10;  // LC_LEVEL_EPS_ATR
-     cfg.liqPoolMaxLookbackBars     = 200;   // LC_MAX_LOOKBACK_BARS
-     cfg.liqPoolMinSweepATR         = 0.25;  // LC_MIN_SWEEP_ATR
-    
+      #ifdef CFG_HAS_LIQPOOL_FIELDS
+           // Liquidity Pools (Lux-style)
+           cfg.liqPoolMinTouches          = 2;
+           cfg.liqPoolGapBars             = 5;
+           cfg.liqPoolConfirmWaitBars     = 10;
+           cfg.liqPoolLevelEpsATR         = 0.10;
+           cfg.liqPoolMaxLookbackBars     = 200;
+           cfg.liqPoolMinSweepATR         = 0.25;
+      #endif
      // Fibonacci / OTE defaults (can be overridden by EA inputs / profiles)
      cfg.fibDepth              = 5;
      cfg.fibATRPeriod          = 14;
@@ -2598,12 +2610,14 @@ namespace Config
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
 
     // Liquidity Pools (Lux-style)
-    s+=",liqMinTouch="+IntegerToString(c.liqPoolMinTouches);
-    s+=",liqGap="+IntegerToString(c.liqPoolGapBars);
-    s+=",liqWait="+IntegerToString(c.liqPoolConfirmWaitBars);
-    s+=",liqEpsATR="+DoubleToString(c.liqPoolLevelEpsATR,3);
-    s+=",liqLookback="+IntegerToString(c.liqPoolMaxLookbackBars);
-    s+=",liqSweepATR="+DoubleToString(c.liqPoolMinSweepATR,3);
+    #ifdef CFG_HAS_LIQPOOL_FIELDS
+       s+=",liqMinTouch="+IntegerToString(c.liqPoolMinTouches);
+       s+=",liqGap="+IntegerToString(c.liqPoolGapBars);
+       s+=",liqWait="+IntegerToString(c.liqPoolConfirmWaitBars);
+       s+=",liqEpsATR="+DoubleToString(c.liqPoolLevelEpsATR,3);
+       s+=",liqLookback="+IntegerToString(c.liqPoolMaxLookbackBars);
+       s+=",liqSweepATR="+DoubleToString(c.liqPoolMinSweepATR,3);
+    #endif
 
     // Carry knobs (if present)
     #ifdef CFG_HAS_CARRY_ENABLE
@@ -2685,7 +2699,13 @@ namespace Config
     PrintFormat("%s | hash=%s | %s", prefix, hx, csv);
   }
 
-  inline bool BuildAndHash(Settings &/*cfg*/, const string /**/=""){ return true; }
+  inline bool BuildAndHash(Settings &cfg, const string tag = "")
+   {
+     // Stub kept for backward compatibility.
+     // (No-op; 'cfg' and 'tag' intentionally unused.)
+     if(false) Print(tag); // prevents “unused” nags without (void)
+     return true;
+   }
 
   //──────────────────────────────────────────────────────────────────
   // Trading Profiles (router hints + per-strategy tuning)
