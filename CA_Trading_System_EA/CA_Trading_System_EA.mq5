@@ -867,8 +867,8 @@ void EvaluateOneSymbol(const string sym)
 
    ApplyMetaLayers(pick.dir, ss, pick.bd);
 
-   if(cur.carry_enable && InpCarry_StrictRiskOnly)
-      StrategiesCarry::RiskMod01(pick.dir, cur, ss.risk_mult);
+   if(trade_cfg.carry_enable && InpCarry_StrictRiskOnly)
+      StrategiesCarry::RiskMod01(pick.dir, trade_cfg, ss.risk_mult);
 
    Panel::PublishBreakdown(pick.bd);
    Panel::PublishScores(ss);
@@ -876,20 +876,20 @@ void EvaluateOneSymbol(const string sym)
 // 3) Risk sizing → plan
    OrderPlan plan;
    ZeroMemory(plan);
-   if(!Risk::ComputeOrder(pick.dir, cur, ss, plan, pick.bd))
+   if(!Risk::ComputeOrder(pick.dir, trade_cfg, ss, plan, pick.bd))
      {
       Panel::Render(S);
       return;
      }
 
 // 4) Execute
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, cur);
-   LogExecFailThrottled(sym, pick.dir, plan, ex, cur.slippage_points);
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
 
    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-              ex.ok, ex.retcode, ex.ticket, cur.slippage_points);
+              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points);
 #ifdef TELEMETRY_HAS_TRADEPLAN
    string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
    Telemetry::TradePlan(sym, side, plan.lots, plan.price, plan.sl, plan.tp, ss.score);
@@ -3027,7 +3027,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    }
    
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
-   LogExecFailThrottled(sym, pick.dir, plan, ex, S.slippage_points);
+   LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
    
