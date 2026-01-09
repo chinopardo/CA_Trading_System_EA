@@ -749,11 +749,26 @@ void LogExecFailThrottled(const string sym,
 
    string side = (dir == DIR_BUY ? "BUY" : "SELL");
 
-   // NOTE: In this MQ5 file, Exec::Outcome is only used with: ex.ok, ex.retcode, ex.ticket.
+   // NOTE: This logger expects Exec::Outcome to include: ok, retcode, ticket, last_error, last_error_text.
    // Do not reference ex.code_text / ex.ret_text here unless you confirm they exist in your Exec::Outcome struct.
-   PrintFormat("[ExecFail] %s %s retcode=%u ticket=%I64d lots=%.2f price=%.5f sl=%.5f tp=%.5f slip=%d",
-               sym, side, ex.retcode, (long)ex.ticket,
-               plan.lots, plan.price, plan.sl, plan.tp, slippage_points);
+    PrintFormat("[ExecFail] %s %s retcode=%u err=%d(%s) ticket=%I64d lots=%.2f price=%.5f sl=%.5f tp=%.5f slip=%d",
+                sym, side, ex.retcode,
+                ex.last_error, LogX::San(ex.last_error_text),
+                (long)ex.ticket,
+                plan.lots, plan.price, plan.sl, plan.tp, slippage_points);
+}
+
+void HintTradeDisabledOnce(const Exec::Outcome &ex)
+{
+   if(ex.code != Exec::EXE_TRADE_DISABLED)
+      return;
+
+   static bool warned_trade_disabled = false;
+   if(warned_trade_disabled)
+      return;
+
+   warned_trade_disabled = true;
+   Print("[HINT] Trading is disabled. In Strategy Tester: enable Algo Trading and allow trading in the EA properties.");
 }
 
 // ================== Helpers ==================
@@ -884,12 +899,14 @@ void EvaluateOneSymbol(const string sym)
 
 // 4) Execute
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
 
-   LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points);
+    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
+               ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
+               ex.last_error, ex.last_error_text);
 #ifdef TELEMETRY_HAS_TRADEPLAN
    string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
    Telemetry::TradePlan(sym, side, plan.lots, plan.price, plan.sl, plan.tp, ss.score);
@@ -3027,12 +3044,14 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    }
    
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
       Policies::NotifyTradePlaced();
    
-   LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points);
+    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
+               ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
+               ex.last_error, ex.last_error_text);
 
    #ifdef TELEMETRY_HAS_TRADEPLAN
       string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
