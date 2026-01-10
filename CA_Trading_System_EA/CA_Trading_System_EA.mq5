@@ -154,7 +154,7 @@ inline double ConflBaseRulesScoreSafe(const Direction dir,
 // -------- Strategy ID compatibility shims (keep last among includes) -------
 #ifndef STRAT_MAIN_LOGIC
    // Local-only ID used for logging + overrides. Not required to be in StratReg.
-   #define STRAT_MAIN_LOGIC (StrategyID)9990
+   #define STRAT_MAIN_LOGIC STRAT_MAIN_ID
 #endif
 #ifndef STRAT_TREND_VWAP
 #define STRAT_TREND_VWAP (StrategyID)0
@@ -2476,90 +2476,26 @@ void OnTimer()
                              Settings &cfg_io,
                              StratScore &ss_io);
                           
-   #ifndef MAINSTRAT_COMPUTEONE_DECLARED
-   #define MAINSTRAT_COMPUTEONE_DECLARED
-   // Must be provided by Strat_MainTradingLogic.mqh (or an adapter inside it).
-   // Replace lines 2436–2440 with this full definition:
-   bool MainStrat_ComputeOne(const Direction dir,
-                             const Settings &cfg,
-                             StratScore &ss,
-                             ConfluenceBreakdown &bd,
-                             const double min_sc)
-   {
-      ZeroMemory(ss);
-      ZeroMemory(bd);
-   
-      // Minimal default scoring path (uses the guarded helper already in this file)
-      const double sc = ConflBaseRulesScoreSafe(dir, bd, cfg, ss);
-   
-      // Keep outputs consistent for downstream selection/logging
-      ss.id = STRAT_MAIN_LOGIC;
-      ss.score = sc;
-   
-      // Match the EA’s general gating style: veto blocks, score threshold required
-      ss.eligible = (!bd.veto && (ss.score >= min_sc));
-   
-      if(ss.risk_mult <= 0.0)
-         ss.risk_mult = 1.0;
-   
-      return ss.eligible;
-   }
-   #endif
-
    bool RouteMainOnlyPick(const Settings &cfg,
                        StratReg::RoutedPick &pick_out)
    {
       ZeroMemory(pick_out);
    
-      // Respect your input toggle
-      if(!InpEnable_MainLogic)
+      // Force a MAIN_ONLY view of the world, but route via registry
+      Settings cfg_core = cfg;
+      Config::ApplyStrategyMode(cfg_core, STRAT_MAIN_ONLY);
+   
+      if(!StratReg::Route(cfg_core, pick_out))
          return false;
    
-      RouterConfig rc = StratReg::GetGlobalRouterConfig();
-      const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
-   
-      bool okB=false, okS=false;
-   
-      StratScore ssB; ConfluenceBreakdown bdB;
-      StratScore ssS; ConfluenceBreakdown bdS;
-      ZeroMemory(ssB); ZeroMemory(bdB);
-      ZeroMemory(ssS); ZeroMemory(bdS);
-   
-      if(cfg.trade_selector != TRADE_SELL_ONLY)
-         okB = MainStrat_ComputeOne(DIR_BUY, cfg, ssB, bdB, min_sc);
-   
-      if(cfg.trade_selector != TRADE_BUY_ONLY)
-         okS = MainStrat_ComputeOne(DIR_SELL, cfg, ssS, bdS, min_sc);
-   
-      if(!okB && !okS)
+      if(!pick_out.ok)
          return false;
    
-      const double scB = (okB ? ssB.score : 0.0);
-      const double scS = (okS ? ssS.score : 0.0);
+      // Make sure score object carries the same ID as the pick (stability for logs/overrides)
+      if((int)pick_out.ss.id != (int)pick_out.id)
+         pick_out.ss.id = pick_out.id;
    
-      pick_out.ok  = true;
-      pick_out.id  = STRAT_MAIN_LOGIC;
-   
-      if(scB >= scS)
-      {
-         pick_out.dir = DIR_BUY;
-         pick_out.ss  = ssB;
-         pick_out.bd  = bdB;
-      }
-      else
-      {
-         pick_out.dir = DIR_SELL;
-         pick_out.ss  = ssS;
-         pick_out.bd  = bdS;
-      }
-   
-      // Make sure ss carries a stable ID (helps logging/telemetry consistency)
-      pick_out.ss.id = STRAT_MAIN_LOGIC;
-   
-      if(StringLen(pick_out.bd.meta) == 0)
-         pick_out.bd.meta = "main";
-   
-      LogX::Decision(_Symbol, pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, 0, "router=main");
+      LogX::Decision(_Symbol, pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, 0, "router=core");
       return true;
    }
 
@@ -2577,7 +2513,7 @@ void OnTimer()
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
    bool okRoute = false;
    
-   // MAIN_ONLY: bypass registry/manual pack routing completely
+   // MAIN_ONLY: route via registry with core-only gating
    if(sm == STRAT_MAIN_ONLY)
    {
       okRoute = RouteMainOnlyPick(cfg, pick_out);
@@ -2606,19 +2542,25 @@ void OnTimer()
       // PACK routing only if needed
       if(!okRoute)
       {
+      Settings cfg_pack = cfg;
+      
+      // If we are in COMBINED, force fallback to PACK_ONLY so core does not compete twice
+      if(sm != STRAT_PACK_ONLY)
+         Config::ApplyStrategyMode(cfg_pack, STRAT_PACK_ONLY);
+         
    #ifdef STRATREG_HAS_ROUTE
-         okRoute = (StratReg::Route(cfg, pick_out) && pick_out.ok);
+         okRoute = (StratReg::Route(cfg_pack, pick_out) && pick_out.ok);
    #else
          if(g_use_registry)
          {
             string top;
-            okRoute = RouteRegistryAll(cfg, pick_out, top);
+            okRoute = RouteRegistryAll(cfg_pack, pick_out, top);
             if(okRoute) LogX::Info(StringFormat("Router.Top: %s", top));
-            if(!okRoute) okRoute = RouteRegistryPick(cfg, pick_out);
+            if(!okRoute) okRoute = RouteRegistryPick(cfg_pack, pick_out);
          }
          else
          {
-            okRoute = RouteManualRegimePick(cfg, pick_out);
+            okRoute = RouteManualRegimePick(cfg_pack, pick_out);
          }
    #endif
       }
@@ -2730,22 +2672,53 @@ void ApplyPickOverrides(const StratReg::RoutedPick &pick,
                         Settings &cfg_io,
                         StratScore &ss_io)
 {
-   // Main strategy overrides (legacy path needs this glue)
-   if(pick.id == STRAT_MAIN_LOGIC)
+   // Per-strategy overrides (risk + magic)
+   switch(pick.id)
    {
-      // Per-strategy risk multiplier
-      if(cfg_io.risk_mult_main > 0.0)
-         ss_io.risk_mult *= cfg_io.risk_mult_main;
-
-      // Per-strategy magic base (if your execution uses magic_base)
-      if(cfg_io.magic_main_base > 0)
-         cfg_io.magic_base = cfg_io.magic_main_base;
-
-      // If Exec uses magic_number, keep it consistent (guarded)
-      #ifdef CFG_HAS_MAGIC_NUMBER
-         cfg_io.magic_number = cfg_io.magic_base;
-      #endif
+      case STRAT_MAIN_ID: // STRAT_MAIN_LOGIC aliases to STRAT_MAIN_ID
+         if(cfg_io.risk_mult_main > 0.0)
+            ss_io.risk_mult *= cfg_io.risk_mult_main;
+   
+         if(cfg_io.magic_main_base > 0)
+            cfg_io.magic_base = cfg_io.magic_main_base;
+         break;
+   
+      case STRAT_ICT_SILVER_BULLET_ID:
+         if(cfg_io.risk_mult_sb > 0.0)
+            ss_io.risk_mult *= cfg_io.risk_mult_sb;
+   
+         if(cfg_io.magic_sb_base > 0)
+            cfg_io.magic_base = cfg_io.magic_sb_base;
+         break;
+   
+      case STRAT_ICT_PO3_ID:
+         if(cfg_io.risk_mult_po3 > 0.0)
+            ss_io.risk_mult *= cfg_io.risk_mult_po3;
+   
+         if(cfg_io.magic_po3_base > 0)
+            cfg_io.magic_base = cfg_io.magic_po3_base;
+         break;
+   
+      case STRAT_ICT_OBFVG_OTE_ID:
+         if(cfg_io.risk_mult_cont > 0.0)
+            ss_io.risk_mult *= cfg_io.risk_mult_cont;
+   
+         if(cfg_io.magic_cont_base > 0)
+            cfg_io.magic_base = cfg_io.magic_cont_base;
+         break;
+   
+      case STRAT_ICT_WYCKOFF_SPRING_UTAD_ID:
+         if(cfg_io.risk_mult_wyck > 0.0)
+            ss_io.risk_mult *= cfg_io.risk_mult_wyck;
+   
+         if(cfg_io.magic_wyck_base > 0)
+            cfg_io.magic_base = cfg_io.magic_wyck_base;
+         break;
    }
+   
+   #ifdef CFG_HAS_MAGIC_NUMBER
+      cfg_io.magic_number = cfg_io.magic_base;
+   #endif
 
    // Pack strategies: usually already consistent through StratReg weights/throttles.
    // If later you add more per-pick overrides, extend here.
