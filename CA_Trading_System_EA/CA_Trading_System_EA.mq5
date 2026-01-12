@@ -3016,7 +3016,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       return;
    }
    
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, /*skip_gates=*/false, (StrategyID)pick.id);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
