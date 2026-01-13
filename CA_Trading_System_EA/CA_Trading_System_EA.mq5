@@ -898,7 +898,7 @@ void EvaluateOneSymbol(const string sym)
      }
 
 // 4) Execute
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg);
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, false, (StrategyID)pick.id);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
@@ -2456,10 +2456,31 @@ void OnTimer()
    datetime now_srv = TimeUtils::NowServer();
    MaybeResetStreaksDaily(now_srv);
    
+   // Respect the chosen execution path (registry vs router) to avoid double-firing.
+   if(g_use_registry)
+   {
+      for(int i=0; i<g_symCount; i++)
+      {
+         const string sym = g_symbols[i];
+         ProcessSymbol(sym, true);
+      }
+      return;
+   }
+   
+   // Router mode path (ICT RouterEvaluateAll)
    if(!Warmup::DataReadyForEntry(g_cfg))
       return;
-      
+   
    SyncRuntimeCfgFlags(g_cfg);
+   
+   // Optional new-bar throttle (keeps timer from re-evaluating same bar)
+   if(InpOnlyNewBar)
+   {
+      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+      if(!IsNewBarRouter(_Symbol, tf))
+         return;
+   }
+   
    if(RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
    {
       StateOnTickUpdate(g_state);
@@ -2544,6 +2565,18 @@ void OnTimer()
       {
       Settings cfg_pack = cfg;
       
+      // StrategyMode allow-list enforcement (defense in depth).
+      // Requires Types.mqh: Strat_AllowedToTrade(mode, sid)
+      if((int)pick_out.id == 0 || !Strat_AllowedToTrade(sm, pick_out.id))
+      {
+         pick_out.bd.veto = true;
+         pick_out.ss.eligible = false;
+      
+         if(InpDebug)
+            LogX::Warn(StringFormat("[MODE] Blocked strategy id=%d under mode=%d for %s",
+                                    (int)pick_out.id, (int)sm, sym));
+      }
+
       // If we are in COMBINED, force fallback to PACK_ONLY so core does not compete twice
       if(sm != STRAT_PACK_ONLY)
          Config::ApplyStrategyMode(cfg_pack, STRAT_PACK_ONLY);

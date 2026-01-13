@@ -29,6 +29,9 @@ struct Settings;
 #ifndef CFG_HAS_STRAT_TOGGLES
   #define CFG_HAS_STRAT_TOGGLES 1
 #endif
+#ifndef CFG_HAS_STRAT_MODE
+  #define CFG_HAS_STRAT_MODE 1
+#endif
 
 #ifndef CFG_HAS_PARTIAL_ENABLE
   #define CFG_HAS_PARTIAL_ENABLE 1
@@ -373,6 +376,12 @@ namespace Config
   // Small utils
   //──────────────────────────────────────────────────────────────────
   inline string _Norm(const string s);
+  #ifdef CFG_HAS_STRAT_MODE
+     inline StrategyMode CfgStrategyMode(const Settings &s);
+     inline int          _ClampStratModeInt(const int v);
+     inline void         _SetStratModeRef(int &dst, const int v);
+     inline void         _SetStratModeRef(StrategyMode &dst, const int v);
+  #endif
   inline string Trim(const string s){ string t=s; StringTrimLeft(t); StringTrimRight(t); return t; }
   inline string BoolStr(const bool v){ return (v?"1":"0"); }
   
@@ -747,9 +756,9 @@ namespace Config
    
      // safer default:
      #ifdef CFG_HAS_STRAT_MODE
-       const int sm = (int)cfg.strat_mode;
-       if(sm != (int)STRAT_COMBINED)
-         return false;
+        const StrategyMode sm = CfgStrategyMode(cfg);
+        if(sm != STRAT_COMBINED)
+          return false;
      #endif
      return true;
    }
@@ -793,9 +802,7 @@ namespace Config
    // ===== Moved from Types.mqh: inline helpers that require full Settings =====
    #ifdef CFG_HAS_STRAT_MODE
       inline StrategyMode GetStrategyMode(const Settings &s){
-        int m = s.strat_mode;
-        if(m < 0 || m > 2) m = (int)STRAT_COMBINED;
-        return (StrategyMode)m;
+        return CfgStrategyMode(s);
       }
       inline StrategyMode CfgStrategyMode(const Settings &s)
       {
@@ -1568,9 +1575,10 @@ namespace Config
 
     // Mode (guard if not declared)
     #ifdef CFG_HAS_STRAT_MODE
-      // Clamp to valid 0..2; default to Combined
-      if((int)cfg.strat_mode < 0 || (int)cfg.strat_mode > 2)
-        cfg.strat_mode = (int)STRAT_COMBINED;
+      const int cur = (int)cfg.strat_mode;
+      const int clamped = _ClampStratModeInt(cur);
+      if(cur != clamped)
+        _SetStratModeRef(cfg.strat_mode, clamped);
     #endif
     #ifdef CFG_HAS_MODE
       if((int)cfg.mode<0) cfg.mode=BSM_BOTH;
@@ -2147,7 +2155,7 @@ namespace Config
    
      // Mode seed (guard)
      #ifdef CFG_HAS_STRAT_MODE
-       cfg.strat_mode = (int)STRAT_COMBINED;  // sensible default
+       _SetStratModeRef(cfg.strat_mode, (int)STRAT_COMBINED);
      #endif
      #ifdef CFG_HAS_MODE
        cfg.mode=BSM_BOTH;
@@ -2525,7 +2533,7 @@ namespace Config
     s+=",sydO="+IntegerToString(c.sydney_open_utc);
     
     #ifdef CFG_HAS_STRAT_MODE
-      s+=",sMode="+IntegerToString((int)c.strat_mode);
+      s+=",sMode="+IntegerToString((int)CfgStrategyMode(c));
     #endif
 
     #ifdef CFG_HAS_PROFILE_ENUM
