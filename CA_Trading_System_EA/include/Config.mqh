@@ -175,6 +175,23 @@ struct Settings;
   #define CFG_HAS_EXTRA_NEWS 1
 #endif
 
+#ifndef CFG_HAS_EXTRA_SILVERBULLET_TZ
+  #define CFG_HAS_EXTRA_SILVERBULLET_TZ 1
+#endif
+#ifndef CFG_HAS_W_SILVERBULLET_TZ
+  #define CFG_HAS_W_SILVERBULLET_TZ 1
+#endif
+
+#ifndef CFG_HAS_EXTRA_AMD_HTF
+  #define CFG_HAS_EXTRA_AMD_HTF 1
+#endif
+#ifndef CFG_HAS_W_AMD_H1
+  #define CFG_HAS_W_AMD_H1 1
+#endif
+#ifndef CFG_HAS_W_AMD_H4
+  #define CFG_HAS_W_AMD_H4 1
+#endif
+
 #ifndef CFG_HAS_EXTRA_CONFL
   #define CFG_HAS_EXTRA_CONFL 1
 #endif
@@ -529,6 +546,15 @@ namespace Config
      // News (weight)
      bool extra_news; double w_news;
    
+     // Silver Bullet timezone window (extra confluence)
+     bool   extra_silverbullet_tz;
+     double w_silverbullet_tz;
+      
+     // AMD HTF phases (H1/H4 intraday context)
+     bool   extra_amd_htf;
+     double w_amd_h1;
+     double w_amd_h4;
+
      // Router / gates / require toggles
      bool enable_hard_gate; double router_min_score; double router_fb_min; int min_features_met;
      bool require_trend; bool require_adx; bool require_struct_or_pattern_ob;
@@ -1307,6 +1333,25 @@ namespace Config
      #ifdef CFG_HAS_W_NEWS
        cfg.w_news = x.w_news;
      #endif
+     
+     // Silver Bullet TZ
+     #ifdef CFG_HAS_EXTRA_SILVERBULLET_TZ
+       cfg.extra_silverbullet_tz = x.extra_silverbullet_tz;
+     #endif
+     #ifdef CFG_HAS_W_SILVERBULLET_TZ
+       cfg.w_silverbullet_tz = x.w_silverbullet_tz;
+     #endif
+   
+     // AMD HTF
+     #ifdef CFG_HAS_EXTRA_AMD_HTF
+       cfg.extra_amd_htf = x.extra_amd_htf;
+     #endif
+     #ifdef CFG_HAS_W_AMD_H1
+       cfg.w_amd_h1 = x.w_amd_h1;
+     #endif
+     #ifdef CFG_HAS_W_AMD_H4
+       cfg.w_amd_h4 = x.w_amd_h4;
+     #endif
    
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
@@ -1416,6 +1461,11 @@ namespace Config
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
      x.adx_period=14; x.adx_min=20.0;
      x.corr_lookback=200;
+     
+     // Defaults for new extras weights (features are OFF by default, but weights are ready)
+     x.w_silverbullet_tz = 0.06;
+     x.w_amd_h1          = 0.06;
+     x.w_amd_h4          = 0.08;
    
      x.router_min_score=0.55; x.router_fb_min=0.50;
    
@@ -1826,6 +1876,18 @@ namespace Config
     #ifdef CFG_HAS_EXTRA_CONFL
       cfg.extra_min_needed = MathMax(0,   cfg.extra_min_needed);
       cfg.extra_min_score  = MathMin(MathMax(cfg.extra_min_score, 0.0), 1.0);
+    #endif
+
+    #ifdef CFG_HAS_W_SILVERBULLET_TZ
+      if(cfg.w_silverbullet_tz < 0.0) cfg.w_silverbullet_tz = 0.0;
+    #endif
+    
+    #ifdef CFG_HAS_W_AMD_H1
+      if(cfg.w_amd_h1 < 0.0) cfg.w_amd_h1 = 0.0;
+    #endif
+    
+    #ifdef CFG_HAS_W_AMD_H4
+      if(cfg.w_amd_h4 < 0.0) cfg.w_amd_h4 = 0.0;
     #endif
 
     #ifdef CFG_HAS_ADX_PARAMS
@@ -3965,6 +4027,15 @@ struct Settings
   // Core confluences (used by MainTradingLogic)
   bool    cf_liquidity;       double w_liquidity;
   bool    cf_vsa_increase;    double w_vsa_increase;
+  
+  // Silver Bullet timezone / session entry confluence
+  bool   extra_silverbullet_tz;
+  double w_silverbullet_tz;
+   
+  // AMD HTF phases (H1/H4)
+  bool   extra_amd_htf;
+  double w_amd_h1;
+  double w_amd_h4;
 
   // Extras (applied only after main logic confirms)
   bool    extra_macd;

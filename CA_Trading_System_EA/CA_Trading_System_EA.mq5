@@ -420,6 +420,13 @@ input double InpW_CorrPen         = 1.0;        // Confluence Gate: Correlation 
 input bool   InpExtra_News = false;              // Confluence Gate: News Filter
 input double InpW_News     = 1.00;              // Confluence Gate: News Filter Weight
 
+input bool   InpExtra_SilverBulletTZ = false;
+input double InpW_SilverBulletTZ     = 0.06;
+
+input bool   InpExtra_AMD_HTF        = false;
+input double InpW_AMD_H1             = 0.06;
+input double InpW_AMD_H4             = 0.08;
+
 // — Router/Confluence thresholds —
 input bool   Inp_EnableHardGate            = false;  // Router/Confluence Threshold: Hard Gate
 input double Inp_RouterFallbackMin         = 0.50;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
@@ -1912,6 +1919,13 @@ int OnInit()
    ex.require_trend                = Inp_RequireTrendFilter;
    ex.require_adx                  = Inp_RequireADXRegime;
    ex.require_struct_or_pattern_ob = Inp_RequireStructOrPatternOB;
+   
+   ex.extra_silverbullet_tz = InpExtra_SilverBulletTZ;
+   ex.w_silverbullet_tz     = InpW_SilverBulletTZ;
+   
+   ex.extra_amd_htf         = InpExtra_AMD_HTF;
+   ex.w_amd_h1              = InpW_AMD_H1;
+   ex.w_amd_h4              = InpW_AMD_H4;
    
    ex.london_liq_policy      = Inp_LondonLiquidityPolicy;
    ex.london_start_local     = Inp_LondonStartLocal;
