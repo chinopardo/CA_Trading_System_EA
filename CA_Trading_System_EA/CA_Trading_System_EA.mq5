@@ -350,6 +350,10 @@ input UmbrellaMode InpUmbrella         = UMB_ALL;
 // --- Strategy enable toggles (per-strategy on/off) ---
 input bool InpEnable_MainLogic            = true;
 input bool InpEnable_ICT_SilverBullet     = true;
+// --- Silver Bullet hard requirements (optional hard-gates) ---
+input bool InpSB_Require_OTE          = false;  // SB: require OTE confluence
+input bool InpSB_Require_VWAPStretch  = false;  // SB: require VWAP stretch condition
+
 input bool InpEnable_ICT_PO3              = true;
 input bool InpEnable_ICT_Continuation     = true;
 input bool InpEnable_ICT_WyckoffTurn      = false;
@@ -1923,6 +1927,10 @@ int OnInit()
    ex.extra_silverbullet_tz = InpExtra_SilverBulletTZ;
    ex.w_silverbullet_tz     = InpW_SilverBulletTZ;
    
+   // Silver Bullet hard requirements (optional)
+   ex.require_sb_ote          = InpSB_Require_OTE;
+   ex.require_sb_vwap_stretch = InpSB_Require_VWAPStretch;
+
    ex.extra_amd_htf         = InpExtra_AMD_HTF;
    ex.w_amd_h1              = InpW_AMD_H1;
    ex.w_amd_h4              = InpW_AMD_H4;
@@ -2132,6 +2140,9 @@ int OnInit()
    TesterPresets::ApplyPresetByName(S, InpTesterPreset);
    TesterCases::ApplyTestCase(S, InpTestCase);
    
+   if(S.strat_mode == STRAT_MAIN_ONLY && g_use_registry)
+      Print("WARN: STRAT_MAIN_ONLY with Registry routing may bypass unified Router candidate pipeline; prefer Router routing.");
+   
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
    ML::Configure(S, InpML_Temperature, InpML_Threshold, InpML_Weight, InpML_Conformal, InpML_Dampen);
@@ -2308,6 +2319,14 @@ void OnTick()
    //    MaybeEvaluate();
    const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
 
+   // Keep runtime flags consistent before building State/ICT context
+   SyncRuntimeCfgFlags(g_cfg);
+
+   // Upstream truth: update State + ICT context BEFORE any strategy evaluation
+   StateOnTickUpdate(g_state);
+   RefreshICTContext(g_state);
+   ICT_Context ictCtx = StateGetICTContext(g_state);
+   
    // When registry routing is ON, keep using ProcessSymbol() path.
    if(g_use_registry)
      {
@@ -2342,13 +2361,6 @@ void OnTick()
    //    - pivots / ADR / VWAP / spreads
    //    - absorption flags (absorptionBull/absorptionBear)
    //    - emaFastHTF / emaSlowHTF
-   //
-   // StateOnTickUpdate() should *not* touch ictContext.
-   StateOnTickUpdate(g_state);
-
-   // 2. Recompute Smart Money / Wyckoff model into g_state.ictContext.
-   RefreshICTContext(g_state);
-   ICT_Context ictCtx = StateGetICTContext(g_state);
 
    // 3.1 Pull scores from confluence layer
    #ifdef HAS_CONFLUENCE_API
@@ -2367,9 +2379,6 @@ void OnTick()
 
    // 3.3 Push to the UI
    PushICTTelemetryToReviewUI(ictCtx, classicalScore, ictScore, armedName);
-
-   // 4. Sync runtime execution policies into g_cfg each tick.
-   SyncRuntimeCfgFlags(g_cfg);
 
    if(!g_use_registry)
    {

@@ -7,8 +7,19 @@
 #ifndef POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL
 #define POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL 1
 #endif
+#ifndef POLICIES_HAS_ALLOW_SILVERBULLET_ENTRY
+#define POLICIES_HAS_ALLOW_SILVERBULLET_ENTRY 1
+#endif
+
+#ifndef POLICIES_HAS_RECORD_EXECUTION_ATTEMPT_SID
+#define POLICIES_HAS_RECORD_EXECUTION_ATTEMPT_SID 1
+#endif
+
+#ifndef POLICIES_HAS_RECORD_EXECUTION_RESULT_SID
+#define POLICIES_HAS_RECORD_EXECUTION_RESULT_SID 1
+#endif
 //=============================================================================
-// Policies.mqh — Core gates, filters & orchestration (Persistent)
+// Policies.mqh - Core gates, filters & orchestration (Persistent)
 //-----------------------------------------------------------------------------
 //  • Central policy gates (spread, ADR/ATR, regime, session, news, liquidity).
 //  • Daily DD / Day-loss stops (persisted so restarts resume correctly).
@@ -25,6 +36,7 @@
 #include "Indicators.mqh"
 #include "TimeUtils.mqh"
 #include "RegimeCorr.mqh"
+#include "ICTSessionModel.mqh"
 #include "RiskEngine.mqh"
 #ifdef NEWSFILTER_AVAILABLE
   #include "NewsFilter.mqh"
@@ -45,13 +57,13 @@ inline bool _WithinLocalWindowMins(const int open_min, const int close_min, cons
   TimeToStruct(now_local, lt);
   const int mm = lt.hour * 60 + lt.min;
 
-  if(open_min == close_min)   // degenerate -> treat as always allowed (or return false if you prefer)
+  if(open_min == close_min)   // degenerate: treat as always allowed (or return false if you prefer)
     return true;
 
   if(close_min > open_min)    // normal window: [open, close)
     return (mm >= open_min && mm < close_min);
 
-  // wrap-around window: e.g., 23:00 -> 02:00
+  // wrap-around window: e.g., 23:00 to 02:00
   return (mm >= open_min || mm < close_min);
 }
 
@@ -68,6 +80,8 @@ enum PolicyBlockCode
   POLICY_SPREAD_HIGH   = 5,
   POLICY_COOLDOWN      = 6,
   POLICY_MONTH_TARGET  = 7,
+  POLICY_SB_NOT_IN_WINDOW = 20,
+  POLICY_SB_ALREADY_USED  = 21,
   POLICY_BLOCKED_OTHER = 99
 };
 
@@ -126,7 +140,7 @@ namespace Policies
   // Structured policy decision result (single source of truth)
   // ----------------------------------------------------------------------------
 
-  // Bitmask constants (ulong) — stable ordering
+  // Bitmask constants (ulong) - stable ordering
   #define CA_POLMASK_DAYLOSS         (((ulong)1) << 0)
   #define CA_POLMASK_DAILYDD         (((ulong)1) << 1)
   #define CA_POLMASK_ACCOUNT_DD      (((ulong)1) << 2)
@@ -1027,6 +1041,29 @@ namespace Policies
   inline void   _GVSetD(const string k, const double v){ GlobalVariableSet(k, v); }
   inline void   _GVSetB(const string k, const bool v){ GlobalVariableSet(k, (v?1.0:0.0)); }
   inline void   _GVDel (const string k){ if(GlobalVariableCheck(k)) GlobalVariableDel(k); }
+
+  // --- Silver Bullet (SB) persistent keys (per-symbol / per-day / per-slot) ---
+  inline string _SymKey(const string sym)
+  {
+    string s = sym;
+    // Keep GV names safe across brokers (suffixes, dots, etc.)
+    StringReplace(s, ".", "_");
+    StringReplace(s, "#", "_");
+    StringReplace(s, " ", "_");
+    StringReplace(s, "-", "_");
+    StringReplace(s, "/", "_");
+    StringReplace(s, "\\", "_");
+    StringReplace(s, ":", "_");
+    return s;
+  }
+
+  inline string _SBDoneKey(const string symk, const int day, const int slot)
+  {
+    return _Key(StringFormat("SB_DONE_%s_%d_%d", symk, day, slot));
+  }
+
+  inline string _SBLastDayKey(const string symk)  { return _Key("SB_LAST_DAY_"  + symk); }
+  inline string _SBLastSlotKey(const string symk) { return _Key("SB_LAST_SLOT_" + symk); }
 
   inline void _BuildPrefix(const Settings &cfg)
   {
@@ -2354,9 +2391,87 @@ namespace Policies
   // --- Hooks expected by Execution.mqh ---
   inline void TouchTradeCooldown(){ NotifyTradePlaced(); }
   
-  inline void RecordExecutionAttempt()
+    // --- Silver Bullet: centralized "one bullet" gate --------------------------
+  inline bool AllowSilverBulletEntry(const Settings &cfg,
+                                    const string sym,
+                                    const StrategyID sid,
+                                    int &reason_out,
+                                    string &text_out)
+  {
+    reason_out = POLICY_OK;
+    text_out   = "";
+
+    if((int)sid != (int)STRAT_ICT_SILVER_BULLET_ID)
+      return true;
+
+    _EnsureLoaded(cfg);
+
+    datetime now = TimeTradeServer();
+    if(now <= 0) now = TimeCurrent();
+
+    _ICTSessionWindows win;
+    ZeroMemory(win);
+    ICTSession_BuildWindowsFromSettings(cfg, win);
+
+    _ICTSilverBulletInfo sb;
+    ZeroMemory(sb);
+    ICTSession_GetSilverBulletInfo(now, win, sb);
+
+    if(!sb.inSilverBullet)
+    {
+      reason_out = POLICY_SB_NOT_IN_WINDOW;
+      text_out   = "Not in Silver Bullet window";
+      return false;
+    }
+
+    const datetime ws = sb.windowStart;
+    const int day     = EpochDay(ws > 0 ? ws : now);
+    const int slot    = (sb.sbSlot >= 0 ? sb.sbSlot : TimeHour(ws));
+
+    if(slot < 0)
+    {
+      reason_out = POLICY_BLOCKED_OTHER;
+      text_out   = "SB slot invalid";
+      return false;
+    }
+
+    const string symk = _SymKey(sym);
+
+    if(_GVGetB(_SBDoneKey(symk, day, slot), false))
+    {
+      reason_out = POLICY_SB_ALREADY_USED;
+      text_out   = "Silver Bullet already used for this window";
+      return false;
+    }
+
+    // Store last SB window identity for this symbol so we can mark-used on success
+    _GVSetD(_SBLastDayKey(symk),  (double)day);
+    _GVSetD(_SBLastSlotKey(symk), (double)slot);
+
+    return true;
+  }
+
+    inline void MarkSilverBulletUsed(const Settings &cfg,
+                                  const string sym,
+                                  const StrategyID sid)
+  {
+    if((int)sid != (int)STRAT_ICT_SILVER_BULLET_ID)
+      return;
+
+    _EnsureLoaded(cfg);
+
+    const string symk = _SymKey(sym);
+    const int day  = _GVGetI(_SBLastDayKey(symk),  -1);
+    const int slot = _GVGetI(_SBLastSlotKey(symk), -1);
+    if(day < 0 || slot < 0) return;
+
+    _GVSetB(_SBDoneKey(symk, day, slot), true);
+  }
+
+  inline void RecordExecutionAttempt(const StrategyID sid)
   {
     _GVSetD(_Key("LAST_ATTEMPT_TS"), (double)TimeCurrent());
+    _GVSetD(_Key("LAST_ATTEMPT_SID"), (double)((int)sid));
 
     // Optional: simple per-day attempts counter for telemetry
     int        cnt  = _GVGetI(_Key("ATTEMPTS_D"), 0);
@@ -2374,10 +2489,16 @@ namespace Policies
     _GVSetD(_Key("ATTEMPTS_D"), (double)cnt);
   }
 
-    inline void RecordExecutionResult(const bool ok, const uint retcode, const double filled_volume)
+  inline void RecordExecutionAttempt()
+  {
+    RecordExecutionAttempt((StrategyID)0);
+  }
+  
+  inline void RecordExecutionResult(const StrategyID sid, const bool ok, const uint retcode, const double filled_volume)
   {
     // If Policies::Init(...) was never called, s_prefix may be empty.
     // In that case we still work, but the keys are shared per-login.
+    _GVSetD(_Key("LAST_EXEC_SID"), (double)((int)sid));
     const datetime now = TimeCurrent();
 
     // Basic last-result telemetry
@@ -2410,6 +2531,11 @@ namespace Policies
     _GVSetD(_Key("FAIL_TRADES_D"), (double)fail_d);
   }
 
+  inline void RecordExecutionResult(const bool ok, const uint retcode, const double filled_volume)
+  {
+    RecordExecutionResult((StrategyID)0, ok, retcode, filled_volume);
+  }
+  
   // ----------------------------------------------------------------------------
   // Regime consensus / correlation-style gate
   // ----------------------------------------------------------------------------

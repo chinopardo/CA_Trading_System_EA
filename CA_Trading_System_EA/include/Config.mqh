@@ -235,6 +235,12 @@ struct Settings;
 #ifndef CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB
   #define CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB 1
 #endif
+#ifndef CFG_HAS_SB_REQUIRE_OTE
+  #define CFG_HAS_SB_REQUIRE_OTE 1
+#endif
+#ifndef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+  #define CFG_HAS_SB_REQUIRE_VWAP_STRETCH 1
+#endif
 #ifndef CFG_HAS_LONDON_LIQ_POLICY
   #define CFG_HAS_LONDON_LIQ_POLICY 1
 #endif
@@ -558,6 +564,10 @@ namespace Config
      // Router / gates / require toggles
      bool enable_hard_gate; double router_min_score; double router_fb_min; int min_features_met;
      bool require_trend; bool require_adx; bool require_struct_or_pattern_ob;
+     
+     // Silver Bullet hard requirements (optional)
+     bool require_sb_ote;
+     bool require_sb_vwap_stretch;
    
      // London liquidity window
      bool london_liq_policy; string london_start_local; string london_end_local;
@@ -1379,6 +1389,14 @@ namespace Config
      #ifdef CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB
        cfg.require_struct_or_pattern_ob = x.require_struct_or_pattern_ob;
      #endif
+     
+     // Silver Bullet hard requirements (optional)
+     #ifdef CFG_HAS_SB_REQUIRE_OTE
+       cfg.sb_require_ote = x.require_sb_ote;
+     #endif
+     #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+       cfg.sb_require_vwap_stretch = x.require_sb_vwap_stretch;
+     #endif
    
      // London window / liquidity policy
      #ifdef CFG_HAS_LONDON_LIQ_POLICY
@@ -1456,6 +1474,8 @@ namespace Config
      x.corr_ref_symbol   = "";
      x.london_start_local= "";
      x.london_end_local  = "";
+     x.require_sb_ote = false;
+     x.require_sb_vwap_stretch = false;
      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
@@ -2046,6 +2066,10 @@ namespace Config
            #endif
          }
        }
+    #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+      if(cfg.sb_require_vwap_stretch && cfg.vwap_lookback < 20)
+        warns += "sb_require_vwap_stretch ON but vwap_lookback<20; SB may rarely qualify.\n";
+    #endif
     #endif
     #ifdef CFG_HAS_ENABLE_HARD_GATE
       int h=0; if(KV::GetInt("router.hard_gate", h)) cfg.enable_hard_gate = (h!=0);
@@ -2257,6 +2281,14 @@ namespace Config
      // (Silver Bullet / PO3 / Continuation / Wyckoff Turn) overrides it.
      #ifdef CFG_HAS_STRATEGY_KIND
        cfg.strategyKind = ICT_STRAT_CORE;
+     #endif
+     
+     // Silver Bullet hard requirements: default OFF unless extras enable them
+     #ifdef CFG_HAS_SB_REQUIRE_OTE
+       cfg.sb_require_ote = false;
+     #endif
+     #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+       cfg.sb_require_vwap_stretch = false;
      #endif
    
      // Risk (percent)
@@ -2672,6 +2704,13 @@ namespace Config
 
     s+=",vwL="+IntegerToString(c.vwap_lookback);
     s+=",vwSig="+DoubleToString(c.vwap_sigma,3);
+    
+    #ifdef CFG_HAS_SB_REQUIRE_OTE
+      s+=",sbReqOTE="+BoolStr(c.sb_require_ote);
+    #endif
+    #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+      s+=",sbReqVWAP="+BoolStr(c.sb_require_vwap_stretch);
+    #endif
 
     s+=",vsa="+BoolStr(c.vsa_enable);
     s+=",vsaMax="+DoubleToString(c.vsa_penalty_max,3);
@@ -3603,6 +3642,13 @@ namespace Config
       else if(k=="pTau")   cfg.pattern_tau = ToDouble(v);
       else if(k=="vwL")    cfg.vwap_lookback = ToInt(v);
       else if(k=="vwSig")  cfg.vwap_sigma = ToDouble(v);
+      
+      #ifdef CFG_HAS_SB_REQUIRE_OTE
+        else if(k=="sbReqOTE") cfg.sb_require_ote = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+        else if(k=="sbReqVWAP") cfg.sb_require_vwap_stretch = ToBool(v);
+      #endif
 
       // Feature toggles
       else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
@@ -4240,6 +4286,14 @@ struct Settings
   #endif
   #ifdef CFG_HAS_PAIRS_INVERT
     bool            pairs_invert_mate;
+  #endif
+  
+  // Silver Bullet additional hard requirements (optional)
+  #ifdef CFG_HAS_SB_REQUIRE_OTE
+    bool sb_require_ote;
+  #endif
+  #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
+    bool sb_require_vwap_stretch;
   #endif
 
   // --- Per-symbol overrides payload -----------------------------------------
