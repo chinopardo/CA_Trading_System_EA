@@ -2426,7 +2426,9 @@ namespace Policies
 
     const datetime ws = sb.windowStart;
     const int day     = EpochDay(ws > 0 ? ws : now);
-    const int slot    = (sb.sbSlot >= 0 ? sb.sbSlot : TimeHour(ws));
+    MqlDateTime dt; 
+    TimeToStruct(ws, dt);
+    const int slot = (sb.sbSlot >= 0 ? sb.sbSlot : dt.hour);
 
     if(slot < 0)
     {

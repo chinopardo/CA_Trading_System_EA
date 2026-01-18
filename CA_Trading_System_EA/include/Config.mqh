@@ -2039,6 +2039,7 @@ namespace Config
   // or periodically if you want dynamic behavior.
   inline void ApplyKVOverrides(Settings &cfg)
   {
+    string warns = "";
     #ifdef CFG_HAS_ROUTER_MIN_SCORE
       double v=0.0;
       if(KV::GetDouble("router.min_score", v))
@@ -2089,6 +2090,8 @@ namespace Config
         cfg.monthly_target_pct = mt; // Store raw; accessor will clamp/default.
       }
     #endif
+    if(StringLen(warns) > 0)
+      Print("[Config] KV override warnings:\n", warns);
     // KV can override only one side; keep aliases coherent
     _SyncRouterFallbackAlias(cfg);
   }
