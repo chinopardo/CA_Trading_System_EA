@@ -428,13 +428,6 @@ namespace Config
   //──────────────────────────────────────────────────────────────────
   // Small utils
   //──────────────────────────────────────────────────────────────────
-  inline string _Norm(const string s);
-  #ifdef CFG_HAS_STRAT_MODE
-     inline StrategyMode CfgStrategyMode(const Settings &s);
-     inline int          _ClampStratModeInt(const int v);
-     inline void         _SetStratModeRef(int &dst, const int v);
-     inline void         _SetStratModeRef(StrategyMode &dst, const int v);
-  #endif
   inline string Trim(const string s){ string t=s; StringTrimLeft(t); StringTrimRight(t); return t; }
   inline string BoolStr(const bool v){ return (v?"1":"0"); }
   
@@ -1194,9 +1187,6 @@ namespace Config
      int th_ict_silverbullet;
      int th_ict_wyckoff_turn;
    };
-   
-   inline bool GetProfile(const string alias, ProfileSpec &out);
-   inline void ProfileSpecDefaults(ProfileSpec &p);
   
    // Keep router fallback numeric knobs, legacy aliases, and
    // profile-based router hints in sync.
