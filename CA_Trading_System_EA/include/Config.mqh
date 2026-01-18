@@ -192,6 +192,36 @@ struct Settings;
   #define CFG_HAS_W_AMD_H4 1
 #endif
 
+#ifndef CFG_HAS_EXTRA_PO3_HTF
+  #define CFG_HAS_EXTRA_PO3_HTF 1
+#endif
+#ifndef CFG_HAS_W_PO3_H1
+  #define CFG_HAS_W_PO3_H1 1
+#endif
+#ifndef CFG_HAS_W_PO3_H4
+  #define CFG_HAS_W_PO3_H4 1
+#endif
+
+#ifndef CFG_HAS_EXTRA_WYCKOFF_TURN
+  #define CFG_HAS_EXTRA_WYCKOFF_TURN 1
+#endif
+#ifndef CFG_HAS_W_WYCKOFF_TURN
+  #define CFG_HAS_W_WYCKOFF_TURN 1
+#endif
+
+#ifndef CFG_HAS_EXTRA_MTF_ZONES
+  #define CFG_HAS_EXTRA_MTF_ZONES 1
+#endif
+#ifndef CFG_HAS_W_MTF_ZONE_H1
+  #define CFG_HAS_W_MTF_ZONE_H1 1
+#endif
+#ifndef CFG_HAS_W_MTF_ZONE_H4
+  #define CFG_HAS_W_MTF_ZONE_H4 1
+#endif
+#ifndef CFG_HAS_MTF_ZONE_MAX_DIST_ATR
+  #define CFG_HAS_MTF_ZONE_MAX_DIST_ATR 1
+#endif
+
 #ifndef CFG_HAS_EXTRA_CONFL
   #define CFG_HAS_EXTRA_CONFL 1
 #endif
@@ -560,6 +590,21 @@ namespace Config
      bool   extra_amd_htf;
      double w_amd_h1;
      double w_amd_h4;
+
+     // PO3 HTF phases (H1/H4 intraday context)
+     bool   extra_po3_htf;
+     double w_po3_h1;
+     double w_po3_h4;
+
+     // Wyckoff turn context (Spring / UTAD)
+     bool   extra_wyckoff_turn;
+     double w_wyckoff_turn;
+
+     // Multi-TF zones (H1/H4 zone proximity as confluence)
+     bool   extra_mtf_zones;
+     double w_mtf_zone_h1;
+     double w_mtf_zone_h4;
+     double mtf_zone_max_dist_atr;   // e.g., 1.0–1.5 ATR
 
      // Router / gates / require toggles
      bool enable_hard_gate; double router_min_score; double router_fb_min; int min_features_met;
@@ -1362,6 +1407,39 @@ namespace Config
      #ifdef CFG_HAS_W_AMD_H4
        cfg.w_amd_h4 = x.w_amd_h4;
      #endif
+     
+     // PO3 HTF
+     #ifdef CFG_HAS_EXTRA_PO3_HTF
+       cfg.extra_po3_htf = x.extra_po3_htf;
+     #endif
+     #ifdef CFG_HAS_W_PO3_H1
+       cfg.w_po3_h1 = x.w_po3_h1;
+     #endif
+     #ifdef CFG_HAS_W_PO3_H4
+       cfg.w_po3_h4 = x.w_po3_h4;
+     #endif
+
+     // Wyckoff turn
+     #ifdef CFG_HAS_EXTRA_WYCKOFF_TURN
+       cfg.extra_wyckoff_turn = x.extra_wyckoff_turn;
+     #endif
+     #ifdef CFG_HAS_W_WYCKOFF_TURN
+       cfg.w_wyckoff_turn = x.w_wyckoff_turn;
+     #endif
+
+     // Multi-TF zones
+     #ifdef CFG_HAS_EXTRA_MTF_ZONES
+       cfg.extra_mtf_zones = x.extra_mtf_zones;
+     #endif
+     #ifdef CFG_HAS_W_MTF_ZONE_H1
+       cfg.w_mtf_zone_h1 = x.w_mtf_zone_h1;
+     #endif
+     #ifdef CFG_HAS_W_MTF_ZONE_H4
+       cfg.w_mtf_zone_h4 = x.w_mtf_zone_h4;
+     #endif
+     #ifdef CFG_HAS_MTF_ZONE_MAX_DIST_ATR
+       cfg.mtf_zone_max_dist_atr = x.mtf_zone_max_dist_atr;
+     #endif
    
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
@@ -1486,6 +1564,13 @@ namespace Config
      x.w_silverbullet_tz = 0.06;
      x.w_amd_h1          = 0.06;
      x.w_amd_h4          = 0.08;
+     
+     x.w_po3_h1          = 0.05;
+     x.w_po3_h4          = 0.07;
+     x.w_wyckoff_turn    = 0.05;
+     x.w_mtf_zone_h1     = 0.05;
+     x.w_mtf_zone_h4     = 0.07;
+     x.mtf_zone_max_dist_atr = 1.25;
    
      x.router_min_score=0.55; x.router_fb_min=0.50;
    
@@ -1908,6 +1993,29 @@ namespace Config
     
     #ifdef CFG_HAS_W_AMD_H4
       if(cfg.w_amd_h4 < 0.0) cfg.w_amd_h4 = 0.0;
+    #endif
+    
+    #ifdef CFG_HAS_W_PO3_H1
+      if(cfg.w_po3_h1 < 0.0) cfg.w_po3_h1 = 0.0;
+    #endif
+    #ifdef CFG_HAS_W_PO3_H4
+      if(cfg.w_po3_h4 < 0.0) cfg.w_po3_h4 = 0.0;
+    #endif
+
+    #ifdef CFG_HAS_W_WYCKOFF_TURN
+      if(cfg.w_wyckoff_turn < 0.0) cfg.w_wyckoff_turn = 0.0;
+    #endif
+
+    #ifdef CFG_HAS_W_MTF_ZONE_H1
+      if(cfg.w_mtf_zone_h1 < 0.0) cfg.w_mtf_zone_h1 = 0.0;
+    #endif
+    #ifdef CFG_HAS_W_MTF_ZONE_H4
+      if(cfg.w_mtf_zone_h4 < 0.0) cfg.w_mtf_zone_h4 = 0.0;
+    #endif
+
+    #ifdef CFG_HAS_MTF_ZONE_MAX_DIST_ATR
+      if(cfg.mtf_zone_max_dist_atr <= 0.0) cfg.mtf_zone_max_dist_atr = 1.25;
+      if(cfg.mtf_zone_max_dist_atr > 5.0)  cfg.mtf_zone_max_dist_atr = 5.0;
     #endif
 
     #ifdef CFG_HAS_ADX_PARAMS
@@ -2714,6 +2822,25 @@ namespace Config
     #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
       s+=",sbReqVWAP="+BoolStr(c.sb_require_vwap_stretch);
     #endif
+    
+    s+=",xSBtz="+BoolStr(c.extra_silverbullet_tz);
+    s+=",wSBtz="+DoubleToString(c.w_silverbullet_tz,3);
+
+    s+=",xAMD="+BoolStr(c.extra_amd_htf);
+    s+=",wAMDh1="+DoubleToString(c.w_amd_h1,3);
+    s+=",wAMDh4="+DoubleToString(c.w_amd_h4,3);
+
+    s+=",xPO3="+BoolStr(c.extra_po3_htf);
+    s+=",wPO3h1="+DoubleToString(c.w_po3_h1,3);
+    s+=",wPO3h4="+DoubleToString(c.w_po3_h4,3);
+
+    s+=",xWYT="+BoolStr(c.extra_wyckoff_turn);
+    s+=",wWYT="+DoubleToString(c.w_wyckoff_turn,3);
+
+    s+=",xMTFZ="+BoolStr(c.extra_mtf_zones);
+    s+=",wZ1="+DoubleToString(c.w_mtf_zone_h1,3);
+    s+=",wZ4="+DoubleToString(c.w_mtf_zone_h4,3);
+    s+=",zMaxATR="+DoubleToString(c.mtf_zone_max_dist_atr,3);
 
     s+=",vsa="+BoolStr(c.vsa_enable);
     s+=",vsaMax="+DoubleToString(c.vsa_penalty_max,3);
@@ -3652,6 +3779,25 @@ namespace Config
       #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
         else if(k=="sbReqVWAP") cfg.sb_require_vwap_stretch = ToBool(v);
       #endif
+      
+      else if(k=="xSBtz") cfg.extra_silverbullet_tz = ToBool(v);
+      else if(k=="wSBtz") cfg.w_silverbullet_tz = ToDouble(v);
+
+      else if(k=="xAMD")  cfg.extra_amd_htf = ToBool(v);
+      else if(k=="wAMDh1") cfg.w_amd_h1 = ToDouble(v);
+      else if(k=="wAMDh4") cfg.w_amd_h4 = ToDouble(v);
+
+      else if(k=="xPO3")   cfg.extra_po3_htf = ToBool(v);
+      else if(k=="wPO3h1") cfg.w_po3_h1 = ToDouble(v);
+      else if(k=="wPO3h4") cfg.w_po3_h4 = ToDouble(v);
+
+      else if(k=="xWYT") cfg.extra_wyckoff_turn = ToBool(v);
+      else if(k=="wWYT") cfg.w_wyckoff_turn = ToDouble(v);
+
+      else if(k=="xMTFZ")  cfg.extra_mtf_zones = ToBool(v);
+      else if(k=="wZ1")    cfg.w_mtf_zone_h1 = ToDouble(v);
+      else if(k=="wZ4")    cfg.w_mtf_zone_h4 = ToDouble(v);
+      else if(k=="zMaxATR") cfg.mtf_zone_max_dist_atr = ToDouble(v);
 
       // Feature toggles
       else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
@@ -4085,6 +4231,21 @@ struct Settings
   bool   extra_amd_htf;
   double w_amd_h1;
   double w_amd_h4;
+  
+  // PO3 HTF phases (H1/H4 intraday context)
+  bool   extra_po3_htf;
+  double w_po3_h1;
+  double w_po3_h4;
+
+  // Wyckoff turn context (Spring / UTAD)
+  bool   extra_wyckoff_turn;
+  double w_wyckoff_turn;
+
+  // Multi-TF zones (H1/H4 zone proximity)
+  bool   extra_mtf_zones;
+  double w_mtf_zone_h1;
+  double w_mtf_zone_h4;
+  double mtf_zone_max_dist_atr;
 
   // Extras (applied only after main logic confirms)
   bool    extra_macd;

@@ -431,6 +431,18 @@ input bool   InpExtra_AMD_HTF        = false;
 input double InpW_AMD_H1             = 0.06;
 input double InpW_AMD_H4             = 0.08;
 
+input bool   InpExtra_PO3_HTF       = false;
+input double InpW_PO3_H1            = 0.05;
+input double InpW_PO3_H4            = 0.07;
+
+input bool   InpExtra_Wyckoff_Turn  = false;
+input double InpW_Wyckoff_Turn      = 0.05;
+
+input bool   InpExtra_MTF_Zones     = false;
+input double InpW_MTFZone_H1        = 0.05;
+input double InpW_MTFZone_H4        = 0.07;
+input double Inp_MTFZone_MaxDistATR = 1.25;
+
 // — Router/Confluence thresholds —
 input bool   Inp_EnableHardGate            = false;  // Router/Confluence Threshold: Hard Gate
 input double Inp_RouterFallbackMin         = 0.50;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
@@ -1934,6 +1946,18 @@ int OnInit()
    ex.extra_amd_htf         = InpExtra_AMD_HTF;
    ex.w_amd_h1              = InpW_AMD_H1;
    ex.w_amd_h4              = InpW_AMD_H4;
+   
+   ex.extra_po3_htf          = InpExtra_PO3_HTF;
+   ex.w_po3_h1               = InpW_PO3_H1;
+   ex.w_po3_h4               = InpW_PO3_H4;
+
+   ex.extra_wyckoff_turn     = InpExtra_Wyckoff_Turn;
+   ex.w_wyckoff_turn         = InpW_Wyckoff_Turn;
+
+   ex.extra_mtf_zones        = InpExtra_MTF_Zones;
+   ex.w_mtf_zone_h1          = InpW_MTFZone_H1;
+   ex.w_mtf_zone_h4          = InpW_MTFZone_H4;
+   ex.mtf_zone_max_dist_atr  = Inp_MTFZone_MaxDistATR;
    
    ex.london_liq_policy      = Inp_LondonLiquidityPolicy;
    ex.london_start_local     = Inp_LondonStartLocal;
