@@ -50,7 +50,7 @@ struct Settings;
 #endif
 
 #ifndef NEWSFILTER_AVAILABLE
-  #define NEWSFILTER_AVAILABLE 0
+  #define NEWSFILTER_AVAILABLE 1
 #endif
 
 #ifndef CFG_HAS_ADX_PARAMS
@@ -104,6 +104,18 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_MAIN_SEQGATE
   #define CFG_HAS_MAIN_SEQGATE 1
+#endif
+#ifndef CFG_HAS_ORDERFLOW_TH
+  #define CFG_HAS_ORDERFLOW_TH 1
+#endif
+#ifndef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+  #define CFG_HAS_MAIN_REQUIRE_CHECKLIST 1
+#endif
+#ifndef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+  #define CFG_HAS_MAIN_CONFIRM_ANY_OF_3 1
+#endif
+#ifndef CFG_HAS_TF_TREND_HTF
+  #define CFG_HAS_TF_TREND_HTF 1
 #endif
 
 #ifndef CFG_HAS_EXTRA_VOLUME_FP
@@ -555,6 +567,10 @@ namespace Config
    struct BuildExtras {
      // Confluence gates
      int    conf_min_count;   double conf_min_score;  bool main_sequential_gate;
+     bool   main_require_checklist;
+     bool   main_confirm_any_of_3;
+     double orderflow_th;
+     ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
    
      // Volume footprint
      bool   extra_volume_footprint;  double w_volume_footprint;
@@ -1286,6 +1302,18 @@ namespace Config
      #ifdef CFG_HAS_MAIN_SEQGATE
        cfg.main_sequential_gate = x.main_sequential_gate;
      #endif
+     #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+       cfg.main_require_checklist = x.main_require_checklist;
+     #endif
+     #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+       cfg.main_confirm_any_of_3 = x.main_confirm_any_of_3;
+     #endif
+     #ifdef CFG_HAS_ORDERFLOW_TH
+       cfg.orderflow_th = x.orderflow_th;
+     #endif
+     #ifdef CFG_HAS_TF_TREND_HTF
+       cfg.tf_trend_htf = x.tf_trend_htf;
+     #endif
    
      // Volume footprint
      #ifdef CFG_HAS_EXTRA_VOLUME_FP
@@ -1544,6 +1572,10 @@ namespace Config
      x.london_end_local  = "";
      x.require_sb_ote = false;
      x.require_sb_vwap_stretch = false;
+     x.main_require_checklist = true;
+     x.main_confirm_any_of_3  = true;
+     x.orderflow_th           = 0.80;          // sensible starting threshold
+     x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
@@ -1953,6 +1985,16 @@ namespace Config
       cfg.cf_min_score  = MathMin(MathMax(cfg.cf_min_score, 0.0), 1.0);
     #endif
 
+    #ifdef CFG_HAS_ORDERFLOW_TH
+      if(cfg.orderflow_th <= 0.0) cfg.orderflow_th = 0.80;
+      if(cfg.orderflow_th < 0.10) cfg.orderflow_th = 0.10;
+      if(cfg.orderflow_th > 5.00) cfg.orderflow_th = 5.00;
+    #endif
+   
+    #ifdef CFG_HAS_TF_TREND_HTF
+      if((int)cfg.tf_trend_htf < (int)PERIOD_M1) cfg.tf_trend_htf = cfg.tf_h4; // PERIOD_CURRENT(0) falls here
+    #endif
+
     #ifdef CFG_HAS_CF_WEIGHTS
       cfg.w_inst_zones       = MathMax(0.0, cfg.w_inst_zones);
       cfg.w_orderflow_delta  = MathMax(0.0, cfg.w_orderflow_delta);
@@ -2252,6 +2294,10 @@ namespace Config
         warns+="regime_tq_min > 0.60; squeeze/trend may rarely qualify.\n";
     #endif
 
+    #ifdef CFG_HAS_ORDERFLOW_TH
+      if(cfg.orderflow_th < 0.10) warns += "orderflow_th < 0.10; likely too permissive or unstable.\n";
+    #endif
+  
     // If news_on is set but NEWSFILTER_AVAILABLE == 0, warn that blocks are ignored.
     if(cfg.news_on && (NEWSFILTER_AVAILABLE==0))
       warns += "news_on set but NEWSFILTER_AVAILABLE==0; news blocks will be ignored.\n";
@@ -2669,6 +2715,9 @@ namespace Config
     s+=",h1="+IntegerToString((int)c.tf_h1);
     s+=",h4="+IntegerToString((int)c.tf_h4);
     s+=",d1="+IntegerToString((int)c.tf_d1);
+    #ifdef CFG_HAS_TF_TREND_HTF
+      s+=",tfTrend="+IntegerToString((int)c.tf_trend_htf);
+    #endif
     s+=",tradeSel="+IntegerToString((int)c.trade_selector);
     #ifdef CFG_HAS_TRADE_CD_SEC
         s+=",cd="+IntegerToString((int)c.trade_cd_sec);
@@ -2805,6 +2854,15 @@ namespace Config
 
     s+=",vwL="+IntegerToString(c.vwap_lookback);
     s+=",vwSig="+DoubleToString(c.vwap_sigma,3);
+    #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+      s+=",mainReq="+BoolStr(c.main_require_checklist);
+    #endif
+    #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+      s+=",mainAny3="+BoolStr(c.main_confirm_any_of_3);
+    #endif
+    #ifdef CFG_HAS_ORDERFLOW_TH
+      s+=",ofTh="+DoubleToString(c.orderflow_th,3);
+    #endif
     
     #ifdef CFG_HAS_SB_REQUIRE_OTE
       s+=",sbReqOTE="+BoolStr(c.sb_require_ote);
@@ -3622,6 +3680,7 @@ namespace Config
 
     // tokenization by ','
     string tok[]; int n=StringSplit(best, ',', tok);
+    bool seenMainReq=false, seenMainAny3=false;
     for(int i=0;i<n;i++)
     {
       string k,v; if(!SplitKV(tok[i],k,v)) continue;
@@ -3631,6 +3690,12 @@ namespace Config
       else if(k=="h1") cfg.tf_h1=(ENUM_TIMEFRAMES)ToInt(v);
       else if(k=="h4") cfg.tf_h4=(ENUM_TIMEFRAMES)ToInt(v);
       else if(k=="d1") cfg.tf_d1=(ENUM_TIMEFRAMES)ToInt(v);
+      #ifdef CFG_HAS_TF_TREND_HTF
+        else if(k=="trendtf") cfg.tf_trend_htf=(ENUM_TIMEFRAMES)ToInt(v);
+      #endif
+      #ifdef CFG_HAS_TF_TREND_HTF
+        else if(k=="tfTrend") cfg.tf_trend_htf=(ENUM_TIMEFRAMES)ToInt(v);
+      #endif
       else if(k=="tradeSel") cfg.trade_selector=(TradeSelector)ToInt(v);
       #ifdef CFG_HAS_TRADE_CD_SEC
             else if(k=="cd") cfg.trade_cd_sec = ToInt(v);
@@ -3762,6 +3827,15 @@ namespace Config
       else if(k=="pTau")   cfg.pattern_tau = ToDouble(v);
       else if(k=="vwL")    cfg.vwap_lookback = ToInt(v);
       else if(k=="vwSig")  cfg.vwap_sigma = ToDouble(v);
+      #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+        else if(k=="mainReq"){ cfg.main_require_checklist=ToBool(v); seenMainReq=true; }
+      #endif
+      #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+        else if(k=="mainAny3"){ cfg.main_confirm_any_of_3=ToBool(v); seenMainAny3=true; }
+      #endif
+      #ifdef CFG_HAS_ORDERFLOW_TH
+        else if(k=="ofTh") cfg.orderflow_th=ToDouble(v);
+      #endif
       
       #ifdef CFG_HAS_SB_REQUIRE_OTE
         else if(k=="sbReqOTE") cfg.sb_require_ote = ToBool(v);
@@ -3824,6 +3898,15 @@ namespace Config
       #endif
       #ifdef CFG_HAS_CARRY_RISK_SPAN
         else if(k=="carrySpan") cfg.carry_risk_span = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+        else if(k=="mainReq") cfg.main_require_checklist = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+        else if(k=="mainAny3") cfg.main_confirm_any_of_3 = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ORDERFLOW_TH
+        else if(k=="ofTh") cfg.orderflow_th = ToDouble(v);
       #endif
 
       // Router hints / gates
@@ -3908,6 +3991,13 @@ namespace Config
       #endif
     }
     
+    #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
+      if(!seenMainReq) cfg.main_require_checklist = true;
+    #endif
+    #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
+      if(!seenMainAny3) cfg.main_confirm_any_of_3 = true;
+    #endif
+
     Normalize(cfg);
     _SyncRouterFallbackAlias(cfg);
     FinalizeThresholds(cfg);
@@ -3954,6 +4044,7 @@ struct Settings
   ENUM_TIMEFRAMES   tf_h4;
   ENUM_TIMEFRAMES   tf_d1;
   ENUM_TIMEFRAMES   tf_htf;              // higher timeframe reference
+  ENUM_TIMEFRAMES   tf_trend_htf;        // HTF used for trend filters (0 => use tf_h4)
   double            risk_per_trade;      // base %/bp or lot logic
   bool              newsFilterEnabled;   // block entries near high-impact news
 
@@ -4095,6 +4186,9 @@ struct Settings
    int    cf_min_needed;     // how many checks must pass
    double cf_min_score;      // weighted min-score (0..1)
    bool   main_sequential_gate;
+   bool   main_require_checklist;  // default true: enforce checklist scoring
+   bool   main_confirm_any_of_3;   // default true: allow any-of-3 confirmation rule
+   double orderflow_th;            // threshold for orderflow/Δ gate (z or accel threshold)
    
    // ===== Base Confluence Toggles =====
    bool cf_inst_zones;       // Institutional zones

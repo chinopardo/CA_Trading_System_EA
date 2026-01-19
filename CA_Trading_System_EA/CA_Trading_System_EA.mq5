@@ -1723,6 +1723,12 @@ void BuildSettingsFromInputs(Settings &cfg)
    #endif
    #ifdef CFG_HAS_TRADE_DIRECTION_SELECTOR
       cfg.trade_direction_selector = InpTradeDirectionSelector;
+      // Normalize: TradeDirectionSelector overrides TradeSelector when not BOTH.
+      if(cfg.trade_direction_selector == TDIR_BUY)
+         cfg.trade_selector = TRADE_BUY_ONLY;
+      else if(cfg.trade_direction_selector == TDIR_SELL)
+         cfg.trade_selector = TRADE_SELL_ONLY;
+      // TDIR_BOTH: keep cfg.trade_selector as configured (e.g., TRADE_BOTH_AUTO / BUY_ONLY / SELL_ONLY)
    #endif
 
    // Direction bias mode:
@@ -1825,6 +1831,7 @@ void BuildSettingsFromInputs(Settings &cfg)
       (InpEnable_PO3Mode && cfg.enable_strat_ict_po3);
    cfg.mode_enforce_killzone = InpEnforceKillzone;
    cfg.mode_use_ICT_bias     = InpUseICTBias;
+   Config::Normalize(cfg);
 }
 
 //--------------------------------------------------------------------
@@ -1991,7 +1998,11 @@ int OnInit()
    g_show_breakdown = true;
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
-   g_use_registry   = InpUseRegistryRouting;
+   g_use_registry = InpUseRegistryRouting;
+
+   // STRAT_MAIN_ONLY must always use RouterEvaluateAll() to guarantee the unified mode allow-list behavior.
+   if(S.strat_mode == STRAT_MAIN_ONLY)
+      g_use_registry = false;
    LogX::Info(StringFormat("Execution path: %s",
                         (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
 
@@ -2165,7 +2176,10 @@ int OnInit()
    TesterCases::ApplyTestCase(S, InpTestCase);
    
    if(S.strat_mode == STRAT_MAIN_ONLY && g_use_registry)
-      Print("WARN: STRAT_MAIN_ONLY with Registry routing may bypass unified Router candidate pipeline; prefer Router routing.");
+   {
+      g_use_registry = false;
+      LogX::Warn("STRAT_MAIN_ONLY forces Router routing; disabling Registry routing for consistent allow-list enforcement.");
+   }
    
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
@@ -2240,6 +2254,8 @@ int OnInit()
    
    // 1. Copy all extern/input params into g_cfg
    BuildSettingsFromInputs(g_cfg);
+   // Keep a single source of truth for runtime settings (UI + any legacy calls).
+   S = g_cfg;
    //g_cfg.tf_entry = S.tf_entry;
    //g_cfg.tf_h1 = S.tf_h1;
    //g_cfg.tf_h4 = S.tf_h4;
@@ -2492,17 +2508,6 @@ void OnTimer()
    if(InpOnlyNewBar)
       return;
    
-   if(g_use_registry)
-      return;
-   // Legacy centralized router eval on timer – disabled.
-   // if(!g_use_registry)
-   //    MaybeEvaluate();
-   
-   // If ticks are sparse, allow timer-driven router eval (chart symbol only)
-   int gate_reason = 0;
-   datetime now_srv = TimeUtils::NowServer();
-   MaybeResetStreaksDaily(now_srv);
-   
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
    if(g_use_registry)
    {
@@ -2512,7 +2517,15 @@ void OnTimer()
          ProcessSymbol(sym, true);
       }
       return;
-   }
+   }   
+   // Legacy centralized router eval on timer – disabled.
+   // if(!g_use_registry)
+   //    MaybeEvaluate();
+   
+   // If ticks are sparse, allow timer-driven router eval (chart symbol only)
+   int gate_reason = 0;
+   datetime now_srv = TimeUtils::NowServer();
+   MaybeResetStreaksDaily(now_srv);
    
    // Router mode path (ICT RouterEvaluateAll)
    if(!Warmup::DataReadyForEntry(g_cfg))
@@ -2612,18 +2625,6 @@ void OnTimer()
       {
       Settings cfg_pack = cfg;
       
-      // StrategyMode allow-list enforcement (defense in depth).
-      // Requires Types.mqh: Strat_AllowedToTrade(mode, sid)
-      if((int)pick_out.id == 0 || !Strat_AllowedToTrade(sm, pick_out.id))
-      {
-         pick_out.bd.veto = true;
-         pick_out.ss.eligible = false;
-      
-         if(InpDebug)
-            LogX::Warn(StringFormat("[MODE] Blocked strategy id=%d under mode=%d for %s",
-                                    (int)pick_out.id, (int)sm, sym));
-      }
-
       // If we are in COMBINED, force fallback to PACK_ONLY so core does not compete twice
       if(sm != STRAT_PACK_ONLY)
          Config::ApplyStrategyMode(cfg_pack, STRAT_PACK_ONLY);
@@ -2646,6 +2647,20 @@ void OnTimer()
       }
    }
    
+   // StrategyMode allow-list enforcement (defense in depth) — AFTER routing so pick_out.id is real.
+   if(okRoute)
+   {
+      if((int)pick_out.id == 0 || !Strat_AllowedToTrade(sm, pick_out.id))
+      {
+         pick_out.bd.veto = true;
+         pick_out.ss.eligible = false;
+   
+         if(InpDebug)
+            LogX::Warn(StringFormat("[MODE] Blocked strategy id=%d under mode=%d for %s",
+                                    (int)pick_out.id, (int)sm, sym));
+      }
+   }
+
    // Enforce eligibility/threshold here (single place)
    if(pick_out.bd.veto || !pick_out.ss.eligible || pick_out.ss.score < min_sc)
       return false;
@@ -3259,10 +3274,18 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
            }
          else
             if(K=='R')
-              {
-               g_use_registry=!g_use_registry;
-               PrintFormat("[UI] Routing: %s",(g_use_registry?"REGISTRY-ALL":"MANUAL-REGIME"));
-              }
+            {
+               if(S.strat_mode == STRAT_MAIN_ONLY)
+               {
+                  g_use_registry = false;
+                  PrintFormat("[UI] Routing locked to ROUTER in STRAT_MAIN_ONLY");
+               }
+               else
+               {
+                  g_use_registry = !g_use_registry;
+                  PrintFormat("[UI] Routing: %s",(g_use_registry?"REGISTRY-ALL":"MANUAL-REGIME"));
+               }
+            }
             else
                if(K=='N')
                  {

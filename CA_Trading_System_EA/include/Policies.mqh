@@ -433,70 +433,48 @@ namespace Policies
    }
 
   // --- News (compile-safe) ---------------------------------------------------
-  inline bool CfgNewsOn(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_NEWS_ON
-      return (bool)cfg.news_on;
-    #else
-      return false;
-    #endif
-  }
-  inline int CfgNewsImpactMask(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_NEWS_IMPACT_MASK
-      return cfg.news_impact_mask;
-    #else
-      return (1<<1) | (1<<2); // MED+HIGH default
-    #endif
-  }
-  inline int CfgNewsBlockPreMins(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_NEWS_BLOCK_PRE_M
-      return cfg.block_pre_m;
-    #else
-      return 0;
-    #endif
-  }
-  inline int CfgNewsBlockPostMins(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_NEWS_BLOCK_POST_M
-      return cfg.block_post_m;
-    #else
-      return 0;
-    #endif
-  }
+   inline bool CfgNewsOn(const Settings &cfg)
+   {
+     #ifdef NEWSFILTER_AVAILABLE
+       return (cfg.news_on && (NEWSFILTER_AVAILABLE != 0));
+     #else
+       return false;
+     #endif
+   }
+   inline int CfgNewsImpactMask(const Settings &cfg)
+   {
+     const int m = cfg.news_impact_mask;
+     if(m != 0) return m;
+     return (1<<1) | (1<<2); // MED+HIGH default
+   }
+   inline int CfgNewsBlockPreMins(const Settings &cfg)
+   {
+     return (cfg.block_pre_m > 0 ? cfg.block_pre_m : 0);
+   }
+   
+   inline int CfgNewsBlockPostMins(const Settings &cfg)
+   {
+     return (cfg.block_post_m > 0 ? cfg.block_post_m : 0);
+   }
   inline int CfgCalLookbackMins(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_CAL_LOOKBACK_MINS
-      return cfg.cal_lookback_mins;
-    #else
-      return 60;
-    #endif
-  }
-  inline double CfgCalHardSkip(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_CAL_HARD_SKIP
-      return (cfg.cal_hard_skip>0.0? cfg.cal_hard_skip : 2.0);
-    #else
-      return 2.0;
-    #endif
-  }
-  inline double CfgCalSoftKnee(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_CAL_SOFT_KNEE
-      return (cfg.cal_soft_knee>0.0? cfg.cal_soft_knee : 0.6);
-    #else
-      return 0.6;
-    #endif
-  }
-  inline double CfgCalMinScale(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_CAL_MIN_SCALE
-      return (cfg.cal_min_scale>0.0? cfg.cal_min_scale : 0.6);
-    #else
-      return 0.6;
-    #endif
-  }
+   {
+     return (cfg.cal_lookback_mins > 0 ? cfg.cal_lookback_mins : 60);
+   }
+   
+   inline double CfgCalHardSkip(const Settings &cfg)
+   {
+     return (cfg.cal_hard_skip > 0.0 ? cfg.cal_hard_skip : 2.0);
+   }
+   
+   inline double CfgCalSoftKnee(const Settings &cfg)
+   {
+     return (cfg.cal_soft_knee > 0.0 ? cfg.cal_soft_knee : 0.6);
+   }
+   
+   inline double CfgCalMinScale(const Settings &cfg)
+   {
+     return (cfg.cal_min_scale > 0.0 ? cfg.cal_min_scale : 0.6);
+   }
 
   // --- Strategy toggles ------------------------------------------------------
   inline bool CfgEnableTrendPullback(const Settings &cfg)
@@ -517,11 +495,7 @@ namespace Policies
   }
   inline bool CfgEnableNewsFade(const Settings &cfg)
   {
-    #ifdef CFG_HAS_ENABLE_NEWS_FADE
-      return (bool)cfg.enable_news_fade;
-    #else
-      return true;
-    #endif
+    return (bool)cfg.enable_news_fade;
   }
 
   // --- Volatility breaker & spread adapt knobs -------------------------------
@@ -2193,199 +2167,15 @@ namespace Policies
   inline bool EvaluateCoreAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateCoreEx(cfg, out, true);  }
   inline bool EvaluateFull(const Settings &cfg, PolicyResult &out)      { return _EvaluateFullEx(cfg, out, false); }
   inline bool EvaluateFullAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateFullEx(cfg, out, true);  }
+  inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news);
 
   // ---------------------------------------------------------------------------
   // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)
   // ---------------------------------------------------------------------------
   inline bool Check(const Settings &cfg, int &reason)
   {
-    _EnsureLoaded(cfg);
-    _EnsureMonthState();
-    reason = GATE_OK;
-
-    // ------------------------------------------------------------------------
-    // 0) Apply runtime knobs from cfg so Execution / Router / Intent builder
-    //    all see consistent policy parameters, even if they never call the
-    //    higher-level intent builders.
-    // ------------------------------------------------------------------------
-    SetMoDMultiplier      (CfgModSpreadMult(cfg));
-    SetSpreadATRAdapt     (CfgATRShort(cfg), CfgATRLong(cfg),
-                           CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
-    SetVolBreakerLimit    (CfgVolBreakerLimit(cfg));
-    SetLiquidityParams    (CfgLiqMinRatio(cfg));
-    SetLossCooldownParams (CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
-    SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
-
-    // ------------------------------------------------------------------------
-    // 1) Hard day/account stops (cheap, persistent, latched)
-    // ------------------------------------------------------------------------
-
-    // 1a) Realised day-loss (money / %) hard stop
-    double loss_money = 0.0;
-    double loss_pct   = 0.0;
-    if(DailyLossStopHit(cfg, loss_money, loss_pct))
-    {
-      reason = GATE_DAYLOSS;
-
-      // Log caps + values (no heavy recompute; caps are cheap)
-      const double cap_money = CfgDayLossCapMoney(cfg);
-
-      double cap_pct = CfgDayLossCapPct(cfg);
-      const double dd_pct_cap = CfgMaxDailyDDPct(cfg);
-      // effective pct cap: prefer explicit, but ensure we show the strictest if both exist
-      if(cap_pct <= 0.0) cap_pct = dd_pct_cap;
-      else if(dd_pct_cap > 0.0) cap_pct = MathMax(cap_pct, dd_pct_cap);
-
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("loss_money=%.2f loss_pct=%.3f cap_money=%.2f cap_pct=%.3f dayEq0=%.2f",
-                               loss_money, loss_pct, cap_money, cap_pct, s_dayEqStart));
-      return false;
-    }
-
-    // 1b) Daily equity drawdown vs day anchor
-    double day_dd_pct = 0.0;
-    if(DailyEquityDDHit(cfg, day_dd_pct))
-    {
-      reason = GATE_DAILYDD;
-
-      const double eq0 = s_dayEqStart;
-      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-      const double lim = CfgMaxDailyDDPct(cfg);
-
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("dd_pct=%.3f limit=%.3f dayEq0=%.2f eq=%.2f",
-                               day_dd_pct, lim, eq0, eq1));
-      return false;
-    }
-
-    // 1c) Account-wide (challenge) equity floor (never re-anchors)
-    double acct_dd_pct = 0.0;
-    if(AccountEquityDDHit(cfg, acct_dd_pct))
-    {
-      reason = GATE_ACCOUNT_DD;
-
-      const double eq0 = s_acctEqStart;
-      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-      const double lim = CfgMaxAccountDDPct(cfg);
-
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("acct_dd_pct=%.3f limit=%.3f acctEq0=%.2f eq=%.2f latched=%s",
-                               acct_dd_pct, lim, eq0, eq1, (s_acctStopHit?"YES":"NO")));
-      return false;
-    }
-    
-    // 1d) Monthly profit target (latched per calendar month)
-    double month_pct = 0.0;
-    if(MonthlyProfitTargetHit(cfg, month_pct))
-    {
-      reason = GATE_MONTH_TARGET;
-
-      const double eq0 = s_monthStartEq;
-      const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-      const double tgt = CfgMonthlyTargetPct(cfg);
-
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("month_pct=%.3f target=%.3f monthEq0=%.2f eq=%.2f latched=%s",
-                               month_pct, tgt, eq0, eq1, (s_monthTargetHit?"YES":"NO")));
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 2) Cooldowns (loss-streak + per-trade)
-    // ------------------------------------------------------------------------
-    if(LossCooldownActive() || TradeCooldownActive())
-    {
-      reason = GATE_COOLDOWN;
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("trade_left=%ds loss_left=%ds trade_cd=%ds loss_cd_min=%d",
-                               TradeCooldownSecondsLeft(), LossCooldownSecondsLeft(),
-                               s_trade_cd_sec, s_cooldown_min));
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 3) Spread / session-aware MoD gate (with weekly-open ramp)
-    //     • Will return GATE_SPREAD / GATE_MOD_SPREAD / GATE_SESSION
-    // ------------------------------------------------------------------------
-    int spread_reason = GATE_OK;
-    if(!MoDSpreadOK(cfg, spread_reason))
-    {
-      reason = spread_reason;
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 4) Optional London-local liquidity policy:
-    //    tweak the liquidity floor depending on London local window.
-    //    This only affects LiquidityOK(), which is used in CheckFull().
-    // ------------------------------------------------------------------------
-    #ifdef CFG_HAS_LONDON_LIQ_POLICY
-    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
-    {
-      const bool in_lon =
-          _WithinLocalWindowMins(cfg.london_local_open_min,
-                                 cfg.london_local_close_min,
-                                 TimeLocal());
-
-      if(cfg.london_liquidity_policy)
-      {
-        const double base = CfgLiqMinRatio(cfg);
-        const double mult = (in_lon ? 0.95 : 1.05); // tighter in London, looser outside
-        SetLiquidityParams(base * mult);
-      }
-    }
-    #endif // CFG_HAS_LONDON_LOCAL_MINUTES
-    #endif // CFG_HAS_LONDON_LIQ_POLICY
-
-    // ------------------------------------------------------------------------
-    // 5) Volatility breaker – short ATR vs long ATR too extreme
-    // ------------------------------------------------------------------------
-    double vb_ratio = 0.0;
-    if(VolatilityBreaker(cfg, vb_ratio))
-    {
-      reason = GATE_VOLATILITY;
-      _GateDetail(cfg, reason, _Symbol,
-                  StringFormat("ATRratio=%.3f limit=%.3f shortP=%d longP=%d",
-                               vb_ratio, s_vb_limit, CfgATRShort(cfg), CfgATRLong(cfg)));
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 6) ADR cap – "too much range today" style breaker
-    //     ADRCapOK sets its own reason (normally GATE_ADR).
-    // ------------------------------------------------------------------------
-    double adr_pts    = 0.0;
-    int    adr_reason = GATE_OK;
-    if(!ADRCapOK(cfg, adr_reason, adr_pts))
-    {
-      reason = adr_reason;
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 7) Calm mode – too quiet / illiquid (ATR vs spread / min ATR)
-    // ------------------------------------------------------------------------
-    int calm_reason = GATE_OK;
-    if(!CalmModeOK(cfg, calm_reason))
-    {
-      reason = calm_reason;  // typically GATE_CALM
-      return false;
-    }
-
-    // ------------------------------------------------------------------------
-    // 8) Regime gate (trend-quality / correlation slope consensus)
-    // ------------------------------------------------------------------------
-    EnableRegimeGate(CfgRegimeGateOn(cfg));
-    SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
-    if(!RegimeConsensusOK(cfg))
-    {
-      reason = GATE_REGIME;
-      return false;
-    }
-
-    // If we reach here, all gates passed.
-    reason = GATE_OK;
-    return true;
+    int mins_left_news = 0;
+    return CheckFull(cfg, reason, mins_left_news);
   }
 
   // --- Hooks expected by Execution.mqh ---
