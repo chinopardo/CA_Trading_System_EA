@@ -2167,7 +2167,6 @@ namespace Policies
   inline bool EvaluateCoreAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateCoreEx(cfg, out, true);  }
   inline bool EvaluateFull(const Settings &cfg, PolicyResult &out)      { return _EvaluateFullEx(cfg, out, false); }
   inline bool EvaluateFullAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateFullEx(cfg, out, true);  }
-  inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news);
 
   // ---------------------------------------------------------------------------
   // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)

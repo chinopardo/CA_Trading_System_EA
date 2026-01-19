@@ -3004,7 +3004,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    }
    // News hard-block window
    int mins_left=0;
-   if(S.news_on && News::IsBlocked(now_srv, sym, S.news_impact_mask, S.block_pre_m, S.block_post_m, mins_left))
+   if(S.news_on && Policies::NewsBlockedNow(S, mins_left))
    {
       Panel::SetGate(6);
       PM::ManageAll(S);
