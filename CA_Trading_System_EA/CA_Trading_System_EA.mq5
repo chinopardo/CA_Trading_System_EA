@@ -377,6 +377,8 @@ input double InpRiskMult_WyckoffTurn      = 0.40;
 input int    InpConf_MinCount       = 1;       // Confluence Gate: Min Count
 input double InpConf_MinScore       = 0.35;    // Confluence Gate: Min Score
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
+input bool   InpMain_RequireChecklist = true;  // Main: require checklist (disable to prevent trade starvation)
+input bool   InpMain_RequireClassicalConfirm = false; // Main: require classical confirmation layer (optional hard requirement)
 
 // --- Liquidity Pools (Lux-style, LuxAlgo Liquidity Pools) ---
 input int    InpLiqPoolMinTouches      = 2;      // Liquidity Pools: min touches (cNum)
@@ -479,6 +481,7 @@ input bool   Inp_LogVetoDetails            = true;   // Log Veto Details
 // Toggle each confluence
 input bool InpCF_InstZones             = true; // Institutional Demand/Supply zones (StructureSDOB)
 input bool InpCF_OrderFlowDelta        = true; // Positive/Negative volume delta (DeltaProxy)
+input double InpMain_OrderFlowThreshold = 0.60; // Main: orderflow confidence threshold (0..1). 0.80 is too strict for most FX feeds.
 input bool InpCF_OrderBlockNear        = true; // OB near SD zone
 input bool InpCF_CndlPattern           = true; // Candlestick patterns
 input bool InpCF_ChartPattern          = true; // Chart patterns
@@ -534,6 +537,7 @@ input double           InpATR_SlMult            = 1.70;  // ATR & Quantile TP/SL
 // Feature toggles
 input bool             InpVSA_Enable            = true;  // Feature: VSA Enable
 input double           InpVSA_PenaltyMax        = 0.25;  // Feature: VSA Max Penalty
+input bool             InpVSA_AllowTickVolume    = true;  // VSA: allow tick volume fallback (FX-friendly)
 input bool             InpStructure_Enable      = true;  // Feature: Structure Enable
 input bool             InpLiquidity_Enable      = true;  // Feature: Liquidity Enable
 input bool             InpCorrSoftVeto_Enable   = false;  // Feature: Corr Soft Veto Enable
@@ -1723,12 +1727,18 @@ void BuildSettingsFromInputs(Settings &cfg)
    #endif
    #ifdef CFG_HAS_TRADE_DIRECTION_SELECTOR
       cfg.trade_direction_selector = InpTradeDirectionSelector;
-      // Normalize: TradeDirectionSelector overrides TradeSelector when not BOTH.
-      if(cfg.trade_direction_selector == TDIR_BUY)
-         cfg.trade_selector = TRADE_BUY_ONLY;
-      else if(cfg.trade_direction_selector == TDIR_SELL)
-         cfg.trade_selector = TRADE_SELL_ONLY;
-      // TDIR_BOTH: keep cfg.trade_selector as configured (e.g., TRADE_BOTH_AUTO / BUY_ONLY / SELL_ONLY)
+   
+      // Canonical manual selector (single source of truth for manual intent):
+      cfg.trade_selector = InpTradeSelector;
+   
+      // Legacy alias: only apply the legacy selector if the newer selector is left at default.
+      if(cfg.trade_selector == TRADE_BOTH_AUTO)
+        {
+         if(cfg.trade_direction_selector == TDIR_BUY)
+            cfg.trade_selector = TRADE_BUY_ONLY;
+         else if(cfg.trade_direction_selector == TDIR_SELL)
+            cfg.trade_selector = TRADE_SELL_ONLY;
+        }
    #endif
 
    // Direction bias mode:
@@ -1896,6 +1906,9 @@ int OnInit()
    ex.conf_min_count        = InpConf_MinCount;
    ex.conf_min_score        = InpConf_MinScore;
    ex.main_sequential_gate  = InpMain_SequentialGate;
+   ex.main_require_checklist  = InpMain_RequireChecklist;
+   ex.main_require_classical   = InpMain_RequireClassicalConfirm;
+   ex.orderflow_th            = MathMin(MathMax(InpMain_OrderFlowThreshold, 0.0), 1.0);
    ex.extra_volume_footprint = InpExtra_VolumeFootprint;
    ex.w_volume_footprint     = InpW_VolumeFootprint;
    
@@ -1973,6 +1986,7 @@ int OnInit()
    ex.use_atr_as_delta       = Inp_UseATRasDeltaProxy;
    ex.atr_period_2           = InpATR_Period_Delta;          // or Inp_ATR_Period_2 if you have one
    ex.atr_vol_regime_floor   = Inp_ATR_VolRegimeFloor;
+   ex.vsa_allow_tick_volume  = InpVSA_AllowTickVolume;
    
    ex.struct_zz_depth        = Inp_Struct_ZigZagDepth;
    ex.struct_htf_mult        = Inp_Struct_HTF_Multiplier;
@@ -1994,6 +2008,7 @@ int OnInit()
    Config::LoadInputs(S);
    Config::ApplyKVOverrides(S);
    Config::FinalizeThresholds(S);
+   VSA::SetAllowTickVolume(InpVSA_AllowTickVolume);
 
    g_show_breakdown = true;
    g_calm_mode      = false;
@@ -2256,6 +2271,12 @@ int OnInit()
    BuildSettingsFromInputs(g_cfg);
    // Keep a single source of truth for runtime settings (UI + any legacy calls).
    S = g_cfg;
+   LogX::Info(StringFormat("DIR: trade_selector=%d  legacy_dir=%d  bias_mode=%d  require_checklist=%s  require_classical=%s",
+                        (int)S.trade_selector,
+                        (int)S.trade_direction_selector,
+                        (int)S.direction_bias_mode,
+                        (InpMain_RequireChecklist ? "true" : "false"),
+                        (InpMain_RequireClassicalConfirm ? "true" : "false")));
    //g_cfg.tf_entry = S.tf_entry;
    //g_cfg.tf_h1 = S.tf_h1;
    //g_cfg.tf_h4 = S.tf_h4;

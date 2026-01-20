@@ -114,6 +114,12 @@ struct Settings;
 #ifndef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
   #define CFG_HAS_MAIN_CONFIRM_ANY_OF_3 1
 #endif
+#ifndef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+  #define CFG_HAS_MAIN_REQUIRE_CLASSICAL 1
+#endif
+#ifndef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+  #define CFG_HAS_VSA_ALLOW_TICK_VOLUME 1
+#endif
 #ifndef CFG_HAS_TF_TREND_HTF
   #define CFG_HAS_TF_TREND_HTF 1
 #endif
@@ -569,7 +575,11 @@ namespace Config
      int    conf_min_count;   double conf_min_score;  bool main_sequential_gate;
      bool   main_require_checklist;
      bool   main_confirm_any_of_3;
+     #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+       bool main_require_classical;
+     #endif
      double orderflow_th;
+     bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
      ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
    
      // Volume footprint
@@ -1155,6 +1165,18 @@ namespace Config
          return ComputeDirectionFromICT(ctx);
      }
    
+   #ifdef CFG_HAS_STRAT_MODE
+   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
+   {
+     return Strat_AllowedToTrade(CfgStrategyMode(cfg), sid);
+   }
+   #else
+   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
+   {
+     return true; // no mode system compiled in
+   }
+   #endif
+
    // ProfileSpec includes router hints + weights/throttles for known archetypes
    struct ProfileSpec
    {
@@ -1308,8 +1330,14 @@ namespace Config
      #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
        cfg.main_confirm_any_of_3 = x.main_confirm_any_of_3;
      #endif
+     #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+       cfg.main_require_classical = x.main_require_classical;
+     #endif
      #ifdef CFG_HAS_ORDERFLOW_TH
        cfg.orderflow_th = x.orderflow_th;
+     #endif
+     #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+       cfg.vsa_allow_tick_volume = x.vsa_allow_tick_volume;
      #endif
      #ifdef CFG_HAS_TF_TREND_HTF
        cfg.tf_trend_htf = x.tf_trend_htf;
@@ -1574,7 +1602,11 @@ namespace Config
      x.require_sb_vwap_stretch = false;
      x.main_require_checklist = true;
      x.main_confirm_any_of_3  = true;
-     x.orderflow_th           = 0.80;          // sensible starting threshold
+     #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+       x.main_require_classical = false; // default OFF (more trades; avoids “over-filtering”)
+     #endif
+     x.orderflow_th           = 0.60;          // FX-friendly default threshold
+     x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
@@ -1664,6 +1696,7 @@ namespace Config
             cfg.enable_strat_ict_po3          = false;
             cfg.enable_strat_ict_silverbullet = false;
             cfg.enable_strat_ict_wyckoff_turn = false;
+            cfg.enable_strat_ict_continuation  = false;
           }
           else
           {
@@ -1692,6 +1725,7 @@ namespace Config
       cfg.enable_news_deviation           = true;
       cfg.enable_news_postfade            = true;
       cfg.enable_strat_ict_po3            = true;
+      cfg.enable_strat_ict_continuation   = true;
       cfg.enable_strat_ict_silverbullet   = true;
       cfg.enable_strat_ict_wyckoff_turn   = true;
     #endif
@@ -1986,7 +2020,7 @@ namespace Config
     #endif
 
     #ifdef CFG_HAS_ORDERFLOW_TH
-      if(cfg.orderflow_th <= 0.0) cfg.orderflow_th = 0.80;
+      if(cfg.orderflow_th <= 0.0) cfg.orderflow_th = 0.60;
       if(cfg.orderflow_th < 0.10) cfg.orderflow_th = 0.10;
       if(cfg.orderflow_th > 5.00) cfg.orderflow_th = 5.00;
     #endif
@@ -2860,6 +2894,9 @@ namespace Config
     #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
       s+=",mainAny3="+BoolStr(c.main_confirm_any_of_3);
     #endif
+    #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+      s+=",mainCls="+BoolStr(c.main_require_classical);
+    #endif
     #ifdef CFG_HAS_ORDERFLOW_TH
       s+=",ofTh="+DoubleToString(c.orderflow_th,3);
     #endif
@@ -2892,6 +2929,9 @@ namespace Config
 
     s+=",vsa="+BoolStr(c.vsa_enable);
     s+=",vsaMax="+DoubleToString(c.vsa_penalty_max,3);
+    #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+      s+=",vsaTick="+BoolStr(c.vsa_allow_tick_volume);
+    #endif
     s+=",struct="+BoolStr(c.structure_enable);
     s+=",liq="+BoolStr(c.liquidity_enable);
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
@@ -3680,7 +3720,7 @@ namespace Config
 
     // tokenization by ','
     string tok[]; int n=StringSplit(best, ',', tok);
-    bool seenMainReq=false, seenMainAny3=false;
+    bool seenMainReq=false, seenMainAny3=false, seenMainCls=false, seenVsaTick=false;
     for(int i=0;i<n;i++)
     {
       string k,v; if(!SplitKV(tok[i],k,v)) continue;
@@ -3833,6 +3873,9 @@ namespace Config
       #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
         else if(k=="mainAny3"){ cfg.main_confirm_any_of_3=ToBool(v); seenMainAny3=true; }
       #endif
+      #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+        else if(k=="mainCls"){ cfg.main_require_classical=ToBool(v); seenMainCls=true; }
+      #endif
       #ifdef CFG_HAS_ORDERFLOW_TH
         else if(k=="ofTh") cfg.orderflow_th=ToDouble(v);
       #endif
@@ -3866,6 +3909,9 @@ namespace Config
       // Feature toggles
       else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
       else if(k=="vsaMax") cfg.vsa_penalty_max = ToDouble(v);
+      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+        else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
+      #endif
       else if(k=="struct") cfg.structure_enable = ToBool(v);
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
       else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
@@ -3996,6 +4042,12 @@ namespace Config
     #endif
     #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
       if(!seenMainAny3) cfg.main_confirm_any_of_3 = true;
+    #endif
+    #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
+      if(!seenMainCls) cfg.main_require_classical = false;
+    #endif
+    #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+      if(!seenVsaTick) cfg.vsa_allow_tick_volume = true;
     #endif
 
     Normalize(cfg);
@@ -4188,6 +4240,7 @@ struct Settings
    bool   main_sequential_gate;
    bool   main_require_checklist;  // default true: enforce checklist scoring
    bool   main_confirm_any_of_3;   // default true: allow any-of-3 confirmation rule
+   bool   main_require_classical;  // optional: require “classical confirm” rule if enabled
    double orderflow_th;            // threshold for orderflow/Δ gate (z or accel threshold)
    
    // ===== Base Confluence Toggles =====
@@ -4438,6 +4491,9 @@ struct Settings
   // --- Feature toggles / vetoes used by strategies --------------------------
   bool              vsa_enable;
   double            vsa_penalty_max;
+  #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+    bool              vsa_allow_tick_volume; // allow tick volume in VSA when real volume unavailable
+  #endif
 
   bool              structure_enable;
   bool              liquidity_enable;
