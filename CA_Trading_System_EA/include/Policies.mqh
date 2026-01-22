@@ -80,6 +80,16 @@ enum PolicyBlockCode
   POLICY_SPREAD_HIGH   = 5,
   POLICY_COOLDOWN      = 6,
   POLICY_MONTH_TARGET  = 7,
+  POLICY_MOD_SPREAD_HIGH = 8,
+  POLICY_DAILY_DD        = 9,
+  POLICY_ACCOUNT_DD      = 10,
+  POLICY_VOLATILITY      = 11,
+  POLICY_REGIME_FAIL     = 12,
+  POLICY_CALM_MARKET     = 13,
+  POLICY_DAYLOSS_STOP    = 14,
+  POLICY_LIQUIDITY_FAIL  = 15,
+  POLICY_CONFLICT        = 16,
+  POLICY_ADR_CAP         = 17,
   POLICY_SB_NOT_IN_WINDOW = 20,
   POLICY_SB_ALREADY_USED  = 21,
   POLICY_BLOCKED_OTHER = 99
@@ -136,6 +146,43 @@ namespace Policies
   
   inline string GateReasonToString(const int r){ return ReasonString(r); }
   
+  inline int GateReasonToPolicyCode(const int gr)
+   {
+     switch(gr)
+     {
+       case GATE_OK:            return POLICY_OK;
+       case GATE_SESSION:       return POLICY_SESSION_OFF;
+       case GATE_NEWS:          return POLICY_NEWS_BLOCK;
+       case GATE_COOLDOWN:      return POLICY_COOLDOWN;
+       case GATE_MONTH_TARGET:  return POLICY_MONTH_TARGET;
+   
+       case GATE_SPREAD:        return POLICY_SPREAD_HIGH;
+       case GATE_MOD_SPREAD:    return POLICY_MOD_SPREAD_HIGH;
+   
+       case GATE_MAX_LOSSES_DAY:return POLICY_MAX_LOSSES;
+       case GATE_MAX_TRADES_DAY:return POLICY_MAX_TRADES;
+   
+       case GATE_DAYLOSS:       return POLICY_DAYLOSS_STOP;
+       case GATE_DAILYDD:       return POLICY_DAILY_DD;
+       case GATE_ACCOUNT_DD:    return POLICY_ACCOUNT_DD;
+       case GATE_VOLATILITY:    return POLICY_VOLATILITY;
+       case GATE_REGIME:        return POLICY_REGIME_FAIL;
+       case GATE_CALM:          return POLICY_CALM_MARKET;
+       case GATE_LIQUIDITY:     return POLICY_LIQUIDITY_FAIL;
+       case GATE_CONFLICT:      return POLICY_CONFLICT;
+       case GATE_ADR:           return POLICY_ADR_CAP;
+   
+       default:                 return POLICY_BLOCKED_OTHER;
+     }
+   }
+   
+   inline string SessionReasonFromFlags(const bool session_filter_on, const bool in_session_window)
+   {
+     if(!session_filter_on) return "FILTER_OFF";
+     if(in_session_window)  return "IN_WINDOW";
+     return "OUT_OF_WINDOW";
+   }
+
     // ----------------------------------------------------------------------------
   // Structured policy decision result (single source of truth)
   // ----------------------------------------------------------------------------
@@ -275,7 +322,13 @@ namespace Policies
   // ----------------------------------------------------------------------------
   inline double Clamp01(const double x){ return (x<0.0?0.0:(x>1.0?1.0:x)); }
   inline double Clamp  (const double x, const double lo, const double hi){ return (x<lo?lo:(x>hi?hi:x)); }
-  inline int    EpochDay(datetime t){ return (int)(t/86400); }
+  inline int EpochDay(datetime t)
+   {
+     if(t <= 0) t = TimeCurrent();
+     MqlDateTime dt;
+     TimeToStruct(t, dt);
+     return (dt.year * 10000 + dt.mon * 100 + dt.day); // YYYYMMDD in server time
+   }
 
   // ----------------------------------------------------------------------------
   // Compile-safe Settings getters
@@ -436,7 +489,11 @@ namespace Policies
    inline bool CfgNewsOn(const Settings &cfg)
    {
      #ifdef NEWSFILTER_AVAILABLE
-       return (cfg.news_on && (NEWSFILTER_AVAILABLE != 0));
+       #ifdef CFG_HAS_NEWS_ON
+         return (bool)cfg.news_on;
+       #else
+         return false;
+       #endif
      #else
        return false;
      #endif
@@ -1197,7 +1254,13 @@ namespace Policies
   // Daily state & realized P/L  (uses persisted dayEqStart and history)
   // ----------------------------------------------------------------------------
   inline void TodayRange(datetime &t0, datetime &t1)
-  { const int d=(int)(TimeCurrent()/86400); t0=(datetime)(d*86400); t1=t0+86400; }
+  {
+     MqlDateTime dt;
+     TimeToStruct(TimeCurrent(), dt);
+     dt.hour = 0; dt.min = 0; dt.sec = 0;
+     t0 = StructToTime(dt);
+     t1 = t0 + 86400;
+  }
 
   inline bool DailyRealizedPL(const Settings &cfg, double &pl_money_out, int &wins_out, int &losses_out)
   {
@@ -1619,6 +1682,29 @@ namespace Policies
   // Guaranteed veto logger (NOT debug-gated) — prevents silent vetoing.
   // Throttles identical veto spam to once per second per (reason+mask).
   // ----------------------------------------------------------------------------
+  #ifdef NEWSFILTER_AVAILABLE
+   inline string _FmtNewsVeto(const int mins_left,
+                              const int impact_mask,
+                              const int pre_m,
+                              const int post_m)
+   {
+      News::Health h; 
+      News::GetHealth(h);
+   
+      string err = h.last_error;
+      if(StringLen(err) > 80) err = StringSubstr(err, 0, 80);
+   
+      if(err != "")
+         return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d warm=%d err=%s",
+                             mins_left, impact_mask, pre_m, post_m,
+                             h.effective_backend, (h.warm ? 1 : 0), err);
+   
+      return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d warm=%d",
+                          mins_left, impact_mask, pre_m, post_m,
+                          h.effective_backend, (h.warm ? 1 : 0));
+   }
+   #endif
+   
   inline bool _ShouldVetoLogOncePerSec(const string sym, const int reason, const ulong mask)
   {
     static datetime s_last_ts    = 0;
@@ -1637,9 +1723,55 @@ namespace Policies
     return true;
   }
 
+  inline string _FmtSpreadVeto(const double spread_pts, const double max_spread_pts)
+   {
+     return StringFormat("spread=%.1f pts > max=%.1f pts", spread_pts, max_spread_pts);
+   }
+   
+   inline string _FmtSessionVeto(const string &session_reason)
+   {
+     return StringFormat("session_block (%s)", session_reason);
+   }
+   
+   inline string _FmtCooldownVeto(const int left_sec, const int total_sec)
+   {
+     return StringFormat("cooldown_left=%ds total=%ds", left_sec, total_sec);
+   }
+
+  inline string FormatPrimaryVetoDetail(const PolicyResult &r)
+   {
+     switch(r.primary_reason)
+     {
+       case GATE_SPREAD:
+       case GATE_MOD_SPREAD:
+         return _FmtSpreadVeto(r.spread_pts, (double)r.spread_cap_pts);
+   
+       case GATE_SESSION:
+         return _FmtSessionVeto(SessionReasonFromFlags(r.session_filter_on, r.in_session_window));
+   
+       case GATE_COOLDOWN:
+       {
+         const int left_sec = (r.cd_trade_left_sec > r.cd_loss_left_sec ? r.cd_trade_left_sec : r.cd_loss_left_sec);
+         const int total_sec = (int)(r.loss_cd_min * 60);
+         return _FmtCooldownVeto(left_sec, total_sec);
+       }
+   
+       case GATE_NEWS:
+         #ifdef NEWSFILTER_AVAILABLE
+           return _FmtNewsVeto(r.news_mins_left, r.news_impact_mask, r.news_pre_mins, r.news_post_mins);
+         #else
+           return StringFormat("news_block mins_left=%d", r.news_mins_left);
+         #endif
+   
+       default:
+         return "";
+     }
+   }
+
   inline void PolicyVetoLog(const PolicyResult &r)
    {
      const string sym = _Symbol;
+     string gate_log = "";
    
      if(_ShouldVetoLogOncePerSec(sym, r.primary_reason, r.veto_mask) == false)
        return;
@@ -1649,6 +1781,7 @@ namespace Policies
     {
       case GATE_SPREAD:
       case GATE_MOD_SPREAD:
+        gate_log = _FmtSpreadVeto(r.spread_pts, (double)r.spread_cap_pts);
         Print("[Policy][VETO] reason=", GateReasonToString(r.primary_reason),
               " sym=", sym,
               " spread=", DoubleToString(r.spread_pts,1),
@@ -1658,34 +1791,42 @@ namespace Policies
               " modCap=", (string)r.mod_spread_cap_pts,
               " inSession=", (r.in_session_window?"1":"0"),
               " weeklyRamp=", (r.weekly_ramp_on?"1":"0"),
-              " mask=", (string)r.veto_mask);
+              " mask=", (string)r.veto_mask, gate_log);
         break;
 
       case GATE_NEWS:
+        #ifdef NEWSFILTER_AVAILABLE
+            gate_log = _FmtNewsVeto(r.news_mins_left, r.news_impact_mask, r.news_pre_mins, r.news_post_mins);
+        #else
+            gate_log = StringFormat("News block. mins_left=%d impact_mask=%d pre=%d post=%d",
+                               r.news_mins_left, r.news_impact_mask, r.news_pre_mins, r.news_post_mins);
+        #endif
         Print("[Policy][VETO] reason=NEWS sym=", sym,
               " block=", (r.news_blocked?"1":"0"),
               " minutes=", (string)r.news_mins_left,
               " impactMask=", (string)r.news_impact_mask,
               " pre=", (string)r.news_pre_mins,
               " post=", (string)r.news_post_mins,
-              " mask=", (string)r.veto_mask);
+              " mask=", (string)r.veto_mask, gate_log);
         break;
 
       case GATE_SESSION:
+        gate_log = _FmtSessionVeto(SessionReasonFromFlags(r.session_filter_on, r.in_session_window));
         Print("[Policy][VETO] reason=SESSION sym=", sym,
               " sessionFilter=", (r.session_filter_on?"1":"0"),
               " inWindow=", (r.in_session_window?"1":"0"),
               " server=", TimeToString(TimeCurrent(), TIME_SECONDS),
-              " mask=", (string)r.veto_mask);
+              " mask=", (string)r.veto_mask, gate_log);
         break;
 
       case GATE_COOLDOWN:
+        gate_log = _FmtCooldownVeto(r.cd_loss_left_sec, (int)(r.loss_cd_min * 60));
         Print("[Policy][VETO] reason=COOLDOWN sym=", sym,
               " trade_left_sec=", (string)r.cd_trade_left_sec,
               " loss_left_sec=", (string)r.cd_loss_left_sec,
               " trade_cd_sec=", (string)r.trade_cd_sec,
               " loss_cd_min=", (string)r.loss_cd_min,
-              " mask=", (string)r.veto_mask);
+              " mask=", (string)r.veto_mask, gate_log);
         break;
 
       case GATE_DAILYDD:
@@ -1796,7 +1937,7 @@ namespace Policies
     }
   }
 
-    // ----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
   // Unified evaluators (Fast + Audit)
   // ----------------------------------------------------------------------------
 
@@ -2138,7 +2279,8 @@ namespace Policies
 
     {
       int mins_left=0;
-      if(NewsBlockedNow(cfg, mins_left))
+      const datetime now_srv = TimeUtils::NowServer();
+      if(NewsBlockedNow(cfg, now_srv, mins_left))
       {
         out.news_blocked   = true;
         out.news_mins_left = mins_left;
@@ -2383,21 +2525,28 @@ namespace Policies
   // ----------------------------------------------------------------------------
   // News helpers
   // ----------------------------------------------------------------------------
-  inline bool NewsBlockedNow(const Settings &cfg, int &mins_left_out)
+   inline bool NewsBlockedNow(const Settings &cfg, const datetime now_srv, int &mins_left)
    {
-     mins_left_out=0;
+     mins_left = -1;
      if(!CfgNewsOn(cfg)) return false;
+   
      #ifdef NEWSFILTER_AVAILABLE
-       return News::IsBlocked(TimeCurrent(), _Symbol,
-                              EffNewsImpactMask(cfg, _Symbol),
-                              CfgNewsBlockPreMins(cfg),
-                              CfgNewsBlockPostMins(cfg),
-                              mins_left_out);
+       const int impact_mask = EffNewsImpactMask(cfg, _Symbol);
+       const int pre_m       = EffNewsPreMins(cfg);
+       const int post_m      = EffNewsPostMins(cfg);
+   
+       return News::IsBlocked(now_srv, _Symbol, impact_mask, pre_m, post_m, mins_left);
      #else
-       return false; // news module not present
+       mins_left = 0;
+       return false;
      #endif
    }
    
+   inline bool NewsBlockedNow(const Settings &cfg, int &out_mins_left)
+   {
+     return NewsBlockedNow(cfg, TimeUtils::NowServer(), out_mins_left);
+   }
+
    inline void ApplyNewsScaling(const Settings &cfg, const string sym,
                                 StratScore &ss, ConfluenceBreakdown &bd, bool &skip_out)
    {
@@ -2588,22 +2737,7 @@ namespace Policies
       int gr=GATE_OK, mins=0;
       if(!CheckFull(cfg, gr, mins))
       {
-        // Map gate reason to legacy policy codes (best-effort)
-        if(gr==GATE_SESSION)      { code_out = POLICY_SESSION_OFF; return false; }
-        if(gr==GATE_NEWS)         { code_out = POLICY_NEWS_BLOCK;  return false; }
-        if(gr==GATE_COOLDOWN)     { code_out = POLICY_COOLDOWN;    return false; }
-        if(gr==GATE_MONTH_TARGET) { code_out = POLICY_MONTH_TARGET;return false; }
-        if(gr==GATE_SPREAD || gr==GATE_MOD_SPREAD)
-                                { code_out = POLICY_SPREAD_HIGH;  return false; }
-
-        // Max losses vs max trades are both GATE_MAX_LOSSES_DAY & GATE_MAX_TRADES_DAY in CheckFull; disambiguate cheaply:
-        if(gr==GATE_MAX_LOSSES_DAY) { code_out = POLICY_MAX_LOSSES; return false; }
-        if(gr==GATE_MAX_TRADES_DAY) { code_out = POLICY_MAX_TRADES; return false; }
-
-        // True day-loss stop is not “max losses” — treat as generic block in legacy ABI
-        if(gr==GATE_DAYLOSS)        { code_out = POLICY_BLOCKED_OTHER; return false; }
-
-        code_out = POLICY_BLOCKED_OTHER;
+        code_out = GateReasonToPolicyCode(gr);
         return false;
       }
       code_out = POLICY_OK;
@@ -2651,16 +2785,16 @@ namespace Policies
                        mlEnabled, mlScore, mlThresh);
       #endif
     }
-    #endif
 
     _EnsureLoaded(cfg);
     code_out = POLICY_OK;
+    const datetime now_srv = TimeUtils::NowServer();
 
     // 1) Session window
     if(EffSessionFilter(cfg, _Symbol))
     {
       TimeUtils::SessionContext sc;
-      TimeUtils::BuildSessionContext(cfg, TimeUtils::NowServer(), sc);
+      TimeUtils::BuildSessionContext(cfg, now_srv, sc);
       if(!sc.in_window)
       { code_out = POLICY_SESSION_OFF; return false; }
     }
@@ -2669,7 +2803,7 @@ namespace Policies
     if(CfgNewsOn(cfg))
     {
       int mins_left = 0;
-      if(NewsBlockedNow(cfg, mins_left))
+      if(NewsBlockedNow(cfg, now_srv, mins_left))
       { code_out = POLICY_NEWS_BLOCK; return false; }
     }
 
@@ -2704,6 +2838,7 @@ namespace Policies
     { code_out = POLICY_COOLDOWN; return false; }
 
     return true;
+  #endif
   }
 
   // Legacy ABI: 3-arg signature; mirrors code_out
@@ -2713,6 +2848,36 @@ namespace Policies
     reason = code_out;
     return ok;
   }
+
+  inline bool AllowedByPoliciesDiag(const Settings &cfg,
+                                    int &policy_code_out,
+                                    int &gate_reason_out,
+                                    int &aux_out,
+                                    string &detail_out)
+   {
+     PolicyResult r;
+     const bool ok = EvaluateFull(cfg, r);
+   
+     gate_reason_out = r.primary_reason;
+     policy_code_out = ok ? POLICY_OK : GateReasonToPolicyCode(r.primary_reason);
+   
+     if(ok)
+     {
+       aux_out = 0;
+       detail_out = "";
+       return true;
+     }
+   
+     // aux_out: something numeric that helps logs without parsing strings
+     aux_out = 0;
+     if(r.primary_reason == GATE_NEWS)
+       aux_out = r.news_mins_left;
+     else if(r.primary_reason == GATE_COOLDOWN)
+       aux_out = (r.cd_trade_left_sec > r.cd_loss_left_sec ? r.cd_trade_left_sec : r.cd_loss_left_sec);
+   
+     detail_out = FormatPrimaryVetoDetail(r);
+     return false;
+   }
 
   // ----------------------------------------------------------------------------
   // HUD / Telemetry snapshot for UI/Logs/Diagnostics
@@ -2856,6 +3021,18 @@ namespace Policies
     out_intent.symbol = symbol;
 
     int mins_left=0;
+    #ifdef NEWSFILTER_AVAILABLE
+      // Hard veto: News block kills the trade intent right here (single truth source).
+      {
+         int news_mins_left = -1;
+         if(NewsBlockedNow(cfg, TimeCurrent(), news_mins_left))
+         {
+            gate_reason = (int)PolicyGate::GATE_NEWS;
+            mins_left   = news_mins_left;
+            return false;
+         }
+      }
+    #endif
     if(!CheckFull(cfg, gate_reason, mins_left))
     { out_intent.reason=gate_reason; return false; }
 

@@ -521,6 +521,10 @@ input bool             InpNewsOn                = false;  // News: Enable
 input int              InpNewsBlockPreMins      = 10;     // News: Block PreMins
 input int              InpNewsBlockPostMins     = 10;     // News: Block PostMins
 input int              InpNewsImpactMask        = 6;     // News: Impact Mask
+input int              InpNewsBackendMode       = 1;     // 0=DISABLED, 1=BROKER, 2=CSV
+input bool             InpNewsMVP_NoBlock       = false; // if true: never hard-block trades (even if news_on)
+input bool             InpNewsFailoverToCSV     = true;  // if broker calendar fails, try CSV
+input bool             InpNewsNeutralOnNoData   = true;  // if no data, treat as not blocked (recommended)
 
 // Calendar surprise thresholds (scale/skip)
 input int              InpCal_LookbackMins      = 90;    // Calendar Thresholds: Lookback Mins
@@ -708,6 +712,116 @@ static double g_last_mid_stop      = 0.0;
 static int    g_consec_wins        = 0;
 static int    g_consec_losses      = 0;
 
+// =================== No-Trade Breadcrumbs (Gate→Router→Policies→Risk→Exec) ===================
+enum TraceStage
+{
+   TS_GATE     = 1,
+   TS_ROUTER   = 2,
+   TS_POLICIES = 3,
+   TS_RISK     = 4,
+   TS_EXEC     = 5
+};
+
+// Stage-specific "why" codes (avoid collision with gate codes by using 100+)
+enum TraceCode
+{
+   TR_ROUTER_NO_CAND     = 101,
+   TR_ROUTER_NO_INTENT   = 102,
+   TR_ROUTER_PICK_DROP   = 103,
+   TR_POLICIES_SOFT_SKIP = 151,
+   TR_RISK_COMPUTE_FAIL  = 201,
+   TR_EXEC_REJECT        = 301
+};
+
+string _TraceStageStr(const int s)
+{
+   switch(s)
+   {
+      case TS_GATE:     return "GATE";
+      case TS_ROUTER:   return "ROUTER";
+      case TS_POLICIES: return "POLICIES";
+      case TS_RISK:     return "RISK";
+      case TS_EXEC:     return "EXEC";
+      default:          return "NA";
+   }
+}
+
+string _GateReasonStr(const int c)
+{
+   switch(c)
+   {
+      case GATE_POLICIES:   return "POLICIES";
+      case GATE_SESSION:    return "SESSION";
+      case GATE_TIMEWINDOW: return "TIMEWINDOW";
+      case GATE_PRICE_ARM:  return "PRICE_ARM";
+      case GATE_PRICE_STOP: return "PRICE_STOP";
+      case GATE_NEWS:       return "NEWS";
+      case GATE_EXEC_LOCK:  return "EXEC_LOCK";
+      case GATE_WARMUP:     return "WARMUP";
+      case GATE_NONE:       return "NONE";
+      default:              return "UNKNOWN";
+   }
+}
+
+string _TraceDirStr(const Direction d)
+{
+   return (d==DIR_BUY ? "BUY" : (d==DIR_SELL ? "SELL" : "NA"));
+}
+
+// Throttled, structured breadcrumb. Keeps your logs readable and consistent.
+void TraceNoTrade(const string sym,
+                  const int stage,
+                  const int code,
+                  const string detail,
+                  const int strat_id=0,
+                  const Direction dir=DIR_NONE,
+                  const double score=0.0,
+                  const double lots=0.0,
+                  const int retcode=0)
+{
+   if(!InpDebug)
+      return;
+
+   static datetime last_ts = 0;
+   static int last_stage = 0;
+   static int last_code = 0;
+   static string last_sym = "";
+
+   const datetime now = TimeCurrent();
+   if(now==last_ts && stage==last_stage && code==last_code && sym==last_sym)
+      return;
+
+   last_ts = now;
+   last_stage = stage;
+   last_code  = code;
+   last_sym   = sym;
+
+   const string code_str = (stage==TS_GATE ? _GateReasonStr(code) : IntegerToString(code));
+
+   PrintFormat("[NoTrade] %s stage=%s code=%s strat=%d dir=%s score=%.3f lots=%.2f ret=%d | %s",
+               sym, _TraceStageStr(stage), code_str, strat_id, _TraceDirStr(dir),
+               score, lots, retcode, detail);
+}
+
+// Exec reject classifier (fallback). Keeps “retcode only” from being useless.
+int ExecRejectClassify(const Exec::Outcome &ex, string &detail_out)
+{
+   detail_out = ex.last_error_text;
+
+   switch((int)ex.retcode)
+   {
+      case TRADE_RETCODE_INVALID_STOPS:  detail_out = "INVALID_STOPS: stops too close / invalid"; return 311;
+      case TRADE_RETCODE_INVALID_VOLUME: detail_out = "INVALID_VOLUME: lots/step/min/max";       return 312;
+      case TRADE_RETCODE_MARKET_CLOSED:  detail_out = "MARKET_CLOSED";                            return 313;
+      case TRADE_RETCODE_TRADE_DISABLED: detail_out = "TRADE_DISABLED";                           return 314;
+      case TRADE_RETCODE_NO_MONEY:       detail_out = "NO_MONEY / margin";                        return 315;
+      case TRADE_RETCODE_REQUOTE:        detail_out = "REQUOTE";                                  return 316;
+      case TRADE_RETCODE_PRICE_OFF:      detail_out = "PRICE_OFF / off quotes";                   return 317;
+      case TRADE_RETCODE_REJECT:         detail_out = "REJECTED by broker";                       return 318;
+      default:                            /* keep ex.last_error_text */                           return 399;
+   }
+}
+
 // ---------------- Unified warmup gate (single source of truth) ----------------
 bool WarmupGateOK()
 {
@@ -727,7 +841,10 @@ bool WarmupGateOK()
    ticks++;
 
    // Primary readiness: same gates you already use elsewhere
-   bool ready = Warmup::GateReadyOnce(InpDebug) && Warmup::DataReadyForEntry(S);
+   const bool gate_ready = Warmup::GateReadyOnce(InpDebug);
+   const bool data_ready = Warmup::DataReadyForEntry(g_cfg);
+   const bool ready      = (gate_ready && data_ready);
+   
    if(ready)
    {
       latched = true;
@@ -750,6 +867,18 @@ bool WarmupGateOK()
       }
    }
 
+   if(InpDebug)
+   {
+      static datetime last_warn = 0;
+      datetime now = TimeCurrent();
+      if(now != last_warn)
+      {
+         last_warn = now;
+         TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP,
+                      StringFormat("WarmupGateOK=false gate_ready=%d data_ready=%d ticks=%d",
+                                   (int)gate_ready, (int)data_ready, ticks));
+      }
+   }
    return false;
 }
 
@@ -1046,6 +1175,24 @@ void MirrorInputsToSettings(Settings &cfg)
   // ---- News block + calendar scaling ----
   cfg.news_on = InpNewsOn; cfg.block_pre_m = InpNewsBlockPreMins; cfg.block_post_m = InpNewsBlockPostMins;
   cfg.news_impact_mask = InpNewsImpactMask;
+  #ifdef CFG_HAS_NEWS_BACKEND
+      int bm = InpNewsBackendMode;
+      if(bm < 0) bm = 0;
+      if(bm > 2) bm = 2;
+      cfg.news_backend_mode = bm;
+  #endif
+   
+  #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+      cfg.news_mvp_no_block = InpNewsMVP_NoBlock;
+  #endif
+   
+  #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
+      cfg.news_failover_to_csv = InpNewsFailoverToCSV;
+  #endif
+   
+  #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
+      cfg.news_neutral_on_no_data = InpNewsNeutralOnNoData;
+  #endif
   cfg.cal_lookback_mins = InpCal_LookbackMins; cfg.cal_hard_skip = InpCal_HardSkip;
   cfg.cal_soft_knee = InpCal_SoftKnee; cfg.cal_min_scale = InpCal_MinScale;
 
@@ -1316,6 +1463,70 @@ string _DirStr(const Direction d)
    return (d==DIR_BUY ? "BUY" : (d==DIR_SELL ? "SELL" : "NA"));
   }
 
+void _LogGateBlocked(const string origin,
+                     const string sym,
+                     const int reason,
+                     const string detail)
+  {
+   if(!InpDebug)
+      return;
+
+   static datetime last_emit = 0;
+   const datetime now = TimeCurrent();
+   if(now == last_emit)
+      return; // one line max per second-tick
+   last_emit = now;
+
+   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=gate sym=%s reason=%d(%s) detail=%s",
+                           origin, sym, reason, _GateReasonStr(reason), detail));
+  }
+
+void _LogRiskReject(const string origin,
+                    const string sym,
+                    const StrategyID id,
+                    const Direction dir,
+                    const StratScore &ss)
+  {
+   if(!InpDebug)
+      return;
+
+   static datetime last_emit = 0;
+   const datetime now = TimeCurrent();
+   if(now == last_emit)
+      return;
+   last_emit = now;
+
+   const int code = Risk::LastRejectCode();
+   const string why = Risk::LastRejectReason();
+
+   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=risk sym=%s id=%d dir=%s score=%.3f code=%d reason=%s",
+                           origin, sym, (int)id, _DirStr(dir), ss.score, code, why));
+  }
+
+void _LogExecReject(const string origin,
+                    const string sym,
+                    const StrategyID id,
+                    const Direction dir,
+                    const StratScore &ss,
+                    const OrderPlan &plan,
+                    const Exec::Outcome &ex)
+  {
+   if(!InpDebug)
+      return;
+   if(ex.ok)
+      return;
+
+   static datetime last_emit = 0;
+   const datetime now = TimeCurrent();
+   if(now == last_emit)
+      return;
+   last_emit = now;
+
+   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=exec sym=%s id=%d dir=%s score=%.3f retcode=%u err=%d(%s) lots=%.2f",
+                           origin, sym, (int)id, _DirStr(dir), ss.score,
+                           ex.retcode, ex.last_error, LogX::San(ex.last_error_text), plan.lots));
+  }
+
 // Throttled logger: avoid spamming every tick
 void _LogCandidateDrop(const string origin,
                        const StrategyID id,
@@ -1332,9 +1543,16 @@ void _LogCandidateDrop(const string origin,
       return;     // one line max per second-tick
    last_emit = now;
 
+   string why = "unknown_drop";
+   if(bd.veto)                 why = StringFormat("veto(mask=%d)", (int)bd.veto_mask);
+   else if(!ss.eligible)       why = "ineligible";
+   else if(ss.score < min_sc)  why = "below_min_score";
+   
    LogX::Info(StringFormat(
-                 "[WhyNoTrade] origin=%s id=%d dir=%s eligible=%d score=%.3f min=%.2f veto=%d mask=%d | meta=%s",
-                 origin, (int)id, _DirStr(dir), (int)ss.eligible, ss.score, min_sc, (int)bd.veto, (int)bd.veto_mask, bd.meta));
+                 "[WhyNoTrade] origin=%s why=%s id=%d dir=%s eligible=%d score=%.3f min=%.2f veto=%d mask=%d | meta=%s",
+                 origin, why, (int)id, _DirStr(dir),
+                 (int)ss.eligible, ss.score, min_sc,
+                 (int)bd.veto, (int)bd.veto_mask, bd.meta));
   }
 
 // Echo static thresholds once at startup (useful context in logs)
@@ -1353,6 +1571,28 @@ void _LogThresholdsOnce(const Settings &cfg)
                  (rc.min_score>0.0?rc.min_score:Const::SCORE_ELIGIBILITY_MIN),
                  (rc.max_strats>0?rc.max_strats:12),
                  cfg.vwap_z_edge, cfg.vwap_z_avoidtrend, cfg.vwap_sigma, cfg.pattern_lookback));
+                 
+   #ifdef CFG_HAS_NEWS_BACKEND
+   LogX::Info(StringFormat("News cfg: on=%s backend=%d mvp_no_block=%s failover_csv=%s neutral_no_data=%s",
+                           cfg.news_on ? "true" : "false",
+                           cfg.news_backend_mode,
+   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+                           cfg.news_mvp_no_block ? "true" : "false",
+   #else
+                           "n/a",
+   #endif
+   #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
+                           cfg.news_failover_to_csv ? "true" : "false",
+   #else
+                           "n/a",
+   #endif
+   #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
+                           cfg.news_neutral_on_no_data ? "true" : "false"
+   #else
+                           "n/a"
+   #endif
+                           ));
+   #endif
   }
 
 // Collect from all enabled strategies using registry’s ComputeOne and router thresholds.
@@ -1414,7 +1654,11 @@ bool RouteRegistryAll(const Settings &cfg, StratReg::RoutedPick &pick, string &t
      }
 
    if(n<=0)
+   {
+      TraceNoTrade(_Symbol, TS_ROUTER, TR_ROUTER_NO_CAND,
+                   "RouteRegistryAll: no candidates survived thresholds");
       return false;
+   }
 
 // Sort by score desc
    for(int i=0;i<n-1;i++)
@@ -1899,7 +2143,12 @@ int OnInit()
   {
    ZeroMemory(S);
    // 1) Build base (short signature only)
-   MirrorInputsToSettings(S); 
+   MirrorInputsToSettings(S);
+   
+   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+      if(S.news_on && S.news_mvp_no_block)
+         LogX::Warn("News is ON but MVP_NoBlock is true -> NewsFilter will NOT hard-block trades.");
+   #endif
    
    // 2) Apply any appended/extended knobs via one struct (keeps ABI safe)
    Config::BuildExtras ex; Config::BuildExtrasDefaults(ex);
@@ -2063,10 +2312,14 @@ int OnInit()
    {
       return INIT_FAILED;
    }
-   if(S.news_on)
-   {
+   bool need_news_init = S.news_on;
+
+   #ifdef CFG_HAS_NEWS_BACKEND
+   need_news_init = (need_news_init || (S.news_backend_mode != 0)); // 0=DISABLED
+   #endif
+   
+   if(need_news_init)
       News::Init();
-   }
    Risk::InitDayCache();
    Policies::Init(S);
    Panel::Init(S);
@@ -2347,13 +2600,14 @@ void OnTick()
   {
    // Unified warmup gate (tester-safe; avoids permanent stall)
    if(!WarmupGateOK())
-     {
+   {
+      TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP, "OnTick blocked: WarmupGateOK=false");
       Panel::Render(S);
       return;
-     }
+   }
 
    if(InpOnlyNewBar)
-     {
+   {
       const Settings gate_cfg = (g_use_registry ? S : g_cfg);
       const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
       if(!IsNewBarRouter(_Symbol, tf))
@@ -2361,7 +2615,7 @@ void OnTick()
          Panel::Render(S);
          return;
       }
-     }
+   }
      
    static datetime _hb_last_bar = 0;
    const datetime _bar_time = iTime(_Symbol, g_cfg.tf_entry, 0);
@@ -2448,15 +2702,32 @@ void OnTick()
    //    - Actual routing / order planning only runs if all gates are OK.
       int router_gate_reason = 0;
       const datetime now_srv = TimeUtils::NowServer();
-   
-      if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
+      if(!WarmupGateOK())
       {
-         RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+         // WarmupGateOK emits a throttled breadcrumb in InpDebug mode.
       }
       else
       {
-         if(InpDebug)
-            PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d", router_gate_reason);
+         if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
+         {
+            RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+         }
+         else
+         {
+            if(InpDebug)
+            {
+               static datetime last_emit = 0;
+               datetime now = TimeCurrent();
+               if(now != last_emit)
+               {
+                  last_emit = now;
+                  PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
+                              router_gate_reason, _GateReasonStr(router_gate_reason));
+                  TraceNoTrade(_Symbol, TS_GATE, router_gate_reason,
+                               StringFormat("RouterGateOK=false (%s)", _GateReasonStr(router_gate_reason)));
+               }
+            }
+         }
       }
    }
 
@@ -2549,8 +2820,11 @@ void OnTimer()
    MaybeResetStreaksDaily(now_srv);
    
    // Router mode path (ICT RouterEvaluateAll)
-   if(!Warmup::DataReadyForEntry(g_cfg))
+   if(!WarmupGateOK())
+   {
+      TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP, "OnTimer blocked: WarmupGateOK=false");
       return;
+   }
    
    SyncRuntimeCfgFlags(g_cfg);
    
@@ -2568,6 +2842,22 @@ void OnTimer()
       RefreshICTContext(g_state);
       ICT_Context ictCtx = StateGetICTContext(g_state);
       RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+   }
+   else
+   {
+      if(InpDebug)
+      {
+         static datetime last_emit = 0;
+         datetime now = TimeCurrent();
+         if(now != last_emit)
+         {
+            last_emit = now;
+            PrintFormat("[Router][Timer] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
+                        gate_reason, _GateReasonStr(gate_reason));
+            TraceNoTrade(_Symbol, TS_GATE, gate_reason,
+                         StringFormat("RouterGateOK=false (%s) [timer]", _GateReasonStr(gate_reason)));
+         }
+      }
    }
   }
 
@@ -2671,20 +2961,15 @@ void OnTimer()
    // StrategyMode allow-list enforcement (defense in depth) — AFTER routing so pick_out.id is real.
    if(okRoute)
    {
-      if((int)pick_out.id == 0 || !Strat_AllowedToTrade(sm, pick_out.id))
-      {
-         pick_out.bd.veto = true;
-         pick_out.ss.eligible = false;
-   
-         if(InpDebug)
-            LogX::Warn(StringFormat("[MODE] Blocked strategy id=%d under mode=%d for %s",
-                                    (int)pick_out.id, (int)sm, sym));
-      }
+         _LogCandidateDrop("mode_block", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
+         return false;
    }
 
-   // Enforce eligibility/threshold here (single place)
    if(pick_out.bd.veto || !pick_out.ss.eligible || pick_out.ss.score < min_sc)
+   {
+      _LogCandidateDrop("intent_reject", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
       return false;
+   }
    
    // Normal UI hooks
    Panel::PublishBreakdown(pick_out.bd);
@@ -2856,26 +3141,23 @@ void SyncRuntimeCfgFlags(Settings &cfg)
 }
 
 // -------- Router-friendly gate wrapper (no duplication of exec logic) --------
-bool RouterGateOK(const string sym,
-                  const Settings &cfg,
-                  const datetime now_srv,
-                  int &gate_reason_out)
+bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv, int &gate_reason_out)
 {
    gate_reason_out = 0;
 
-   // Local gate reason codes (keep stable; Panel uses these)
-   const int GATE_POLICIES    = 1;
-   const int GATE_SESSION     = 2;
-   const int GATE_TIMEWINDOW  = 3;
-   const int GATE_PRICE_ARM   = 4;
-   const int GATE_PRICE_STOP  = 5;
-   const int GATE_NEWS        = 6;
-   const int GATE_EXEC_LOCK   = 7;
-
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
-   if(!Policies::Check(cfg, gate_reason_out))
+   int pol_reason = 0;
+   if(!Policies::Check(cfg, pol_reason))
    {
+      gate_reason_out = GATE_POLICIES;
       Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate", sym, gate_reason_out,
+                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+
+      TraceNoTrade(sym, TS_GATE, gate_reason_out,
+                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+
       return false;
    }
 
@@ -2892,10 +3174,10 @@ bool RouterGateOK(const string sym,
 
          if(!allowed)
          {
-            if(InpDebug)
-               PrintFormat("[RouterGate] Session gate: session_on=1 in_window=0 → skip %s", sym);
             gate_reason_out = GATE_SESSION;
             Panel::SetGate(gate_reason_out);
+            _LogGateBlocked("router_gate", sym, gate_reason_out, "Session gate");
+            TraceNoTrade(sym, TS_GATE, GATE_SESSION, "Session gate blocked (not in window)");
             return false;
          }
       }
@@ -2906,6 +3188,8 @@ bool RouterGateOK(const string sym,
    {
       gate_reason_out = GATE_TIMEWINDOW;
       Panel::SetGate(gate_reason_out);
+      _LogGateBlocked("router_gate", sym, gate_reason_out, "TimeGateOK blocked");
+      TraceNoTrade(sym, TS_GATE, GATE_TIMEWINDOW, "TimeGateOK=false (start/expiry window)");
       return false;
    }
 
@@ -2914,40 +3198,43 @@ bool RouterGateOK(const string sym,
    {
       gate_reason_out = GATE_PRICE_ARM;
       Panel::SetGate(gate_reason_out);
+      _LogGateBlocked("router_gate", sym, gate_reason_out, "PriceArmOK not armed");
+      TraceNoTrade(sym, TS_GATE, GATE_PRICE_ARM, "PriceArmOK=false (InpTradeAtPrice not armed?)");
       return false;
    }
 
-   CheckStopTradeAtPrice();
    if(g_stopped_by_price)
    {
       gate_reason_out = GATE_PRICE_STOP;
       Panel::SetGate(gate_reason_out);
+      _LogGateBlocked("router_gate", sym, gate_reason_out, "Stopped by price stop gate");
+      TraceNoTrade(sym, TS_GATE, GATE_PRICE_STOP, "Stopped by price gate (InpStopAtPrice hit)");
       return false;
    }
       
    // 5) News hard block (uses cfg.* copied from inputs into g_cfg)
-   int mins_left = 0;
-   if(cfg.news_on &&
-      News::IsBlocked(now_srv, sym,
-                      cfg.news_impact_mask,
-                      cfg.block_pre_m,
-                      cfg.block_post_m,
-                      mins_left))
+   if(cfg.news_on)
    {
-      if(InpDebug)
-         PrintFormat("[RouterGate] News hard block (%d mins left) → skip %s", mins_left, sym);
-      gate_reason_out = GATE_NEWS;
-      Panel::SetGate(gate_reason_out);
-      return false;
+      int mins_left = 0;
+      if(News::IsBlocked(sym, cfg.news_impact_mask, cfg.block_pre_m, cfg.block_post_m, mins_left))
+      {
+         gate_reason_out = GATE_NEWS;
+         Panel::SetGate(gate_reason_out);
+         _LogGateBlocked("router_gate", sym, gate_reason_out,
+                         StringFormat("News hard block (%d mins left)", mins_left));
+         TraceNoTrade(sym, TS_GATE, GATE_NEWS,
+                      StringFormat("News blocked (%d mins left)", mins_left));
+         return false;
+      }
    }
 
    // 6) Execution lock (async send guard)
    if(Exec::IsLocked(sym))
    {
-      if(InpDebug)
-         PrintFormat("[RouterGate] Exec lock active → skip %s", sym);
       gate_reason_out = GATE_EXEC_LOCK;
       Panel::SetGate(gate_reason_out);
+      _LogGateBlocked("router_gate", sym, gate_reason_out, "Exec lock active");
+      TraceNoTrade(sym, TS_GATE, GATE_EXEC_LOCK, "Exec::IsLocked=true (async send guard)");
       return false;
    }
 
@@ -2957,111 +3244,48 @@ bool RouterGateOK(const string sym,
 // Per-symbol processing unit (PM + gates + MVP pipeline)
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
-   if(new_bar_for_sym)
-     {
-      double atr_pts = Indi::ATRPoints(sym, S.tf_entry, S.atr_period, 1);
-      if(atr_pts>0.0)
-         Risk::OnEntryBarATR(atr_pts);
-     }
-
-   // 1) Guard rails and gates (spread cap, daily DD, volatility breaker, cooldowns)
-   int gate_reason=0;
-   if(!Policies::Check(S, gate_reason))
-     {
-      if(InpDebug) PrintFormat("[Gate] Blocked at Policies::Check (reason=%d)", gate_reason);
-      Panel::SetGate(gate_reason);
-      PM::ManageAll(S);
-      return;
-     }
-   Panel::SetGate(gate_reason);
-
-   const datetime now_srv = TimeUtils::NowServer();
-
-   // Session filter (legacy union or preset)
-   if (CfgSessionFilter(S))
+   // 0) Unified warmup gate (single source of truth)
+   if(!WarmupGateOK())
    {
-     const bool sess_on = Policies::EffSessionFilter(S, sym);
-     if (sess_on)
-     {
-       TimeUtils::SessionContext sc;
-       TimeUtils::BuildSessionContext(S, now_srv, sc);
-       const bool allowed = (CfgSessionPreset(S) != SESS_OFF ? sc.preset_in_window : sc.in_window);
-       if (!allowed)
-       {
-         Panel::SetGate(2);
-         if (InpDebug)
-           PrintFormat("[EA] Session gate: session_on=1 in_window=0  skip %s", sym);
-         PM::ManageAll(S);
-         return;
-       }
-     }
-   }
-
-   // Time window (hard start/expiry in server time)
-   if(!TimeGateOK(now_srv))
-   {
-    Panel::SetGate(3);
-    PM::ManageAll(S);
-    Panel::Render(S);
-    return;
-   }
-
-   // Price gates
-   if(!PriceArmOK())
-   {
-      Panel::SetGate(4);
+      TraceNoTrade(sym, TS_GATE, GATE_WARMUP, "ProcessSymbol blocked: WarmupGateOK=false");
       PM::ManageAll(S);
       Panel::Render(S);
       return;
    }
-   
-   CheckStopTradeAtPrice();
-   if(g_stopped_by_price)
-   {
-     Panel::SetGate(5);
-     PM::ManageAll(S);
-     Panel::Render(S);
-     return;
-   }
-   // News hard-block window
-   int mins_left=0;
-   if(S.news_on && Policies::NewsBlockedNow(S, mins_left))
-   {
-      Panel::SetGate(6);
-      PM::ManageAll(S);
-      return;
-   }
-   
-   // Always keep managing open positions
+
+   // Always keep managing open positions (even if we skip evaluation)
    PM::ManageAll(S);
 
    // NOTE: current strategies rely on _Symbol internally; only evaluate on chart symbol.
    if(sym != _Symbol)
    {
-      Panel::Render(S);
-      return;
-   }
-   
-   if(Exec::IsLocked(sym))
-   {
-      Panel::SetGate(7);
+      TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT, "sym != _Symbol; evaluation skipped");
       Panel::Render(S);
       return;
    }
 
-    // Runtime gate: unified warmup (tester-safe; prevents permanent stall)
-    if(!WarmupGateOK())
-      {
-       PM::ManageAll(S);
-       Panel::Render(S);
-       return;
-      }
+   // 1) Unified gate wrapper (Policies/Session/Time/Price/News/ExecLock)
+   int gate_reason = 0;
+   const datetime now_srv = TimeUtils::NowServer();
+   if(!RouterGateOK(sym, S, now_srv, gate_reason))
+   {
+      // RouterGateOK will breadcrumb; this keeps ProcessSymbol consistent too
+      TraceNoTrade(sym, TS_GATE, gate_reason,
+                   StringFormat("RouterGateOK=false (%s)", _GateReasonStr(gate_reason)));
+      Panel::Render(S);
+      return;
+   }
+
+   // Clear the gate indicator when we pass all gates
+   Panel::SetGate(GATE_NONE);
 
    // 2) Policies::Evaluate (or router fallback) → intent/pick
    StratReg::RoutedPick pick;
    ZeroMemory(pick);
    if(!TryMinimalPathIntent(sym, S, pick))
      {
+      TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT,
+             "TryMinimalPathIntent=false (no eligible pick/intent)");
       Panel::Render(S);
       return;
      }
@@ -3071,6 +3295,10 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
    if(!pick.ss.eligible || pick.ss.score < min_sc)
      {
+      TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_PICK_DROP,
+             StringFormat("intent_drop: eligible=%d score=%.3f min=%.2f veto=%d",
+                          (int)pick.ss.eligible, pick.ss.score, min_sc, (int)pick.bd.veto),
+             (int)pick.id, pick.dir, pick.ss.score);
       _LogCandidateDrop("intent_drop", pick.id, pick.dir, pick.ss, pick.bd, min_sc);
       PM::ManageAll(S);
       Panel::Render(S);
@@ -3108,6 +3336,8 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
      {
       PM::ManageAll(S);
       Panel::Render(S);
+      TraceNoTrade(sym, TS_POLICIES, TR_POLICIES_SOFT_SKIP,
+                   "News::CompositeRiskAtBarClose / SurpriseRiskAdjust requested skip=true");
       return;
      }
 
@@ -3128,6 +3358,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    OrderPlan plan;
    if(!Risk::ComputeOrder(pick.dir, trade_cfg, SS, plan, pick.bd))
    {
+      _LogRiskReject("risk_reject", sym, (StrategyID)pick.id, pick.dir, SS);
       Panel::Render(S);
       return;
    }
@@ -3135,6 +3366,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, /*skip_gates=*/false, (StrategyID)pick.id);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
+   _LogExecReject("exec_reject", sym, (StrategyID)pick.id, pick.dir, SS, plan, ex);
    if(ex.ok)
       Policies::NotifyTradePlaced();
    

@@ -53,6 +53,20 @@ struct Settings;
   #define NEWSFILTER_AVAILABLE 1
 #endif
 
+// --- NewsFilter runtime settings are present in Config::Settings (used by News::ConfigureFromEA)
+#ifndef CFG_HAS_NEWS_BACKEND
+   #define CFG_HAS_NEWS_BACKEND 1
+#endif
+#ifndef CFG_HAS_NEWS_MVP_NO_BLOCK
+   #define CFG_HAS_NEWS_MVP_NO_BLOCK 1
+#endif
+#ifndef CFG_HAS_NEWS_FAILOVER_TO_CSV
+   #define CFG_HAS_NEWS_FAILOVER_TO_CSV 1
+#endif
+#ifndef CFG_HAS_NEWS_NEUTRAL_ON_NODATA
+   #define CFG_HAS_NEWS_NEUTRAL_ON_NODATA 1
+#endif
+
 #ifndef CFG_HAS_ADX_PARAMS
   #define CFG_HAS_ADX_PARAMS 1
 #endif
@@ -600,6 +614,12 @@ namespace Config
    
      // News (weight)
      bool extra_news; double w_news;
+     
+     // --- NewsFilter backend control (fed into Config::Settings, then News::ConfigureFromEA)
+     int  news_backend_mode;        // 0=disabled, 1=broker, 2=csv, 3=auto
+     bool news_mvp_no_block;        // if true => never hard-block (MVP safety)
+     bool news_failover_to_csv;     // allow broker->csv fallback
+     bool news_neutral_on_no_data;  // missing data => neutral (no block)
    
      // Silver Bullet timezone window (extra confluence)
      bool   extra_silverbullet_tz;
@@ -1123,6 +1143,14 @@ namespace Config
      // -----------------------------------------------------------------------------
      inline ENUM_TRADE_DIRECTION ComputeDirectionFromICT(const ICT_Context &ctx)
      {
+         // Prefer the finalized direction gate (single source of truth)
+         // Only trust it when the context is marked valid; otherwise fall back to bias.
+         if(ctx.valid)
+         {
+            if((int)ctx.allowedDirection >= 0 && (int)ctx.allowedDirection <= 2)
+               return ctx.allowedDirection;
+         }
+          
          switch(ctx.directionalBias)
          {
             case ICT_LONG_ONLY:
@@ -1155,14 +1183,19 @@ namespace Config
      inline ENUM_TRADE_DIRECTION EffectiveDirectionSelector(const Settings &cfg,
                                                              const ICT_Context &ctx)
      {
-         if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
-         {
-             // Old behaviour: manual BUY_ONLY / SELL_ONLY / BOTH_AUTO
-             return TradeSelectorToDirection(cfg.trade_selector);
-         }
-              
-         // Smart Money auto mode: map ICT bias → TDIR_*
-         return ComputeDirectionFromICT(ctx);
+          // Manual hard override always wins (even in AUTO mode)
+          const ENUM_TRADE_DIRECTION manualDir = TradeSelectorToDirection(cfg.trade_selector);
+          if(manualDir == TDIR_BUY || manualDir == TDIR_SELL)
+             return manualDir;
+
+          // Manual selector mode: respect the user's choice (BOTH_AUTO)
+          if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+          {
+              return manualDir; // will be TDIR_BOTH here
+          }
+
+          // Smart Money auto mode: use ICT context gate (now prefers ctx.allowedDirection)
+          return ComputeDirectionFromICT(ctx);
      }
    
    #ifdef CFG_HAS_STRAT_MODE
@@ -1435,6 +1468,13 @@ namespace Config
        cfg.w_news = x.w_news;
      #endif
      
+     #ifdef CFG_HAS_NEWS_BACKEND
+         cfg.news_backend_mode       = x.news_backend_mode;
+         cfg.news_mvp_no_block       = x.news_mvp_no_block;
+         cfg.news_failover_to_csv    = x.news_failover_to_csv;
+         cfg.news_neutral_on_no_data = x.news_neutral_on_no_data;
+     #endif
+     
      // Silver Bullet TZ
      #ifdef CFG_HAS_EXTRA_SILVERBULLET_TZ
        cfg.extra_silverbullet_tz = x.extra_silverbullet_tz;
@@ -1608,6 +1648,14 @@ namespace Config
      x.orderflow_th           = 0.60;          // FX-friendly default threshold
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
+     
+     #ifdef CFG_HAS_NEWS_BACKEND
+         // Defaults: safe + configurable. You can tighten later from EA inputs.
+         x.news_backend_mode       = 1;     // broker calendar by default
+         x.news_mvp_no_block       = true;  // don't accidentally sterilize trading out-of-the-box
+         x.news_failover_to_csv    = true;  // allow fallback if broker calendar is missing
+         x.news_neutral_on_no_data = true;  // missing data => do not block
+     #endif
      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
@@ -1833,11 +1881,14 @@ namespace Config
     // Trade selector
     if((int)cfg.trade_selector<0 || (int)cfg.trade_selector>2) cfg.trade_selector=TRADE_BOTH_AUTO;
     
-    // Keep cached direction selector coherent with manual selector mode
-    if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
-      cfg.trade_direction_selector = TradeSelectorToDirection(cfg.trade_selector);
-    else
-      cfg.trade_direction_selector = TDIR_BOTH;
+     // Keep cached direction selector coherent (manual overrides must survive AUTO mode)
+     const ENUM_TRADE_DIRECTION manualDir = TradeSelectorToDirection(cfg.trade_selector);
+     if(manualDir == TDIR_BUY || manualDir == TDIR_SELL)
+       cfg.trade_direction_selector = manualDir;
+     else if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+       cfg.trade_direction_selector = manualDir; // TDIR_BOTH
+     else
+       cfg.trade_direction_selector = TDIR_BOTH; // AUTO mode uses ICT gate at runtime
 
     // Defensive clamp (covers bad imports / external overrides)
     if((int)cfg.trade_direction_selector < 0 || (int)cfg.trade_direction_selector > 2)
@@ -1891,6 +1942,12 @@ namespace Config
 
     // Keep NewsFilter toggle coherent with news_on and compile flag
     cfg.newsFilterEnabled = (cfg.news_on && (NEWSFILTER_AVAILABLE != 0));
+    
+    #ifdef CFG_HAS_NEWS_BACKEND
+      // Keep within NewsFilter's expected range (0..3)
+       if(cfg.news_backend_mode < 0) cfg.news_backend_mode = 0;
+      if(cfg.news_backend_mode > 3) cfg.news_backend_mode = 3;
+    #endif
 
     if(cfg.max_losses_day<0) cfg.max_losses_day=0;
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
@@ -2691,9 +2748,15 @@ namespace Config
 
   inline void ApplyTradeSelector(Settings &cfg, const TradeSelector sel)
   {
-    cfg.trade_selector = ((int)sel<0 || (int)sel>2 ? TRADE_BOTH_AUTO : sel);
-    if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
-       cfg.trade_direction_selector = TradeSelectorToDirection(cfg.trade_selector);
+     cfg.trade_selector = ((int)sel<0 || (int)sel>2 ? TRADE_BOTH_AUTO : sel);
+
+     const ENUM_TRADE_DIRECTION manualDir = TradeSelectorToDirection(cfg.trade_selector);
+     if(manualDir == TDIR_BUY || manualDir == TDIR_SELL)
+       cfg.trade_direction_selector = manualDir;
+     else if((DirectionBiasMode)cfg.direction_bias_mode == DIRM_MANUAL_SELECTOR)
+       cfg.trade_direction_selector = manualDir; // TDIR_BOTH
+     else
+       cfg.trade_direction_selector = TDIR_BOTH;
   }
 
   inline void ApplySessionPreset(Settings &cfg,
@@ -2834,6 +2897,13 @@ namespace Config
     s+=",pre="+IntegerToString(c.block_pre_m);
     s+=",post="+IntegerToString(c.block_post_m);
     s+=",mask="+IntegerToString(c.news_impact_mask);
+    
+    #ifdef CFG_HAS_NEWS_BACKEND
+      s += ",nb="  + IntStr(cfg.news_backend_mode);
+      s += ",mvp=" + BoolStr(cfg.news_mvp_no_block);
+      s += ",csv=" + BoolStr(cfg.news_failover_to_csv);
+      s += ",nod=" + BoolStr(cfg.news_neutral_on_no_data);
+    #endif
 
     s+=",dbg="+BoolStr(c.debug);
     s+=",fl="+BoolStr(c.filelog);
@@ -3514,7 +3584,12 @@ namespace Config
      
      // Prefer ICT-driven direction in PropSafe (less manual overtrading)
      cfg.direction_bias_mode = (int)DIRM_AUTO_SMARTMONEY;
-     cfg.trade_direction_selector = TDIR_BOTH;
+     // Preserve manual BUY/SELL overrides; otherwise leave BOTH (AUTO gate applies at runtime)
+     const ENUM_TRADE_DIRECTION manualDir = TradeSelectorToDirection(cfg.trade_selector);
+     if(manualDir == TDIR_BUY || manualDir == TDIR_SELL)
+         cfg.trade_direction_selector = manualDir;
+     else
+         cfg.trade_direction_selector = TDIR_BOTH;
 
      // Hard gate and minimum features (only if those fields exist)
      #ifdef CFG_HAS_ENABLE_HARD_GATE
@@ -3813,6 +3888,13 @@ namespace Config
       else if(k=="pre") cfg.block_pre_m=ToInt(v);
       else if(k=="post") cfg.block_post_m=ToInt(v);
       else if(k=="mask") cfg.news_impact_mask=ToInt(v);
+      
+      #ifdef CFG_HAS_NEWS_BACKEND
+         else if(k=="nb")  cfg.news_backend_mode = ToInt(v);
+         else if(k=="mvp") cfg.news_mvp_no_block = ToBool(v);
+         else if(k=="csv") cfg.news_failover_to_csv = ToBool(v);
+         else if(k=="nod") cfg.news_neutral_on_no_data = ToBool(v);
+      #endif
 
       else if(k=="dbg") cfg.debug=ToBool(v);
       else if(k=="fl") cfg.filelog=ToBool(v);
@@ -4347,6 +4429,13 @@ struct Settings
   int               block_pre_m;
   int               block_post_m;
   double            cal_hard_skip;       // ≥ this → skip (legacy)
+  
+  #ifdef CFG_HAS_NEWS_BACKEND
+      int  news_backend_mode;        // 0=disabled, 1=broker, 2=csv, 3=auto
+      bool news_mvp_no_block;        // MVP safety: if true => never hard-block
+      bool news_failover_to_csv;     // allow broker->csv fallback
+      bool news_neutral_on_no_data;  // missing data => neutral (no block)
+  #endif
   
   // Extra: Correlation gate
   string             corr_ref_symbol;     // e.g., "DXY" / "USTEC" / "XAUUSD"
