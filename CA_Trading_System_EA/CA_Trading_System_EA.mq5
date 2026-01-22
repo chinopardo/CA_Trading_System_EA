@@ -3216,7 +3216,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(cfg.news_on)
    {
       int mins_left = 0;
-      if(News::IsBlocked(sym, cfg.news_impact_mask, cfg.block_pre_m, cfg.block_post_m, mins_left))
+      if(News::IsBlocked(now_srv, sym, cfg.news_impact_mask, cfg.block_pre_m, cfg.block_post_m, mins_left))
       {
          gate_reason_out = GATE_NEWS;
          Panel::SetGate(gate_reason_out);
@@ -3326,6 +3326,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
      }
 
    // 3) Meta layers (ML/Calm) + News surprise scaling + Streak scaling
+   int mins_left = 0;
    double risk_mult=1.0;
    bool skip=false;
    News::CompositeRiskAtBarClose(S, sym, /*shift*/1, risk_mult, skip, mins_left);

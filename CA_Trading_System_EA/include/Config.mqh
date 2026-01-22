@@ -620,6 +620,7 @@ namespace Config
      bool news_mvp_no_block;        // if true => never hard-block (MVP safety)
      bool news_failover_to_csv;     // allow broker->csv fallback
      bool news_neutral_on_no_data;  // missing data => neutral (no block)
+     bool news_allow_cached;
    
      // Silver Bullet timezone window (extra confluence)
      bool   extra_silverbullet_tz;
@@ -1473,6 +1474,7 @@ namespace Config
          cfg.news_mvp_no_block       = x.news_mvp_no_block;
          cfg.news_failover_to_csv    = x.news_failover_to_csv;
          cfg.news_neutral_on_no_data = x.news_neutral_on_no_data;
+         cfg.news_allow_cached       = x.news_allow_cached;
      #endif
      
      // Silver Bullet TZ
@@ -1655,6 +1657,7 @@ namespace Config
          x.news_mvp_no_block       = true;  // don't accidentally sterilize trading out-of-the-box
          x.news_failover_to_csv    = true;  // allow fallback if broker calendar is missing
          x.news_neutral_on_no_data = true;  // missing data => do not block
+         x.news_allow_cached = true;
      #endif
      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
@@ -3894,6 +3897,7 @@ namespace Config
          else if(k=="mvp") cfg.news_mvp_no_block = ToBool(v);
          else if(k=="csv") cfg.news_failover_to_csv = ToBool(v);
          else if(k=="nod") cfg.news_neutral_on_no_data = ToBool(v);
+         else if(k=="nac") cfg.news_allow_cached = ToBool(v);
       #endif
 
       else if(k=="dbg") cfg.debug=ToBool(v);
@@ -4435,6 +4439,7 @@ struct Settings
       bool news_mvp_no_block;        // MVP safety: if true => never hard-block
       bool news_failover_to_csv;     // allow broker->csv fallback
       bool news_neutral_on_no_data;  // missing data => neutral (no block)
+      bool news_allow_cached; // allow using cached broker-calendar data when fresh fetch is unavailable
   #endif
   
   // Extra: Correlation gate
