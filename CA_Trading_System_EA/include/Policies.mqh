@@ -961,6 +961,15 @@ namespace Policies
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_liq) return s_over[k].liq_min_ratio; return (default_floor>0.0? default_floor : CfgLiqMinRatio(cfg)); }
   inline int EffNewsImpactMask(const Settings &cfg, const string sym)
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_news_mask) return s_over[k].news_mask; return CfgNewsImpactMask(cfg); }
+  inline int EffNewsPreMins(const Settings &cfg)
+   {
+     return (int)cfg.news_pre_mins;
+   }
+   
+   inline int EffNewsPostMins(const Settings &cfg)
+   {
+     return (int)cfg.news_post_mins;
+   }
 
   // ----------------------------------------------------------------------------
   // ATR & ADR helpers (with optional dampening)
@@ -1691,17 +1700,17 @@ namespace Policies
       News::Health h; 
       News::GetHealth(h);
    
-      string err = h.last_error;
-      if(StringLen(err) > 80) err = StringSubstr(err, 0, 80);
+      string note = h.note;
+      if(StringLen(note) > 80) note = StringSubstr(note, 0, 80);
    
-      if(err != "")
-         return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d warm=%d err=%s",
+      if(note != "")
+         return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d note=%s",
                              mins_left, impact_mask, pre_m, post_m,
-                             h.effective_backend, (h.warm ? 1 : 0), err);
+                             h.backend_effective, (h.broker_available ? 1 : 0), h.csv_events, h.data_health, note);
    
-      return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d warm=%d",
+      return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d",
                           mins_left, impact_mask, pre_m, post_m,
-                          h.effective_backend, (h.warm ? 1 : 0));
+                          h.backend_effective, (h.broker_available ? 1 : 0), h.csv_events, h.data_health);
    }
    #endif
    
@@ -1728,7 +1737,7 @@ namespace Policies
      return StringFormat("spread=%.1f pts > max=%.1f pts", spread_pts, max_spread_pts);
    }
    
-   inline string _FmtSessionVeto(const string &session_reason)
+  inline string _FmtSessionVeto(const string session_reason)
    {
      return StringFormat("session_block (%s)", session_reason);
    }
@@ -3027,7 +3036,7 @@ namespace Policies
          int news_mins_left = -1;
          if(NewsBlockedNow(cfg, TimeCurrent(), news_mins_left))
          {
-            gate_reason = (int)PolicyGate::GATE_NEWS;
+            gate_reason = (int)GATE_NEWS;
             mins_left   = news_mins_left;
             return false;
          }

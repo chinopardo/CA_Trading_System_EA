@@ -2899,10 +2899,10 @@ namespace Config
     s+=",mask="+IntegerToString(c.news_impact_mask);
     
     #ifdef CFG_HAS_NEWS_BACKEND
-      s += ",nb="  + IntStr(cfg.news_backend_mode);
-      s += ",mvp=" + BoolStr(cfg.news_mvp_no_block);
-      s += ",csv=" + BoolStr(cfg.news_failover_to_csv);
-      s += ",nod=" + BoolStr(cfg.news_neutral_on_no_data);
+      s += ",nb="  + IntegerToString((int)c.news_backend_mode);
+      s += ",nnb=" + BoolStr(c.news_mvp_no_block);
+      s += ",csv=" + BoolStr(c.news_failover_to_csv);
+      s += ",nac=" + BoolStr(c.news_allow_cached);
     #endif
 
     s+=",dbg="+BoolStr(c.debug);

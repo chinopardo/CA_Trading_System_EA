@@ -774,7 +774,7 @@ void TraceNoTrade(const string sym,
                   const int code,
                   const string detail,
                   const int strat_id=0,
-                  const Direction dir=DIR_NONE,
+                  const Direction dir=DIR_BOTH,
                   const double score=0.0,
                   const double lots=0.0,
                   const int retcode=0)
