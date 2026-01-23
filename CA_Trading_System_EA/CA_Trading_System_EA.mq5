@@ -44,6 +44,7 @@
 #include "include/LiquidityCues.mqh"
 #include "include/RegimeCorr.mqh"
 #include "include/NewsFilter.mqh"
+#include "include/OrderBookImbalance.mqh"
 #define CONFLUENCE_API_BYNAME
 //#define UNIT_TEST_ROUTER_GATE
 #include "include/Confluence.mqh"
@@ -2249,6 +2250,10 @@ int OnInit()
    ex.log_veto_details       = Inp_LogVetoDetails;
    // ex.weekly_open_spread_ramp = InpWeeklyOpenRamp;  // if you expose it as input
    
+   OBI::Settings obi;
+   obi.enabled = cfg.extra_dom_imbalance;   // your config toggle
+   OBI::EnsureSubscribed(_Symbol, obi);
+
    Config::ApplyExtras(S, ex);
    Config::FinalizeThresholds(S);
 
@@ -2752,6 +2757,8 @@ void OnDeinit(const int reason)
    Exec::Deinit();
    MarketData::Deinit();
    Panel::Deinit();
+   OBI::Settings obi; // same settings not required for release
+   OBI::ReleaseAll(obi);
    #ifdef REVIEWUI_HAS_ICT_DEINIT
       ReviewUI_ICT_Deinit();   // optional, cleans labels
    #endif
