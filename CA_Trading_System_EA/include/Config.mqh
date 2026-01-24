@@ -145,6 +145,22 @@ struct Settings;
   #define CFG_HAS_W_VOLUME_FP 1
 #endif
 
+#ifndef CFG_HAS_EXTRA_DOM_IMBALANCE
+  #define CFG_HAS_EXTRA_DOM_IMBALANCE 1
+#endif
+#ifndef CFG_HAS_W_DOM_IMBALANCE
+  #define CFG_HAS_W_DOM_IMBALANCE 1
+#endif
+#ifndef CFG_HAS_DEBUG_DOM
+  #define CFG_HAS_DEBUG_DOM 1
+#endif
+#ifndef CFG_HAS_DOM_ZONE_PAD_POINTS
+  #define CFG_HAS_DOM_ZONE_PAD_POINTS 1
+#endif
+#ifndef CFG_HAS_DOM_MIN_ABS_IMB
+  #define CFG_HAS_DOM_MIN_ABS_IMB 1
+#endif
+
 #ifndef CFG_HAS_EXTRA_STOCHRSI
   #define CFG_HAS_EXTRA_STOCHRSI 1
 #endif
@@ -599,6 +615,13 @@ namespace Config
      // Volume footprint
      bool   extra_volume_footprint;  double w_volume_footprint;
    
+     // DOM (MarketBook) imbalance (optional; broker capability dependent)
+     bool   extra_dom_imbalance;
+     int    dom_zone_pad_points;
+     double dom_min_abs_imb;
+     bool   debug_dom;
+     double w_dom_imbalance;
+     
      // StochRSI
      bool   extra_stochrsi; int stochrsi_rsi_period; int stochrsi_k_period;
      double stochrsi_ob; double stochrsi_os; double w_stochrsi;
@@ -1385,6 +1408,23 @@ namespace Config
        cfg.w_volume_footprint = x.w_volume_footprint;
      #endif
    
+     // DOM imbalance
+     #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
+       cfg.extra_dom_imbalance = x.extra_dom_imbalance;
+     #endif
+     #ifdef CFG_HAS_DOM_ZONE_PAD_POINTS
+       cfg.dom_zone_pad_points = MathMax(0, x.dom_zone_pad_points);
+     #endif
+     #ifdef CFG_HAS_DOM_MIN_ABS_IMB
+       cfg.dom_min_abs_imb = x.dom_min_abs_imb;
+     #endif
+     #ifdef CFG_HAS_DEBUG_DOM
+       cfg.debug_dom = x.debug_dom;
+     #endif
+     #ifdef CFG_HAS_W_DOM_IMBALANCE
+       cfg.w_dom_imbalance = x.w_dom_imbalance;
+     #endif
+
     // StochRSI
     #ifdef CFG_HAS_EXTRA_STOCHRSI
       cfg.extra_stochrsi = x.extra_stochrsi;
@@ -1651,6 +1691,24 @@ namespace Config
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
      
+     // Baseline weights for extras (features OFF by default; weights ready when enabled)
+     x.w_volume_footprint = 0.05;
+
+     x.extra_dom_imbalance = false;
+     x.dom_zone_pad_points = 15;
+     x.dom_min_abs_imb     = 0.15;
+     x.debug_dom           = false;
+     x.w_dom_imbalance     = 0.05;
+
+     x.w_stochrsi   = 0.04;
+     x.w_macd       = 0.04;
+     x.w_adx_regime = 0.04;
+
+     x.corr_min_abs = 0.25;
+     x.w_corr       = 0.04;
+
+     x.w_news       = 0.04;
+
      #ifdef CFG_HAS_NEWS_BACKEND
          // Defaults: safe + configurable. You can tighten later from EA inputs.
          x.news_backend_mode       = 1;     // broker calendar by default
@@ -2005,6 +2063,26 @@ namespace Config
     #endif
     // fibRRHardReject is a bool; no clamp needed
     
+    // ---- DOM / footprint clamps (not part of CFG_HAS_CF_WEIGHTS)
+    #ifdef CFG_HAS_W_VOLUME_FP
+      cfg.w_volume_footprint = MathMax(0.0, cfg.w_volume_footprint);
+    #endif
+
+    #ifdef CFG_HAS_W_DOM_IMBALANCE
+      cfg.w_dom_imbalance = MathMax(0.0, cfg.w_dom_imbalance);
+    #endif
+
+    #ifdef CFG_HAS_DOM_ZONE_PAD_POINTS
+      if(cfg.dom_zone_pad_points < 0) cfg.dom_zone_pad_points = 0;
+      if(cfg.dom_zone_pad_points > 500) cfg.dom_zone_pad_points = 500; // sanity cap
+    #endif
+
+    #ifdef CFG_HAS_DOM_MIN_ABS_IMB
+      if(cfg.dom_min_abs_imb <= 0.0) cfg.dom_min_abs_imb = 0.15;
+      if(cfg.dom_min_abs_imb < 0.01) cfg.dom_min_abs_imb = 0.01;
+      if(cfg.dom_min_abs_imb > 1.00) cfg.dom_min_abs_imb = 1.00;
+    #endif
+
     // Loop
     if(cfg.timer_ms<25) cfg.timer_ms=25;
 
@@ -2392,6 +2470,27 @@ namespace Config
       if(cfg.orderflow_th < 0.10) warns += "orderflow_th < 0.10; likely too permissive or unstable.\n";
     #endif
   
+    // DOM sanity warnings (won't block; just tells you why it may be ineffective)
+    #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
+      if(cfg.extra_dom_imbalance)
+      {
+        #ifdef CFG_HAS_W_DOM_IMBALANCE
+          if(cfg.w_dom_imbalance <= 0.0)
+            warns += "DOM enabled but w_dom_imbalance<=0 (DOM contributes no score).\\n";
+        #endif
+        #ifdef CFG_HAS_DOM_MIN_ABS_IMB
+          if(cfg.dom_min_abs_imb <= 0.0 || cfg.dom_min_abs_imb > 1.0)
+            warns += "DOM dom_min_abs_imb out of range; Normalize() will clamp.\\n";
+        #endif
+      }
+    #endif
+
+    // Correlation warnings (helps catch 'enabled but empty basket' cases)
+    #ifdef CFG_HAS_EXTRA_CORR
+      if(cfg.extra_correlation && StringLen(cfg.corr_ref_symbol)==0)
+        warns += "Correlation enabled but corr_ref_symbol empty (strategy should auto-basket, otherwise correlation may be neutral).\\n";
+    #endif
+
     // If news_on is set but NEWSFILTER_AVAILABLE == 0, warn that blocks are ignored.
     if(cfg.news_on && (NEWSFILTER_AVAILABLE==0))
       warns += "news_on set but NEWSFILTER_AVAILABLE==0; news blocks will be ignored.\n";
@@ -3008,6 +3107,39 @@ namespace Config
     s+=",struct="+BoolStr(c.structure_enable);
     s+=",liq="+BoolStr(c.liquidity_enable);
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
+
+    // Post-confirm extras (DOM / correlation)
+    #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
+      s+=",xDOM="+BoolStr(c.extra_dom_imbalance);
+    #endif
+    #ifdef CFG_HAS_W_DOM_IMBALANCE
+      s+=",wDOM="+DoubleToString(c.w_dom_imbalance,3);
+    #endif
+    #ifdef CFG_HAS_DOM_ZONE_PAD_POINTS
+      s+=",domPad="+IntegerToString(c.dom_zone_pad_points);
+    #endif
+    #ifdef CFG_HAS_DOM_MIN_ABS_IMB
+      s+=",domMin="+DoubleToString(c.dom_min_abs_imb,3);
+    #endif
+    #ifdef CFG_HAS_DEBUG_DOM
+      s+=",domDbg="+BoolStr(c.debug_dom);
+    #endif
+
+    #ifdef CFG_HAS_EXTRA_CORR
+      s+=",xCorr="+BoolStr(c.extra_correlation);
+    #endif
+    #ifdef CFG_HAS_W_CORR
+      s+=",wCorr="+DoubleToString(c.w_correlation,3);
+    #endif
+    #ifdef CFG_HAS_CORR_LOOKBACK
+      s+=",corrLb="+IntegerToString(c.corr_lookback);
+    #endif
+    #ifdef CFG_HAS_CORR_MIN_ABS
+      s+=",corrAbs="+DoubleToString(c.corr_min_abs,3);
+    #endif
+    #ifdef CFG_HAS_CORR_REF_SYMBOL
+      if(StringLen(c.corr_ref_symbol)>0) s+=",corrRef="+c.corr_ref_symbol;
+    #endif
 
     // Liquidity Pools (Lux-style)
     #ifdef CFG_HAS_LIQPOOL_FIELDS
@@ -4002,6 +4134,19 @@ namespace Config
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
       else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
 
+      // Post-confirm extras (DOM / correlation)
+      else if(k=="xDOM")    cfg.extra_dom_imbalance = ToBool(v);
+      else if(k=="wDOM")    cfg.w_dom_imbalance = ToDouble(v);
+      else if(k=="domPad")  cfg.dom_zone_pad_points = ToInt(v);
+      else if(k=="domMin")  cfg.dom_min_abs_imb = ToDouble(v);
+      else if(k=="domDbg")  cfg.debug_dom = ToBool(v);
+
+      else if(k=="xCorr")    cfg.extra_correlation = ToBool(v);
+      else if(k=="wCorr")    cfg.w_correlation = ToDouble(v);
+      else if(k=="corrLb")   cfg.corr_lookback = ToInt(v);
+      else if(k=="corrAbs")  cfg.corr_min_abs = ToDouble(v);
+      else if(k=="corrRef")  cfg.corr_ref_symbol = v;
+
       // Liquidity Pools (Lux-style)
       else if(k=="liqMinTouch") cfg.liqPoolMinTouches = ToInt(v);
       else if(k=="liqGap")      cfg.liqPoolGapBars = ToInt(v);
@@ -4364,6 +4509,11 @@ struct Settings
    // Volume footprint “extra” gate
    bool   extra_volume_footprint;   // if true, use volume footprint as extra
    double w_volume_footprint;       // weight for volume footprint extra
+   bool extra_dom_imbalance;
+   double w_dom_imbalance;
+   bool debug_dom;
+   int dom_zone_pad_points;
+   double dom_min_abs_imb;
 
    // StochRSI “extra” gate (distinct from base cf_stochrsi flag/weights)
    bool   extra_stochrsi;           // enable StochRSI as an extra gate
