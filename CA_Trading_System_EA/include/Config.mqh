@@ -222,6 +222,9 @@ struct Settings;
 #ifndef CFG_HAS_EXTRA_NEWS
   #define CFG_HAS_EXTRA_NEWS 1
 #endif
+#ifndef CFG_HAS_MAIN_NEWS_HARD_VETO
+  #define CFG_HAS_MAIN_NEWS_HARD_VETO 1
+#endif
 
 #ifndef CFG_HAS_EXTRA_SILVERBULLET_TZ
   #define CFG_HAS_EXTRA_SILVERBULLET_TZ 1
@@ -637,6 +640,9 @@ namespace Config
    
      // News (weight)
      bool extra_news; double w_news;
+     #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+         bool main_news_hard_veto;  // true = treat news as hard veto in Main (vs soft/score-only)
+     #endif
      
      // --- NewsFilter backend control (fed into Config::Settings, then News::ConfigureFromEA)
      int  news_backend_mode;        // 0=disabled, 1=broker, 2=csv, 3=auto
@@ -1505,6 +1511,9 @@ namespace Config
      #ifdef CFG_HAS_EXTRA_NEWS
        cfg.extra_news = x.extra_news;
      #endif
+     #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+        cfg.main_news_hard_veto = x.main_news_hard_veto;
+     #endif
      #ifdef CFG_HAS_W_NEWS
        cfg.w_news = x.w_news;
      #endif
@@ -1684,6 +1693,14 @@ namespace Config
      x.require_sb_vwap_stretch = false;
      x.main_require_checklist = true;
      x.main_confirm_any_of_3  = true;
+     
+     // Enforce the 1→8 checklist by default (your requirement)
+     x.main_sequential_gate   = true;
+
+     // Baseline quality gates (prevents “anything passes”)
+     x.conf_min_count         = 5;
+     x.conf_min_score         = 0.55;
+    
      #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
        x.main_require_classical = false; // default OFF (more trades; avoids “over-filtering”)
      #endif
@@ -1712,12 +1729,19 @@ namespace Config
      #ifdef CFG_HAS_NEWS_BACKEND
          // Defaults: safe + configurable. You can tighten later from EA inputs.
          x.news_backend_mode       = 1;     // broker calendar by default
-         x.news_mvp_no_block       = true;  // don't accidentally sterilize trading out-of-the-box
+         x.news_mvp_no_block       = false;  // don't accidentally sterilize trading out-of-the-box
          x.news_failover_to_csv    = true;  // allow fallback if broker calendar is missing
          x.news_neutral_on_no_data = true;  // missing data => do not block
          x.news_allow_cached = true;
      #endif
      
+     x.extra_news = true;
+     x.w_news     = 0.50;
+
+     #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+         x.main_news_hard_veto = true;
+     #endif
+      
      x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
      x.adx_period=14; x.adx_min=20.0;
@@ -1862,6 +1886,54 @@ namespace Config
       cfg.qualityThresholdReversal = 1.0;
   }
   
+  inline bool _AnyMainConfluenceConfigured(const Settings &cfg)
+  {
+    // If ANY toggle is on or ANY weight is positive, assume user/profile already configured it.
+    if(cfg.cf_market_structure || cfg.cf_inst_zones || cfg.cf_orderflow_delta ||
+       cfg.cf_liquidity || cfg.cf_orderblock_near || cfg.cf_vsa_increase ||
+       cfg.cf_candle_pattern || cfg.cf_chart_pattern || cfg.cf_trend_regime)
+      return true;
+
+    if(cfg.w_market_structure > 0.0 || cfg.w_inst_zones > 0.0 || cfg.w_orderflow_delta > 0.0 ||
+       cfg.w_liquidity > 0.0 || cfg.w_orderblock_near > 0.0 || cfg.w_vsa_increase > 0.0 ||
+       cfg.w_candle_pattern > 0.0 || cfg.w_chart_pattern > 0.0 || cfg.w_trend_regime > 0.0)
+      return true;
+
+    return false;
+  }
+
+  inline void SeedMainConfluenceDefaults(Settings &cfg)
+  {
+    if(_AnyMainConfluenceConfigured(cfg))
+      return;
+
+    // Enable the core categories you require
+    cfg.cf_market_structure = cfg.structure_enable;
+    cfg.cf_inst_zones       = true;
+    cfg.cf_orderflow_delta  = true;
+    cfg.cf_liquidity        = cfg.liquidity_enable;
+    cfg.cf_orderblock_near  = true;
+    cfg.cf_vsa_increase     = cfg.vsa_enable;
+    cfg.cf_candle_pattern   = true;
+    cfg.cf_chart_pattern    = true;
+    cfg.cf_trend_regime     = true;
+
+    // Weights sum ≈ 1.00 so cf_min_score behaves predictably
+    cfg.w_market_structure  = 0.15;
+    cfg.w_inst_zones        = 0.15;
+    cfg.w_orderflow_delta   = 0.15;
+    cfg.w_liquidity         = 0.10;
+    cfg.w_orderblock_near   = 0.10;
+    cfg.w_vsa_increase      = 0.10;
+    cfg.w_candle_pattern    = 0.10;
+    cfg.w_chart_pattern     = 0.10;
+    cfg.w_trend_regime      = 0.05;
+
+    // If user left thresholds unset/zero, apply sane baselines
+    if(cfg.cf_min_needed <= 0) cfg.cf_min_needed = 5;
+    if(cfg.cf_min_score  <= 0) cfg.cf_min_score  = 0.55;
+  }
+
   // Bridge legacy ICT toggles -> new strat toggles (one-way; non-destructive)
   inline void SyncLegacyICTToggles(Settings &cfg)
   {
@@ -1886,6 +1958,9 @@ namespace Config
   inline void Normalize(Settings &cfg)
   {
     ConfigCore::Normalize(cfg);
+    // Ensure Main confluence toggles/weights are not left uninitialized
+    SeedMainConfluenceDefaults(cfg);
+
     // Assets & TFs
     if(ArraySize(cfg.asset_list)<=0){ ArrayResize(cfg.asset_list,1); cfg.asset_list[0]=_Symbol; }
     if(cfg.tf_entry<PERIOD_M1) cfg.tf_entry=PERIOD_M5;
@@ -3001,10 +3076,11 @@ namespace Config
     s+=",mask="+IntegerToString(c.news_impact_mask);
     
     #ifdef CFG_HAS_NEWS_BACKEND
-      s += ",nb="  + IntegerToString((int)c.news_backend_mode);
-      s += ",nnb=" + BoolStr(c.news_mvp_no_block);
-      s += ",csv=" + BoolStr(c.news_failover_to_csv);
-      s += ",nac=" + BoolStr(c.news_allow_cached);
+       s += ",nb="  + IntegerToString(c.news_backend_mode);
+       s += ",mvp=" + BoolStr(c.news_mvp_no_block);
+       s += ",csv=" + BoolStr(c.news_failover_to_csv);
+       s += ",nod=" + BoolStr(c.news_neutral_on_no_data);
+       s += ",nac=" + BoolStr(c.news_allow_cached);
     #endif
 
     s+=",dbg="+BoolStr(c.debug);
@@ -4027,6 +4103,8 @@ namespace Config
       #ifdef CFG_HAS_NEWS_BACKEND
          else if(k=="nb")  cfg.news_backend_mode = ToInt(v);
          else if(k=="mvp") cfg.news_mvp_no_block = ToBool(v);
+         else if(k=="nbm") cfg.news_backend_mode   = ToInt(v);   // legacy key
+         else if(k=="nnb") cfg.news_mvp_no_block   = ToBool(v);  // legacy key
          else if(k=="csv") cfg.news_failover_to_csv = ToBool(v);
          else if(k=="nod") cfg.news_neutral_on_no_data = ToBool(v);
          else if(k=="nac") cfg.news_allow_cached = ToBool(v);
@@ -4633,6 +4711,10 @@ struct Settings
   bool    extra_adx_regime;        double w_adx_regime;
   bool    extra_correlation;
   bool    extra_news;
+
+  #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+    bool main_news_hard_veto;
+  #endif
 
   // (Optional) news parameters if NewsFilter is wired
   int    news_impact_mask;
