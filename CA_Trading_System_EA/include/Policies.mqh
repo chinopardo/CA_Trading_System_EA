@@ -2630,7 +2630,7 @@ namespace Policies
    {
      PolicyResult r; ZeroMemory(r);
      if(!EvaluateFull(cfg, sym, r))
-     { reason = r.reason; minutes_left_news = r.news_mins_left; return false; }
+     { reason = r.primary_reason; minutes_left_news = r.news_mins_left; return false; }
    
      // keep your existing debug block, but replace any EffSessionFilter(cfg,_Symbol)
      // with EffSessionFilter(cfg, sym), and NewsBlockedNow(cfg, mins_left) with NewsBlockedNow(cfg, sym, mins_left)
@@ -2737,20 +2737,15 @@ namespace Policies
   // ----------------------------------------------------------------------------
   // AllowedByPolicies (legacy ABI) — unified cooldown, no duplicate helpers
   // ----------------------------------------------------------------------------
-  inline bool AllowedByPolicies(const Settings &cfg, const string sym, int &code_out)
-   {
-     int gr=GATE_OK, mins_left=0;
-     if(!CheckFull(cfg, sym, gr, mins_left))
-     { code_out = GateReasonToPolicyCode(gr); return false; }
-     code_out = POLICY_OK;
-     return true;
-   }
+  // Convenience overload used by Execution/Router paths (chart-symbol)
+  inline bool AllowedByPolicies(const Settings &cfg, int &code_out)
+  { return AllowedByPolicies(cfg, _Symbol, code_out); }
 
   inline bool AllowedByPolicies(const Settings &cfg, const string sym, int &code_out)
   {
     #ifdef POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL
       int gr=GATE_OK, mins=0;
-      if(!CheckFull(cfg, gr, mins))
+      if(!CheckFull(cfg, sym, gr, mins))
       {
         code_out = GateReasonToPolicyCode(gr);
         return false;
