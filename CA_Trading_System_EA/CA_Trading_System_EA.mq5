@@ -2971,8 +2971,15 @@ void OnTimer()
    // StrategyMode allow-list enforcement (defense in depth) — AFTER routing so pick_out.id is real.
    if(okRoute)
    {
+      const StrategyMode sm_eff = sm;                  // use the original effective mode
+      const StrategyID   sid    = (StrategyID)pick_out.id;
+   
+      // Missing ID is a wiring bug → block loudly.
+      if(((int)sid) <= 0 || !Strat_AllowedToTrade(sm_eff, sid))
+      {
          _LogCandidateDrop("mode_block", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
          return false;
+      }
    }
 
    if(pick_out.bd.veto || !pick_out.ss.eligible || pick_out.ss.score < min_sc)

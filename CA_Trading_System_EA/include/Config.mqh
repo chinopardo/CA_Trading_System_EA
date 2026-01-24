@@ -1228,17 +1228,29 @@ namespace Config
           return ComputeDirectionFromICT(ctx);
      }
    
-   #ifdef CFG_HAS_STRAT_MODE
-   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
+#ifdef CFG_HAS_STRAT_MODE
+   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID id)
    {
-     return Strat_AllowedToTrade(CfgStrategyMode(cfg), sid);
+      // Always reject missing/invalid strategy IDs (prevents ghost paths)
+      if(((int)id) <= 0) return false;
+
+      const StrategyMode mode = CfgStrategyMode(cfg);
+
+      // Combined mode allows any VALID ID; other modes use the canonical allow-list
+      if(mode == STRAT_COMBINED) return true;
+
+      return Strat_AllowedToTrade(mode, id);
    }
-   #else
-   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
-   {
-     return true; // no mode system compiled in
-   }
+
+   #ifndef CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE
+      #define CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE 1
    #endif
+#else
+   inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
+   {
+      return true; // no mode system compiled in
+   }
+#endif
 
    // ProfileSpec includes router hints + weights/throttles for known archetypes
    struct ProfileSpec

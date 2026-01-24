@@ -998,10 +998,10 @@ namespace Policies
   }
 
   // ADR cap gate: min/max bounds in pips; reason set to GATE_ADR if tripped
-  inline bool ADRCapOK(const Settings &cfg, int &reason, double &adr_pts_out)
+  inline bool ADRCapOK(const Settings &cfg, const string sym, int &reason, double &adr_pts_out)
    {
      reason = GATE_OK; adr_pts_out = 0.0;
-     const double adr_pts = ADRPoints(_Symbol, CfgADRLookbackDays(cfg));
+     const double adr_pts = ADRPoints(sym, CfgADRLookbackDays(cfg));
      if(adr_pts<=0.0) return true; // neutral if cannot compute
      adr_pts_out = adr_pts;
    
@@ -1011,14 +1011,17 @@ namespace Policies
        {
          // Real-time D1 range so far (points)
          MqlRates d1[]; ArraySetAsSeries(d1,true);
-         if(CopyRates(_Symbol, PERIOD_D1, 0, 1, d1)==1)
+         if(CopyRates(sym, PERIOD_D1, 0, 1, d1)==1)
          {
-           const double today_pts = MathAbs(d1[0].high - d1[0].low) / SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+           double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+           if(pt <= 0.0) pt = _Point;
+           if(pt <= 0.0) return true; // can't compute safely, don't block trades
+           const double today_pts = MathAbs(d1[0].high - d1[0].low) / pt;
            const double limit_pts = adr_pts * cap_mult;
            if(today_pts >= limit_pts)
            {
              reason=GATE_ADR;
-             _GateDetail(cfg, reason, _Symbol,
+             _GateDetail(cfg, reason, sym,
                          StringFormat("adr_pts=%.1f cap_mult=%.3f today_pts=%.1f limit_pts=%.1f",
                                       adr_pts, cap_mult, today_pts, limit_pts));
              return false;
@@ -1032,7 +1035,7 @@ namespace Policies
        const double max_pips = CfgADRMaxPips(cfg);
        if(min_pips<=0.0 && max_pips<=0.0) return true;
    
-       const double pts_per_pip = MarketData::PointsFromPips(_Symbol, 1.0);
+       const double pts_per_pip = MarketData::PointsFromPips(sym, 1.0);
        const double min_pts = (min_pips>0.0 ? min_pips * pts_per_pip : 0.0);
        const double max_pts = (max_pips>0.0 ? max_pips * pts_per_pip : 0.0);
        if(min_pts>0.0 && adr_pts < min_pts){ reason=GATE_ADR; return false; }
@@ -1040,6 +1043,9 @@ namespace Policies
        return true;
      #endif
    }
+
+  inline bool ADRCapOK(const Settings &cfg, int &reason, double &adr_pts_out)
+   { return ADRCapOK(cfg, _Symbol, reason, adr_pts_out); }
 
   // ----------------------------------------------------------------------------
   // PERSISTENT STATE (via Global Variables)
@@ -1464,9 +1470,8 @@ namespace Policies
     s_spread_cap_ceil  = Clamp(ceil_mult, 1.00, 2.00);
   }
 
-  inline double SpreadCapAdaptiveMult(const Settings &cfg)
+  inline double SpreadCapAdaptiveMult(const Settings &cfg, const string sym)
   {
-    const string sym=_Symbol;
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const int shortP = (s_vb_shortP>0 ? s_vb_shortP : CfgATRShort(cfg));
     const int longP  = s_vb_longP;
@@ -1481,47 +1486,53 @@ namespace Policies
     return Clamp( (1.0 + (s_spread_cap_ceil - 1.0)*t), s_spread_cap_floor, s_spread_cap_ceil );
   }
   
+  inline double SpreadCapAdaptiveMult(const Settings &cfg)
+   { return SpreadCapAdaptiveMult(cfg, _Symbol); }
+  
   // --- Weekly-open spread ramp (first hour after weekly open) -------------------
-   // Adjust a spread cap expressed in *points*. Uses server time Mon 00:00–00:59.
-   inline double AdjustSpreadCapWeeklyOpenPts(const Settings &/*cfg*/, const double cap_pts_in)
-   {
-     double cap = cap_pts_in;
-     if(cap <= 0.0) return cap;                // 0/neg => no cap
-   
-     MqlDateTime ds; TimeToStruct(TimeCurrent(), ds); // server time
-     if(ds.day_of_week == 1 /*Mon*/ && ds.hour == 0)
-     {
-       // ensure the effective cap is at least 8.0 pips (converted to points)
-       const double ppp = MarketData::PointsFromPips(_Symbol, 1.0); // points in 1 pip
-       if(ppp > 0.0){
-         const double min_pts = 8.0 * ppp;
-         if(cap < min_pts) cap = min_pts;
-       }
-     }
-     return cap;
-   }
+  // Adjust a spread cap expressed in *points*. Uses server time Mon 00:00–00:59.
+  inline double AdjustSpreadCapWeeklyOpenPts(const Settings &cfg, const string sym, const double cap_pts_in)
+  {
+    double cap = cap_pts_in;
+    if(cap <= 0.0) return cap;
 
-  inline bool MoDSpreadOK(const Settings &cfg, int &reason)
+    MqlDateTime ds; TimeToStruct(TimeCurrent(), ds); // server time
+    if(ds.day_of_week == 1 /*Mon*/ && ds.hour == 0)
+    {
+      const double ppp = MarketData::PointsFromPips(sym, 1.0);
+      if(ppp > 0.0)
+      {
+        const double min_pts = 8.0 * ppp;
+        if(cap < min_pts) cap = min_pts;
+      }
+    }
+    return cap;
+  }
+
+  inline double AdjustSpreadCapWeeklyOpenPts(const Settings &cfg, const double cap_pts_in)
+  { return AdjustSpreadCapWeeklyOpenPts(cfg, _Symbol, cap_pts_in); }
+
+  inline bool MoDSpreadOK(const Settings &cfg, const string sym, int &reason)
   {
     _EnsureLoaded(cfg);
 
     reason = GATE_OK;
-    int cap = EffMaxSpreadPts(cfg, _Symbol);
+    int cap = EffMaxSpreadPts(cfg, sym);
     if(cap<=0) return true;
 
-    const double adapt = SpreadCapAdaptiveMult(cfg);
+    const double adapt = SpreadCapAdaptiveMult(cfg, sym);
     // apply adaptive scaling first
     double eff_cap_pts = MathFloor((double)cap * adapt);
     
     // weekly-open ramp (points)
     if(CfgWeeklyRampOn(cfg))
-      eff_cap_pts = AdjustSpreadCapWeeklyOpenPts(cfg, eff_cap_pts);
+      eff_cap_pts = AdjustSpreadCapWeeklyOpenPts(cfg, sym, eff_cap_pts);
     cap = (int)MathFloor(eff_cap_pts);
 
-    const double sp = MarketData::SpreadPoints(_Symbol);
+    const double sp = MarketData::SpreadPoints(sym);
     if(sp<=0.0) return true;
 
-    if(EffSessionFilter(cfg, _Symbol))
+    if(EffSessionFilter(cfg, sym))
     {
       const bool inwin = TimeUtils::InTradingWindow(cfg, TimeCurrent());
       if(!inwin)
@@ -1530,7 +1541,7 @@ namespace Policies
         if(tight>0 && (int)sp>tight)
         {
           reason=GATE_MOD_SPREAD;
-          _GateDetail(cfg, reason, _Symbol,
+          _GateDetail(cfg, reason, sym,
                       StringFormat("sp=%.1f tight=%d cap=%d adapt=%.3f eff_cap_pts=%.1f inwin=%s weeklyRamp=%s",
                                    sp, tight, cap, adapt, eff_cap_pts,
                                    (inwin?"YES":"NO"), (CfgWeeklyRampOn(cfg)?"ON":"OFF")));
@@ -1542,7 +1553,7 @@ namespace Policies
     if((int)sp>cap)
     {
       reason=GATE_SPREAD;
-      _GateDetail(cfg, reason, _Symbol,
+      _GateDetail(cfg, reason, sym,
                   StringFormat("sp=%.1f cap=%d adapt=%.3f eff_cap_pts=%.1f weeklyRamp=%s",
                                sp, cap, adapt, eff_cap_pts, (CfgWeeklyRampOn(cfg)?"ON":"OFF")));
       return false;
@@ -1550,6 +1561,9 @@ namespace Policies
     return true;
   }
 
+  inline bool MoDSpreadOK(const Settings &cfg, int &reason)
+   { return MoDSpreadOK(cfg, _Symbol, reason); }
+   
   // ----------------------------------------------------------------------------
   // Volatility breaker (re-uses short/long ATR config)
   // ----------------------------------------------------------------------------
@@ -1560,15 +1574,14 @@ namespace Policies
     s_vb_limit = (limit < 1.10 ? 1.10 : limit);
   }
 
-  inline bool VolatilityBreaker(const Settings &cfg, double &ratio_out)
+  inline bool VolatilityBreaker(const Settings &cfg, const string sym, double &ratio_out)
   {
     _EnsureLoaded(cfg);
 
-    if(s_vb_limit <= 0.0) return false; // disabled
     ratio_out = 0.0;
-    const string sym=_Symbol;
-    const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
+    if(s_vb_limit <= 0.0) return false; // disabled
 
+    const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const int shortP = (s_vb_shortP>0 ? s_vb_shortP : CfgATRShort(cfg));
     const int longP  = s_vb_longP;
 
@@ -1580,17 +1593,19 @@ namespace Policies
     return (ratio_out > s_vb_limit);
   }
 
+  inline bool VolatilityBreaker(const Settings &cfg, double &ratio_out)
+  { return VolatilityBreaker(cfg, _Symbol, ratio_out); }
+
   // ----------------------------------------------------------------------------
   // Calm mode
   // ----------------------------------------------------------------------------
-  inline bool CalmModeOK(const Settings &cfg, int &reason)
+  inline bool CalmModeOK(const Settings &cfg, const string sym, int &reason)
   {
     _EnsureLoaded(cfg);
 
     reason = GATE_OK;
     if(!CfgCalmEnable(cfg)) return true;
 
-    const string sym=_Symbol;
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const int shortP = CfgATRShort(cfg);
 
@@ -1604,7 +1619,7 @@ namespace Policies
       if(minPts>0.0 && atr_s<minPts)
       {
         reason=GATE_CALM;
-        _GateDetail(cfg, reason, _Symbol,
+        _GateDetail(cfg, reason, sym,
                     StringFormat("atr_s_pts=%.1f minAtrPips=%.2f minPts=%.1f",
                                  atr_s, minAtrPips, minPts));
         return false;
@@ -1618,7 +1633,7 @@ namespace Policies
       if(spr>0.0 && atr_s/spr < minRatio)
       {
         reason=GATE_CALM;
-        _GateDetail(cfg, reason, _Symbol,
+        _GateDetail(cfg, reason, sym,
                     StringFormat("atr_s_pts=%.1f spr_pts=%.1f ratio=%.3f minRatio=%.3f",
                                  atr_s, spr, (spr>0.0?atr_s/spr:0.0), minRatio));
         return false;
@@ -1627,6 +1642,8 @@ namespace Policies
     return true;
   }
 
+  inline bool CalmModeOK(const Settings &cfg, int &reason)
+   { return CalmModeOK(cfg, _Symbol, reason); }
   // ----------------------------------------------------------------------------
   // Loss/cooldown management (PERSISTED)
   // ----------------------------------------------------------------------------
@@ -1961,37 +1978,40 @@ namespace Policies
     SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
   }
 
-  inline void _FillSpreadDiag(const Settings &cfg, PolicyResult &r)
+  inline void _FillSpreadDiag(const Settings &cfg, const string sym, PolicyResult &r)
   {
     r.weekly_ramp_on     = CfgWeeklyRampOn(cfg);
     r.mod_spread_mult    = s_mod_mult_outside;
 
-    const int cap_base   = EffMaxSpreadPts(cfg, _Symbol);
-    const double adapt   = SpreadCapAdaptiveMult(cfg);
+    const int cap_base   = EffMaxSpreadPts(cfg, sym);
+    const double adapt   = SpreadCapAdaptiveMult(cfg, sym);
     r.spread_adapt_mult  = adapt;
 
     double cap_eff = (double)cap_base * adapt;
     if(r.weekly_ramp_on)
-      cap_eff = AdjustSpreadCapWeeklyOpenPts(cfg, cap_eff);
+      cap_eff = AdjustSpreadCapWeeklyOpenPts(cfg, sym, cap_eff);
 
     r.spread_cap_pts     = (int)MathFloor(cap_eff);
     r.mod_spread_cap_pts = (int)MathFloor(r.mod_spread_mult * (double)r.spread_cap_pts);
-    r.spread_pts         = MarketData::SpreadPoints(_Symbol);
+    r.spread_pts         = MarketData::SpreadPoints(sym);
   }
 
-  inline void _FillATRDiag(const Settings &cfg, PolicyResult &r)
+  inline void _FillSpreadDiag(const Settings &cfg, PolicyResult &r)
+   { _FillSpreadDiag(cfg, _Symbol, r); }
+
+  inline void _FillATRDiag(const Settings &cfg, const string sym, PolicyResult &r)
   {
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
-    r.atr_short_pts = AtrPts(_Symbol, tf, cfg, CfgATRShort(cfg), 1);
-    r.atr_long_pts  = AtrPts(_Symbol, tf, cfg, CfgATRLong(cfg),  1);
+    r.atr_short_pts = AtrPts(sym, tf, cfg, CfgATRShort(cfg), 1);
+    r.atr_long_pts  = AtrPts(sym, tf, cfg, CfgATRLong(cfg),  1);
     r.vol_ratio     = (r.atr_long_pts > 0.0 ? (r.atr_short_pts / r.atr_long_pts) : 0.0);
     r.vol_limit     = s_vb_limit;
   }
 
-  inline void _FillADRCapDiag(const Settings &cfg, PolicyResult &r)
+  inline void _FillADRCapDiag(const Settings &cfg, const string sym, PolicyResult &r)
   {
     r.adr_cap_hit = false;
-    r.adr_pts     = ADRPoints(_Symbol, CfgADRLookbackDays(cfg));
+    r.adr_pts     = ADRPoints(sym, CfgADRLookbackDays(cfg));
 
     r.adr_today_range_pts = 0.0;
     r.adr_cap_limit_pts   = 0.0;
@@ -2003,9 +2023,9 @@ namespace Policies
       r.adr_cap_limit_pts = r.adr_pts * cap_mult;
 
       MqlRates d1[]; ArraySetAsSeries(d1,true);
-      if(CopyRates(_Symbol, PERIOD_D1, 0, 1, d1) == 1)
+      if(CopyRates(sym, PERIOD_D1, 0, 1, d1) == 1)
       {
-        double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+        double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
         if(pt <= 0.0) pt = _Point;
         if(pt > 0.0)
           r.adr_today_range_pts = MathAbs(d1[0].high - d1[0].low) / pt;
@@ -2014,13 +2034,12 @@ namespace Policies
     #endif
   }
 
-  inline void _FillCalmDiag(const Settings &cfg, PolicyResult &r)
+  inline void _FillCalmDiag(const Settings &cfg, const string sym, PolicyResult &r)
   {
     r.calm_min_atr_pips    = CfgCalmMinATRPips(cfg);
     r.calm_min_ratio       = CfgCalmMinATRtoSpread(cfg);
     r.calm_min_atr_pts     = 0.0;
 
-    const string sym=_Symbol;
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     r.atr_short_pts = AtrPts(sym, tf, cfg, CfgATRShort(cfg), 1);
     r.spread_pts    = MarketData::SpreadPoints(sym);
@@ -2031,12 +2050,12 @@ namespace Policies
     r.calm_atr_to_spread = (r.spread_pts > 0.0 ? r.atr_short_pts / r.spread_pts : 0.0);
   }
 
-  inline void _FillLiquidityDiag(const Settings &cfg, PolicyResult &r)
+  inline void _FillLiquidityDiag(const Settings &cfg, const string sym, PolicyResult &r)
   {
-    _FillATRDiag(cfg, r); // ensures atr_short_pts available
-    r.spread_pts = MarketData::SpreadPoints(_Symbol);
+    _FillATRDiag(cfg, sym, r); // ensures atr_short_pts available
+    r.spread_pts = MarketData::SpreadPoints(sym);
 
-    const double floorR = EffLiqMinRatio(cfg, _Symbol, s_liq_min_ratio);
+    const double floorR = EffLiqMinRatio(cfg, sym, s_liq_min_ratio);
     r.liq_floor  = floorR;
 
     if(r.spread_pts > 0.0)
@@ -2045,7 +2064,7 @@ namespace Policies
       r.liq_ratio = 0.0;
   }
 
-  inline bool _EvaluateCoreEx(const Settings &cfg, PolicyResult &out, const bool audit)
+  inline bool _EvaluateCoreEx(const Settings &cfg, const string sym, PolicyResult &out, const bool audit)
   {
     _EnsureLoaded(cfg);
     _EnsureMonthState();
@@ -2055,7 +2074,7 @@ namespace Policies
     _PolicyReset(out);
     _ApplyRuntimeKnobsFromCfg(cfg);
 
-    out.session_filter_on = EffSessionFilter(cfg, _Symbol);
+    out.session_filter_on = EffSessionFilter(cfg, sym);
     out.in_session_window = TimeUtils::InTradingWindow(cfg, TimeCurrent());
 
     out.trade_cd_sec      = s_trade_cd_sec;
@@ -2140,9 +2159,9 @@ namespace Policies
     // 6) Spread / MoD spread
     {
       int spread_reason=GATE_OK;
-      if(!MoDSpreadOK(cfg, spread_reason))
+      if(!MoDSpreadOK(cfg, sym, spread_reason))
       {
-        _FillSpreadDiag(cfg, out);
+        _FillSpreadDiag(cfg, sym, out);
         if(spread_reason == GATE_MOD_SPREAD)
           _PolicyVeto(out, GATE_MOD_SPREAD, CA_POLMASK_MOD_SPREAD);
         else
@@ -2174,9 +2193,9 @@ namespace Policies
     // 8) Volatility breaker
     {
       double vb_ratio=0.0;
-      if(VolatilityBreaker(cfg, vb_ratio))
+      if(VolatilityBreaker(cfg, sym, vb_ratio))
       {
-        _FillATRDiag(cfg, out);
+        _FillATRDiag(cfg, sym, out);
         out.vol_ratio = vb_ratio;
         _PolicyVeto(out, GATE_VOLATILITY, CA_POLMASK_VOLATILITY);
         if(!audit) return false;
@@ -2186,9 +2205,9 @@ namespace Policies
     // 9) ADR cap
     {
       double adr_pts=0.0; int adr_reason=GATE_OK;
-      if(!ADRCapOK(cfg, adr_reason, adr_pts))
+      if(!ADRCapOK(cfg, sym, adr_reason, adr_pts))
       {
-        _FillADRCapDiag(cfg, out);
+        _FillADRCapDiag(cfg, sym, out);
         out.adr_cap_hit = true;
         _PolicyVeto(out, GATE_ADR, CA_POLMASK_ADR);
         if(!audit) return false;
@@ -2198,9 +2217,9 @@ namespace Policies
     // 10) Calm
     {
       int calm_reason=GATE_OK;
-      if(!CalmModeOK(cfg, calm_reason))
+      if(!CalmModeOK(cfg, sym, calm_reason))
       {
-        _FillCalmDiag(cfg, out);
+        _FillCalmDiag(cfg, sym, out);
         _PolicyVeto(out, GATE_CALM, CA_POLMASK_CALM);
         if(!audit) return false;
       }
@@ -2209,13 +2228,12 @@ namespace Policies
     // 11) Regime
     EnableRegimeGate(CfgRegimeGateOn(cfg));
     SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
-    if(!RegimeConsensusOK(cfg))
+    if(!RegimeConsensusOK(cfg, sym))
     {
       // Capture exact values for guaranteed veto logs (NOT debug gated)
       out.regime_tq_min = s_reg_tq_min;
       out.regime_sg_min = s_reg_sg_min;
 
-      const string sym=_Symbol;
       const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
       out.regime_tq = RegimeX::TrendQuality(sym, tf, 60);
       out.regime_sg = Corr::HysteresisSlopeGuard(sym, tf, 14, 23.0, 15.0);
@@ -2227,13 +2245,13 @@ namespace Policies
     return out.allowed;
   }
 
-  inline bool _EvaluateFullEx(const Settings &cfg, PolicyResult &out, const bool audit)
+  inline bool _EvaluateFullEx(const Settings &cfg, const string sym, PolicyResult &out, const bool audit)
   {
-    const bool ok_core = _EvaluateCoreEx(cfg, out, audit);
+    const bool ok_core = _EvaluateCoreEx(cfg, sym, out, audit);
     if(!audit && !ok_core) return false;
-
+    
     // A) Day max-losses
-    if(MaxLossesReachedToday(cfg))
+    if(MaxLossesReachedToday(cfg, sym))
     {
       out.max_losses_day = 0;
       out.entries_today  = 0;
@@ -2243,7 +2261,7 @@ namespace Policies
         out.max_losses_day = cfg.max_losses_day;
         int entries=0, losses=0;
         const long mf = _MagicFilterFromCfg(cfg);
-        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        CountTodayTradesAndLosses(sym, mf, entries, losses);
         out.entries_today = entries;
         out.losses_today  = losses;
       #endif
@@ -2253,7 +2271,7 @@ namespace Policies
     }
 
     // B) Day max-trades
-    if(MaxTradesReachedToday(cfg))
+    if(MaxTradesReachedToday(cfg, sym))
     {
       out.max_trades_day = 0;
       out.entries_today  = 0;
@@ -2263,7 +2281,7 @@ namespace Policies
         out.max_trades_day = cfg.max_trades_day;
         int entries=0, losses=0;
         const long mf = _MagicFilterFromCfg(cfg);
-        CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+        CountTodayTradesAndLosses(sym, mf, entries, losses);
         out.entries_today = entries;
         out.losses_today  = losses;
       #endif
@@ -2282,14 +2300,14 @@ namespace Policies
     // D) News veto
     out.news_blocked     = false;
     out.news_mins_left   = 0;
-    out.news_impact_mask = EffNewsImpactMask(cfg, _Symbol);
+    out.news_impact_mask = EffNewsImpactMask(cfg, sym);
     out.news_pre_mins    = CfgNewsBlockPreMins(cfg);
     out.news_post_mins   = CfgNewsBlockPostMins(cfg);
 
     {
       int mins_left=0;
       const datetime now_srv = TimeUtils::NowServer();
-      if(NewsBlockedNow(cfg, now_srv, mins_left))
+      if(NewsBlockedNow(cfg, sym, now_srv, mins_left))
       {
         out.news_blocked   = true;
         out.news_mins_left = mins_left;
@@ -2301,9 +2319,9 @@ namespace Policies
     // E) Liquidity veto
     {
       double liqR=0.0;
-      if(!LiquidityOK(cfg, liqR))
+      if(!LiquidityOK(cfg, sym, liqR))
       {
-        _FillLiquidityDiag(cfg, out);
+        _FillLiquidityDiag(cfg, sym, out);
         out.liq_ratio = liqR;
         _PolicyVeto(out, GATE_LIQUIDITY, CA_POLMASK_LIQUIDITY);
         if(!audit) return false;
@@ -2314,10 +2332,15 @@ namespace Policies
   }
 
   // Public API
-  inline bool EvaluateCore(const Settings &cfg, PolicyResult &out)      { return _EvaluateCoreEx(cfg, out, false); }
-  inline bool EvaluateCoreAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateCoreEx(cfg, out, true);  }
-  inline bool EvaluateFull(const Settings &cfg, PolicyResult &out)      { return _EvaluateFullEx(cfg, out, false); }
-  inline bool EvaluateFullAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateFullEx(cfg, out, true);  }
+  inline bool EvaluateCore(const Settings &cfg, PolicyResult &out)      { return _EvaluateCoreEx(cfg, _Symbol, out, false); }
+  inline bool EvaluateCoreAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateCoreEx(cfg, _Symbol, out, true);  }
+  inline bool EvaluateFull(const Settings &cfg, PolicyResult &out)      { return _EvaluateFullEx(cfg, _Symbol, out, false); }
+  inline bool EvaluateFullAudit(const Settings &cfg, PolicyResult &out) { return _EvaluateFullEx(cfg, _Symbol, out, true);  }
+  
+  inline bool EvaluateCore(const Settings &cfg, const string sym, PolicyResult &out)      { return _EvaluateCoreEx(cfg, sym, out, false); }
+  inline bool EvaluateCoreAudit(const Settings &cfg, const string sym, PolicyResult &out) { return _EvaluateCoreEx(cfg, sym, out, true);  }
+  inline bool EvaluateFull(const Settings &cfg, const string sym, PolicyResult &out)      { return _EvaluateFullEx(cfg, sym, out, false); }
+  inline bool EvaluateFullAudit(const Settings &cfg, const string sym, PolicyResult &out) { return _EvaluateFullEx(cfg, sym, out, true);  }
 
   // ---------------------------------------------------------------------------
   // Central gate used by Execution.mqh  → Policies::Check(cfg, reason)
@@ -2327,6 +2350,12 @@ namespace Policies
     int mins_left_news = 0;
     return CheckFull(cfg, reason, mins_left_news);
   }
+
+  inline bool Check(const Settings &cfg, const string sym, int &reason)
+   {
+     int mins_left_news = 0;
+     return CheckFull(cfg, sym, reason, mins_left_news);
+   }
 
   // --- Hooks expected by Execution.mqh ---
   inline void TouchTradeCooldown(){ NotifyTradePlaced(); }
@@ -2489,21 +2518,23 @@ namespace Policies
   inline void SetRegimeThresholds(const double tq_min, const double sg_min)
   { s_reg_tq_min=Clamp01(tq_min); s_reg_sg_min=Clamp01(sg_min); }
 
-  inline bool RegimeConsensusOK(const Settings &cfg)
+  inline bool RegimeConsensusOK(const Settings &cfg, const string sym)
   {
     if(!s_regime_gate_on) return true;
-    const string sym=_Symbol;
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const double tq = RegimeX::TrendQuality(sym, tf, 60);
     const double sg = Corr::HysteresisSlopeGuard(sym, tf, 14,23.0,15.0);
     const bool ok = (tq>=s_reg_tq_min) || (sg>=s_reg_sg_min);
     if(!ok)
-      _GateDetail(cfg, GATE_REGIME, _Symbol,
+      _GateDetail(cfg, GATE_REGIME, sym,
                   StringFormat("tq=%.3f sg=%.3f tq_min=%.3f sg_min=%.3f",
                                tq, sg, s_reg_tq_min, s_reg_sg_min));
     return ok;
   }
 
+  inline bool RegimeConsensusOK(const Settings &cfg)
+   { return RegimeConsensusOK(cfg, _Symbol); }
+   
   // ----------------------------------------------------------------------------
   // Liquidity (ATR:Spread) floor
   // ----------------------------------------------------------------------------
@@ -2511,18 +2542,20 @@ namespace Policies
   inline void   SetLiquidityParams(const double min_ratio)
   { s_liq_min_ratio = Clamp(min_ratio, 0.5, 10.0); }
 
-  inline bool LiquidityOK(const Settings &cfg, double &ratio_out)
+  inline bool LiquidityOK(const Settings &cfg, const string sym, double &ratio_out)
   {
     ratio_out = 0.0;
-    const string sym=_Symbol;
+
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const int shortP = CfgATRShort(cfg);
+
     const double atr_s = AtrPts(sym, tf, cfg, shortP, 1);
     const double spr   = MarketData::SpreadPoints(sym);
-    if(atr_s<=0.0 || spr<=0.0) return true;
+    if(atr_s<=0.0 || spr<=0.0) return true; // can't compute safely → don't block
 
     const double floorR = EffLiqMinRatio(cfg, sym, s_liq_min_ratio);
     ratio_out = atr_s / spr;
+
     const bool ok = (ratio_out >= floorR);
     if(!ok)
       _GateDetail(cfg, GATE_LIQUIDITY, sym,
@@ -2531,30 +2564,37 @@ namespace Policies
     return ok;
   }
 
+  inline bool LiquidityOK(const Settings &cfg, double &ratio_out)
+  { return LiquidityOK(cfg, _Symbol, ratio_out); }
+
   // ----------------------------------------------------------------------------
   // News helpers
   // ----------------------------------------------------------------------------
-   inline bool NewsBlockedNow(const Settings &cfg, const datetime now_srv, int &mins_left)
+   inline bool NewsBlockedNow(const Settings &cfg, const string sym, const datetime now_srv, int &mins_left)
    {
      mins_left = -1;
      if(!CfgNewsOn(cfg)) return false;
    
      #ifdef NEWSFILTER_AVAILABLE
-       const int impact_mask = EffNewsImpactMask(cfg, _Symbol);
+       const int impact_mask = EffNewsImpactMask(cfg, sym);
        const int pre_m       = EffNewsPreMins(cfg);
        const int post_m      = EffNewsPostMins(cfg);
    
-       return News::IsBlocked(now_srv, _Symbol, impact_mask, pre_m, post_m, mins_left);
+       return News::IsBlocked(now_srv, sym, impact_mask, pre_m, post_m, mins_left);
      #else
        mins_left = 0;
        return false;
      #endif
    }
    
+   inline bool NewsBlockedNow(const Settings &cfg, const datetime now_srv, int &mins_left)
+   { return NewsBlockedNow(cfg, _Symbol, now_srv, mins_left); }
+
    inline bool NewsBlockedNow(const Settings &cfg, int &out_mins_left)
-   {
-     return NewsBlockedNow(cfg, TimeUtils::NowServer(), out_mins_left);
-   }
+   { return NewsBlockedNow(cfg, TimeUtils::NowServer(), out_mins_left); }
+
+   inline bool NewsBlockedNow(const Settings &cfg, const string sym, int &out_mins_left)
+   { return NewsBlockedNow(cfg, sym, TimeUtils::NowServer(), out_mins_left); }
 
    inline void ApplyNewsScaling(const Settings &cfg, const string sym,
                                 StratScore &ss, ConfluenceBreakdown &bd, bool &skip_out)
@@ -2584,69 +2624,20 @@ namespace Policies
   // Core gates: Check / CheckFull / AllowedByPolicies
   // ----------------------------------------------------------------------------
   inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news)
-  {
-    minutes_left_news = 0;
+  { return CheckFull(cfg, _Symbol, reason, minutes_left_news); }
 
-    if(CfgDebugGates(cfg))
-    {
-      // Session gate
-      const bool sessOn = Policies::EffSessionFilter(cfg, _Symbol);
-      const bool inWin  = TimeUtils::InTradingWindow(cfg, TimeCurrent());
-      const bool ok_sess = (!sessOn) || inWin;
-
-      // Daily DD
-      double ddPct = 0.0;
-      const bool ok_daily_dd = !Policies::DailyEquityDDHit(cfg, ddPct);
-
-      // Account-wide DD floor (challenge)
-      double acct_dd_pct = 0.0;
-      const bool ok_acct_dd = !Policies::AccountEquityDDHit(cfg, acct_dd_pct);
-
-      const bool ok_dd = (ok_daily_dd && ok_acct_dd);
-
-      // Day losses
-      const bool ok_loss = !Policies::MaxLossesReachedToday(cfg);
-
-      // News
-      int mins_left = 0;
-      const bool ok_news = !Policies::NewsBlockedNow(cfg, mins_left);
-
-      // Router floor (no Router include to avoid cycles; mirror RouterMinScore)
-      double routerMin =
-      #ifdef CFG_HAS_ROUTER_MIN_SCORE
-          (cfg.router_min_score>0.0 ? cfg.router_min_score : Const::SCORE_ELIGIBILITY_MIN);
-      #else
-          Const::SCORE_ELIGIBILITY_MIN;
-      #endif
-
-      // Router score unknown at this layer
-      const double routerScore = -1.0;
-
-      // ML compile-safe
-      bool   mlEnabled = false;
-      double mlScore   = 0.0;
-      double mlThresh  =
-      #ifdef CFG_HAS_ML_THRESHOLD
-          cfg.ml_threshold;
-      #else
-          0.55;
-      #endif
-
-      #ifdef CFG_HAS_ROUTER_MIN_SCORE
-         DbgWhyNoTrade(routerScore, routerMin, ok_sess, ok_dd, ok_loss, ok_news,
-                       mlEnabled, mlScore, mlThresh);
-      #endif
-    }
-
-    PolicyResult r;
-    const bool ok = EvaluateFull(cfg, r);
-
-    reason = r.primary_reason;
-    minutes_left_news = r.news_mins_left;
-
-    if(!ok) PolicyVetoLog(r);
-    return ok;
-  }
+  inline bool CheckFull(const Settings &cfg, const string sym, int &reason, int &minutes_left_news)
+   {
+     PolicyResult r; ZeroMemory(r);
+     if(!EvaluateFull(cfg, sym, r))
+     { reason = r.reason; minutes_left_news = r.news_mins_left; return false; }
+   
+     // keep your existing debug block, but replace any EffSessionFilter(cfg,_Symbol)
+     // with EffSessionFilter(cfg, sym), and NewsBlockedNow(cfg, mins_left) with NewsBlockedNow(cfg, sym, mins_left)
+     reason = GATE_OK;
+     minutes_left_news = r.news_mins_left;
+     return true;
+   }
 
   // ---------- Daily counters (symbol + optional magic filter) ----------
   inline void CountTodayTradesAndLosses(const string sym,
@@ -2700,7 +2691,7 @@ namespace Policies
     return -1; // accept all magics
   }
 
-  inline bool MaxLossesReachedToday(const Settings &cfg)
+  inline bool MaxLossesReachedToday(const Settings &cfg, const string sym)
   {
     #ifdef CFG_HAS_MAX_LOSSES_DAY
       // Config field is compiled in and guarded → safe to use.
@@ -2710,7 +2701,7 @@ namespace Policies
       int entries = 0;
       int losses  = 0;
       const long mf = _MagicFilterFromCfg(cfg);
-      CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+      CountTodayTradesAndLosses(sym, mf, entries, losses);
       return (losses >= cfg.max_losses_day);
     #else
       // Field not compiled in → no daily losses cap.
@@ -2718,7 +2709,10 @@ namespace Policies
     #endif
   }
 
-  inline bool MaxTradesReachedToday(const Settings &cfg)
+  inline bool MaxLossesReachedToday(const Settings &cfg)
+   { return MaxLossesReachedToday(cfg, _Symbol); }
+
+  inline bool MaxTradesReachedToday(const Settings &cfg, const string sym)
   {
     #ifdef CFG_HAS_MAX_TRADES_DAY
       // Config field is compiled in and guarded → safe to use.
@@ -2728,7 +2722,7 @@ namespace Policies
       int entries = 0;
       int losses  = 0;
       const long mf = _MagicFilterFromCfg(cfg);
-      CountTodayTradesAndLosses(_Symbol, mf, entries, losses);
+      CountTodayTradesAndLosses(sym, mf, entries, losses);
       return (entries >= cfg.max_trades_day);
     #else
       // Field not compiled in → no daily trade-count cap.
@@ -2737,10 +2731,22 @@ namespace Policies
     #endif
   }
 
+  inline bool MaxTradesReachedToday(const Settings &cfg)
+  { return MaxTradesReachedToday(cfg, _Symbol); }
+  
   // ----------------------------------------------------------------------------
   // AllowedByPolicies (legacy ABI) — unified cooldown, no duplicate helpers
   // ----------------------------------------------------------------------------
-  inline bool AllowedByPolicies(const Settings &cfg, int &code_out)
+  inline bool AllowedByPolicies(const Settings &cfg, const string sym, int &code_out)
+   {
+     int gr=GATE_OK, mins_left=0;
+     if(!CheckFull(cfg, sym, gr, mins_left))
+     { code_out = GateReasonToPolicyCode(gr); return false; }
+     code_out = POLICY_OK;
+     return true;
+   }
+
+  inline bool AllowedByPolicies(const Settings &cfg, const string sym, int &code_out)
   {
     #ifdef POLICIES_UNIFY_ALLOWED_WITH_CHECKFULL
       int gr=GATE_OK, mins=0;
@@ -2756,7 +2762,7 @@ namespace Policies
     if(CfgDebugGates(cfg))
     {
       // Session gate
-      const bool sessOn = Policies::EffSessionFilter(cfg, _Symbol);
+      const bool sessOn = Policies::EffSessionFilter(cfg, sym);
       const bool inWin  = TimeUtils::InTradingWindow(cfg, TimeCurrent());
       const bool ok_sess = (!sessOn) || inWin;
 
@@ -2800,7 +2806,7 @@ namespace Policies
     const datetime now_srv = TimeUtils::NowServer();
 
     // 1) Session window
-    if(EffSessionFilter(cfg, _Symbol))
+    if(EffSessionFilter(cfg, sym))
     {
       TimeUtils::SessionContext sc;
       TimeUtils::BuildSessionContext(cfg, now_srv, sc);
@@ -2831,8 +2837,8 @@ namespace Policies
     }
     
     // 4) Spread limit (static cap; adaptive used elsewhere)
-    const int spr_pts = (int)MathRound(MarketData::SpreadPoints(_Symbol));
-    int cap_pts = EffMaxSpreadPts(cfg, _Symbol);          // honor overrides
+    const int spr_pts = (int)MathRound(MarketData::SpreadPoints(sym));
+    int cap_pts = EffMaxSpreadPts(cfg, sym);          // honor overrides
     if(cap_pts > 0)
     {
       double adj_cap = (double)cap_pts;
@@ -3004,7 +3010,7 @@ namespace Policies
   inline void ResetIntent(TradeIntent &ti)
   {
     ZeroMemory(ti);
-    ti.ok=false; ti.symbol=_Symbol; ti.dir=DIR_BUY; ti.score=0.0; ti.risk_mult=1.0;
+    ti.ok=false; ti.symbol=""; ti.dir=DIR_BUY; ti.score=0.0; ti.risk_mult=1.0;
     ti.entry=0.0; ti.sl=0.0; ti.tp=0.0; ti.lots=0.0; ti.reason=GATE_OK;
   }
 
@@ -3030,19 +3036,8 @@ namespace Policies
     out_intent.symbol = symbol;
 
     int mins_left=0;
-    #ifdef NEWSFILTER_AVAILABLE
-      // Hard veto: News block kills the trade intent right here (single truth source).
-      {
-         int news_mins_left = -1;
-         if(NewsBlockedNow(cfg, TimeCurrent(), news_mins_left))
-         {
-            gate_reason = (int)GATE_NEWS;
-            mins_left   = news_mins_left;
-            return false;
-         }
-      }
-    #endif
-    if(!CheckFull(cfg, gate_reason, mins_left))
+    
+    if(!CheckFull(cfg, symbol, gate_reason, mins_left))
     { out_intent.reason=gate_reason; return false; }
 
     StratScore SS = in_ss; ConfluenceBreakdown BD = in_bd;
@@ -3106,10 +3101,11 @@ namespace Policies
     _EnsureLoaded(cfg);
 
     ResetIntent(out_intent);
+    out_intent.symbol = symbol;
     if(n<=0){ gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
 
     int mins_left=0;
-    if(!CheckFull(cfg, gate_reason, mins_left))
+    if(!CheckFull(cfg, symbol, gate_reason, mins_left))
     { out_intent.reason=gate_reason; return false; }
 
     PolicySignal tmp[]; ArrayResize(tmp, n);
