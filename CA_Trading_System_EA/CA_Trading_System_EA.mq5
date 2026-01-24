@@ -415,7 +415,7 @@ input double InpADX_Min         = 18.0;         // Confluence Gate: ADX Min
 input double InpADX_Upper       = 45.0;         // Confluence Gate: ADX Upper
 input double InpW_ADXRegime     = 1.0;          // Confluence Gate: ADX Weight
 
-input bool   InpExtra_Correlation = false;       // Confluence Gate: Correlation
+input bool   InpExtra_Correlation = true;       // Confluence Gate: Correlation
 input string InpCorr_RefSymbol    = "EURUSD";   // Confluence Gate: Correlation Sym
 input ENUM_TIMEFRAMES InpCorr_TF  = PERIOD_H1;  // Confluence Gate: Correlation Timeframe
 input int    InpCorr_Lookback     = 64;         // Confluence Gate: Correlation Lookback
@@ -424,7 +424,8 @@ input double InpCorr_MaxPen       = 0.20;       // Confluence Gate: Correlation 
 input double InpW_Correlation     = 0.10;       // Confluence Gate: Correlation Weight
 input double InpW_CorrPen         = 1.0;        // Confluence Gate: Correlation Penalty Weight
 
-input bool   InpExtra_News = false;              // Confluence Gate: News Filter
+input bool   InpExtra_DOMImbalance = false;      // Confluence Gate: DOM Imbalance (MarketBook)
+input bool   InpExtra_News = true;              // Confluence Gate: News Filter
 input double InpW_News     = 1.00;              // Confluence Gate: News Filter Weight
 
 input bool   InpExtra_SilverBulletTZ = false;
@@ -1255,6 +1256,7 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.extra_macd         = InpExtra_MACD;       // weight reuses base
   cfg.extra_adx_regime   = InpExtra_ADXRegime;  cfg.w_adx_regime = InpW_ADXRegime;
   cfg.extra_correlation  = InpExtra_Correlation;// weight reuses base
+  cfg.extra_dom_imbalance = InpExtra_DOMImbalance;
   cfg.extra_news         = InpExtra_News;       // weight reuses base
 
   // ---- ADX / StochRSI / MACD params ----
@@ -2256,6 +2258,9 @@ int OnInit()
    Config::LoadInputs(S);
    Config::ApplyKVOverrides(S);
    Config::FinalizeThresholds(S);
+   
+   // Ensure MarketBook subscription is enabled if the EA input requests it (does not force-disable KV/profile settings)
+   S.extra_dom_imbalance = (S.extra_dom_imbalance || InpExtra_DOMImbalance);
    
    OBI::Settings obi;
    obi.enabled = S.extra_dom_imbalance;   // your config toggle
