@@ -2250,18 +2250,16 @@ int OnInit()
    ex.log_veto_details       = Inp_LogVetoDetails;
    // ex.weekly_open_spread_ramp = InpWeeklyOpenRamp;  // if you expose it as input
    
-   OBI::Settings obi;
-   obi.enabled = cfg.extra_dom_imbalance;   // your config toggle
-   OBI::EnsureSubscribed(_Symbol, obi);
-
    Config::ApplyExtras(S, ex);
-   Config::FinalizeThresholds(S);
-
    Config::ApplyStrategyMode(S, InpStrat_Mode);
 
    Config::LoadInputs(S);
    Config::ApplyKVOverrides(S);
    Config::FinalizeThresholds(S);
+   
+   OBI::Settings obi;
+   obi.enabled = S.extra_dom_imbalance;   // your config toggle
+   OBI::EnsureSubscribed(_Symbol, obi);
    VSA::SetAllowTickVolume(InpVSA_AllowTickVolume);
 
    g_show_breakdown = true;
