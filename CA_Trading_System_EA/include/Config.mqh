@@ -4266,9 +4266,6 @@ namespace Config
       #ifdef CFG_HAS_CARRY_RISK_SPAN
         else if(k=="carrySpan") cfg.carry_risk_span = ToDouble(v);
       #endif
-      #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
-        else if(k=="mainReq") cfg.main_require_checklist = ToBool(v);
-      #endif
       #ifdef CFG_HAS_MAIN_CONFIRM_ANY_OF_3
         else if(k=="mainAny3") cfg.main_confirm_any_of_3 = ToBool(v);
       #endif

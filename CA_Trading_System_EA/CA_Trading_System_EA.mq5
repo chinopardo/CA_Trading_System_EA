@@ -1005,7 +1005,16 @@ double StreakRiskScale();
 //+------------------------------------------------------------------+
 void EvaluateOneSymbol(const string sym)
   {
-   Settings cur = S; // per-symbol snapshot if you later need overrides
+    Settings cur = S; // per-symbol snapshot if you later need overrides
+   
+    // --- Hardening: prevent this path from bypassing the canonical gates ---
+    if(!WarmupGateOK())
+       return;
+
+    int gate_reason = 0;
+    // Use same session/policy gate used by Router pipeline (prevents “side door” trading)
+    if(!RouterGateOK(sym, cur, TimeUtils::NowServer(), gate_reason))
+       return;
 
 // 1) Intent (registry router or manual fallback)
    StratReg::RoutedPick pick;
@@ -1937,14 +1946,23 @@ void MaybeEvaluate()
    if(InpOnlyNewBar)
       last_bar = bt;
 
-   // Run router once (direct router mode)
-   ICT_Context ictCtx = StateGetICTContext(g_state);
-   // do not wipe ictCtx here; it is meant to carry current bias/phase/session context
+    // --- Hardening: Do not use alternate routing pipelines here ---
+    const datetime now_srv = TimeUtils::NowServer();
 
-   Routing::RouteResult rr;
-   ZeroMemory(rr);
+    if(g_use_registry)
+    {
+       if(!GateViaPolicies(S, _Symbol))
+          return;
 
-   Routing::RouteOnce(_Symbol, g_state, S, ictCtx, rr);
+       ProcessSymbol(_Symbol, now_srv);
+       return;
+    }
+
+    int gate_reason = 0;
+    if(!RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
+       return;
+
+    RouterEvaluateAll(g_cfg);
   }
 
 //--------------------------------------------------------------------
@@ -2971,11 +2989,10 @@ void OnTimer()
    // StrategyMode allow-list enforcement (defense in depth) — AFTER routing so pick_out.id is real.
    if(okRoute)
    {
-      const StrategyMode sm_eff = sm;                  // use the original effective mode
       const StrategyID   sid    = (StrategyID)pick_out.id;
    
       // Missing ID is a wiring bug → block loudly.
-      if(((int)sid) <= 0 || !Strat_AllowedToTrade(sm_eff, sid))
+      if(((int)sid) <= 0 || !Config::IsStrategyAllowedInMode(cfg, sid))
       {
          _LogCandidateDrop("mode_block", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
          return false;
