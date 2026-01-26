@@ -33,6 +33,46 @@ struct Settings;
   #define CFG_HAS_STRAT_MODE 1
 #endif
 
+// --- Strategy enable toggles are present in Settings (compile-safe macros used across modules)
+#ifndef CFG_HAS_ENABLE_STRAT_MAIN
+  #define CFG_HAS_ENABLE_STRAT_MAIN 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_SILVERBULLET
+  #define CFG_HAS_ENABLE_STRAT_ICT_SILVERBULLET 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_PO3
+  #define CFG_HAS_ENABLE_STRAT_ICT_PO3 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_CONTINUATION
+  #define CFG_HAS_ENABLE_STRAT_ICT_CONTINUATION 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_WYCKOFF_TURN
+  #define CFG_HAS_ENABLE_STRAT_ICT_WYCKOFF_TURN 1
+#endif
+
+// --- Compatibility bridge (older code paths / older naming)
+// Presence aliases
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_SB
+  #define CFG_HAS_ENABLE_STRAT_ICT_SB 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_OBFVG_OTE
+  #define CFG_HAS_ENABLE_STRAT_ICT_OBFVG_OTE 1
+#endif
+#ifndef CFG_HAS_ENABLE_STRAT_ICT_WYCKOFF
+  #define CFG_HAS_ENABLE_STRAT_ICT_WYCKOFF 1
+#endif
+
+// Field-name aliases (so cfg.enable_strat_ict_* older tokens map to current fields)
+#ifndef enable_strat_ict_sb
+  #define enable_strat_ict_sb enable_strat_ict_silverbullet
+#endif
+#ifndef enable_strat_ict_obfvg_ote
+  #define enable_strat_ict_obfvg_ote enable_strat_ict_continuation
+#endif
+#ifndef enable_strat_ict_wyckoff
+  #define enable_strat_ict_wyckoff enable_strat_ict_wyckoff_turn
+#endif
+
 #ifndef CFG_HAS_PARTIAL_ENABLE
   #define CFG_HAS_PARTIAL_ENABLE 1
 #endif
@@ -964,7 +1004,7 @@ namespace Config
           case STRAT_COMBINED:
             return v;
           default:
-            return STRAT_COMBINED;
+            return STRAT_MAIN_ONLY;
         }
       }
    #endif
@@ -2668,7 +2708,7 @@ namespace Config
    
      // Mode seed (guard)
      #ifdef CFG_HAS_STRAT_MODE
-       _SetStratModeRef(cfg.strat_mode, (int)STRAT_COMBINED);
+       _SetStratModeRef(cfg.strat_mode, (int)STRAT_MAIN_ONLY);
      #endif
      #ifdef CFG_HAS_MODE
        cfg.mode=BSM_BOTH;
@@ -2907,7 +2947,7 @@ namespace Config
    // Clamp to valid StrategyMode codes: 0..2 (MAIN_ONLY, PACK_ONLY, COMBINED)
    inline int _ClampStratModeInt(const int v)
    {
-     if(v < 0 || v > 2) return (int)STRAT_COMBINED;
+     if(v < 0 || v > 2) return (int)STRAT_MAIN_ONLY;
      return v;
    }
    

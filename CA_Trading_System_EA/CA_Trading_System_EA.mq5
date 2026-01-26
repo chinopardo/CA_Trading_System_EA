@@ -2433,8 +2433,6 @@ int OnInit()
       BootRegistry_WithProfile(S, ps);
    else
       BootRegistry_NoProfile(S);
-
-   StratReg::SyncRouterFromSettings(S);
    
    // Optional tester preset overlay
    TesterPresets::ApplyPresetByName(S, InpTesterPreset);
@@ -2521,6 +2519,7 @@ int OnInit()
    BuildSettingsFromInputs(g_cfg);
    // Keep a single source of truth for runtime settings (UI + any legacy calls).
    S = g_cfg;
+   StratReg::SyncRouterFromSettings(S);
    LogX::Info(StringFormat("DIR: trade_selector=%d  legacy_dir=%d  bias_mode=%d  require_checklist=%s  require_classical=%s",
                         (int)S.trade_selector,
                         (int)S.trade_direction_selector,
@@ -2633,6 +2632,9 @@ void OnTick()
 
    // Keep runtime flags consistent before building State/ICT context
    SyncRuntimeCfgFlags(g_cfg);
+   
+   if(g_use_registry)
+      SyncRuntimeCfgFlags(S);
 
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
@@ -2800,6 +2802,7 @@ void OnTimer()
       return;
    
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
+   SyncRuntimeCfgFlags(S);
    if(g_use_registry)
    {
       for(int i=0; i<g_symCount; i++)
@@ -2875,6 +2878,7 @@ void OnTimer()
       // Force a MAIN_ONLY view of the world, but route via registry
       Settings cfg_core = cfg;
       Config::ApplyStrategyMode(cfg_core, STRAT_MAIN_ONLY);
+      Config::Normalize(cfg_core);
    
       if(!StratReg::Route(cfg_core, pick_out))
          return false;
@@ -2939,6 +2943,8 @@ void OnTimer()
       if(sm != STRAT_PACK_ONLY)
          Config::ApplyStrategyMode(cfg_pack, STRAT_PACK_ONLY);
          
+      Config::Normalize(cfg_pack);
+         
    #ifdef STRATREG_HAS_ROUTE
          okRoute = (StratReg::Route(cfg_pack, pick_out) && pick_out.ok);
    #else
@@ -2957,16 +2963,18 @@ void OnTimer()
       }
    }
    
-   // StrategyMode allow-list enforcement (defense in depth) — AFTER routing so pick_out.id is real.
+   // Allowlist should be enforced ONLY in StrategyRegistry + Router + Execution.
+   // If we ever see a disallowed/invalid sid here, it is a wiring leak; log loudly.
    if(okRoute)
    {
-      const StrategyID   sid    = (StrategyID)pick_out.id;
-   
-      // Missing ID is a wiring bug → block loudly.
+      const StrategyID sid = (StrategyID)pick_out.id;
       if(((int)sid) <= 0 || !Config::IsStrategyAllowedInMode(cfg, sid))
       {
-         _LogCandidateDrop("mode_block", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
-         return false;
+         _LogCandidateDrop("allowlist_leak", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
+         if(InpDebug)
+            LogX::Warn(StringFormat("[ALLOWLIST_LEAK] mode=%s sid=%d pick_id=%d (should be filtered upstream; Execution will hard-reject)",
+                                    StrategyModeNameLocal(cfg.strat_mode), (int)sid, (int)pick_out.id));
+         // Do NOT return false here.
       }
    }
 
