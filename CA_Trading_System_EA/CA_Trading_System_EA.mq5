@@ -1954,15 +1954,20 @@ void MaybeEvaluate()
        if(!GateViaPolicies(S, _Symbol))
           return;
 
-       ProcessSymbol(_Symbol, now_srv);
+       ProcessSymbol(_Symbol, true);
        return;
     }
 
-    int gate_reason = 0;
-    if(!RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
-       return;
-
-    RouterEvaluateAll(g_cfg);
+   int gate_reason = 0;
+   if(!RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
+      return;
+   
+   // Ensure State + ICT context are current before router evaluation
+   StateOnTickUpdate(g_state);
+   RefreshICTContext(g_state);
+   ICT_Context ictCtx = StateGetICTContext(g_state);
+   
+   RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
   }
 
 //--------------------------------------------------------------------
@@ -3172,6 +3177,23 @@ void SyncRuntimeCfgFlags(Settings &cfg)
    else
       cfg.direction_bias_mode = InpDirectionBiasMode;
    #endif
+}
+
+// Policies-only gate used by legacy/registry path warm dispatchers.
+// Keeps the name intent ("Policies") and avoids duplicating full RouterGateOK().
+bool GateViaPolicies(const Settings &cfg, const string sym)
+{
+   int pol_reason = 0;
+   if(!Policies::Check(cfg, pol_reason))
+   {
+      Panel::SetGate(GATE_POLICIES);
+      _LogGateBlocked("policies_gate", sym, GATE_POLICIES,
+                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+      TraceNoTrade(sym, TS_GATE, GATE_POLICIES,
+                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+      return false;
+   }
+   return true;
 }
 
 // -------- Router-friendly gate wrapper (no duplication of exec logic) --------
