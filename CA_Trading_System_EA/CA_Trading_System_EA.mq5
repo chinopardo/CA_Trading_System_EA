@@ -157,42 +157,8 @@ inline double ConflBaseRulesScoreSafe(const Direction dir,
    // Local-only ID used for logging + overrides. Not required to be in StratReg.
    #define STRAT_MAIN_LOGIC STRAT_MAIN_ID
 #endif
-#ifndef STRAT_TREND_VWAP
-#define STRAT_TREND_VWAP (StrategyID)0
-#endif
-#ifndef STRAT_MR_VWAPBAND
-#define STRAT_MR_VWAPBAND STRAT_TREND_VWAP
-#endif
-#ifndef ST_SQUEEZE_ID
-#define ST_SQUEEZE_ID (int)STRAT_TREND_VWAP
-#endif
-#ifndef STRAT_TREND_BOSCONTINUATION
-#define STRAT_TREND_BOSCONTINUATION STRAT_TREND_VWAP
-#endif
-#ifndef STRAT_BREAKOUT_ORB
-#define STRAT_BREAKOUT_ORB STRAT_TREND_VWAP
-#endif
-#ifndef ST_RANGENR7IB_ID
-#define ST_RANGENR7IB_ID STRAT_MR_VWAPBAND
-#endif
-#ifndef ST_SWEEPCHOCH_ID
-#define ST_SWEEPCHOCH_ID STRAT_MR_VWAPBAND
-#endif
-#ifndef ST_VSACLIMAXFADE_ID
-#define ST_VSACLIMAXFADE_ID STRAT_MR_VWAPBAND
-#endif
-#ifndef ST_CORRDIV_ID
-#define ST_CORRDIV_ID STRAT_TREND_VWAP
-#endif
-#ifndef ST_PAIRSLITE_ID
-#define ST_PAIRSLITE_ID STRAT_TREND_VWAP
-#endif
-#ifndef ST_NEWS_DEV_ID
-#define ST_NEWS_DEV_ID STRAT_TREND_VWAP
-#endif
-#ifndef ST_NEWS_POSTFADE_ID
-#define ST_NEWS_POSTFADE_ID STRAT_TREND_VWAP
-#endif
+// Strategy IDs are defined in Types.mqh (enum StrategyID).
+// Do not re-define STRAT_* identifiers as preprocessor macros here.
 
 // Human-readable strategy mode name (local, compile-safe)
 inline string StrategyModeNameLocal(const StrategyMode s)
