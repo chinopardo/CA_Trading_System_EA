@@ -656,6 +656,7 @@ static bool g_show_breakdown = true;
 static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
+static bool g_use_registry = false; // legacy registry routing enabled (tester only)
 
 // Multi-symbol scheduler
 string   g_symbols[];              // parsed watchlist
@@ -1885,6 +1886,15 @@ void RunIndicatorBenchmarks()
    Print("Indicator benchmark complete.");
   }
 
+inline void UpdateRegistryRoutingFlag()
+{
+   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+
+   // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
+   if(S.strat_mode == STRAT_MAIN_ONLY)
+      g_use_registry = false;
+}
+
 // --- One-eval-per-bar dispatcher (RouterX) ---
 void MaybeEvaluate()
   {
@@ -2253,7 +2263,7 @@ int OnInit()
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
    g_is_tester = (MQLInfoInteger(MQL_TESTER) != 0 || MQLInfoInteger(MQL_OPTIMIZATION) != 0);
-   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+   UpdateRegistryRoutingFlag();
 
    if(InpUseRegistryRouting && !g_is_tester)
    {
@@ -2520,12 +2530,6 @@ int OnInit()
    
    // Keep a single source of truth for runtime settings (UI + any legacy calls).
    S = g_cfg;
-   
-   // Final clamp after runtime Settings snapshot is built (Option B: Router owns live trading)
-   g_use_registry = (InpUseRegistryRouting && g_is_tester);
-   if(S.strat_mode == STRAT_MAIN_ONLY)
-      g_use_registry = false;
-
    StratReg::SyncRouterFromSettings(S);
    LogX::Info(StringFormat("DIR: trade_selector=%d  legacy_dir=%d  bias_mode=%d  require_checklist=%s  require_classical=%s",
                         (int)S.trade_selector,
