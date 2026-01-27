@@ -152,14 +152,6 @@ inline double ConflBaseRulesScoreSafe(const Direction dir,
 // ------------------- Strategy registry (after strategies) ---------
 #include "include/strategies/StrategyRegistry.mqh"
 
-// -------- Strategy ID compatibility shims (keep last among includes) -------
-#ifndef STRAT_MAIN_LOGIC
-   // Local-only ID used for logging + overrides. Not required to be in StratReg.
-   #define STRAT_MAIN_LOGIC STRAT_MAIN_ID
-#endif
-// Strategy IDs are defined in Types.mqh (enum StrategyID).
-// Do not re-define STRAT_* identifiers as preprocessor macros here.
-
 // Human-readable strategy mode name (local, compile-safe)
 inline string StrategyModeNameLocal(const StrategyMode s)
 {
@@ -663,7 +655,7 @@ Settings S;
 static bool g_show_breakdown = true;
 static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
-static bool g_use_registry   = true;
+static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 
 // Multi-symbol scheduler
 string   g_symbols[];              // parsed watchlist
@@ -696,6 +688,7 @@ enum TraceCode
    TR_ROUTER_NO_CAND     = 101,
    TR_ROUTER_NO_INTENT   = 102,
    TR_ROUTER_PICK_DROP   = 103,
+   TR_ROUTER_MODE_BLOCK  = 104,
    TR_POLICIES_SOFT_SKIP = 151,
    TR_RISK_COMPUTE_FAIL  = 201,
    TR_EXEC_REJECT        = 301
@@ -2259,7 +2252,13 @@ int OnInit()
    g_show_breakdown = true;
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
-   g_use_registry = InpUseRegistryRouting;
+   g_is_tester = (MQLInfoInteger(MQL_TESTER) != 0 || MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+
+   if(InpUseRegistryRouting && !g_is_tester)
+   {
+      LogX::Warn("[Routing] InpUseRegistryRouting ignored in LIVE. RouterEvaluateAll() owns live trading.");
+   }
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll() to guarantee the unified mode allow-list behavior.
    if(S.strat_mode == STRAT_MAIN_ONLY)
@@ -2517,8 +2516,16 @@ int OnInit()
    
    // 1. Copy all extern/input params into g_cfg
    BuildSettingsFromInputs(g_cfg);
+   Config::Normalize(g_cfg);
+   
    // Keep a single source of truth for runtime settings (UI + any legacy calls).
    S = g_cfg;
+   
+   // Final clamp after runtime Settings snapshot is built (Option B: Router owns live trading)
+   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+   if(S.strat_mode == STRAT_MAIN_ONLY)
+      g_use_registry = false;
+
    StratReg::SyncRouterFromSettings(S);
    LogX::Info(StringFormat("DIR: trade_selector=%d  legacy_dir=%d  bias_mode=%d  require_checklist=%s  require_classical=%s",
                         (int)S.trade_selector,
@@ -3286,6 +3293,13 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    // Always keep managing open positions (even if we skip evaluation)
    PM::ManageAll(S);
 
+   // Safety: ProcessSymbol() is tester/optimization-only under Option B (Router owns live trading)
+   if(!g_is_tester)
+   {
+      if(InpDebug) LogX::Warn("[LEGACY] ProcessSymbol blocked in LIVE. RouterEvaluateAll() owns live trading.");
+         return;
+   }
+
    // NOTE: current strategies rely on _Symbol internally; only evaluate on chart symbol.
    if(sym != _Symbol)
    {
@@ -3387,17 +3401,30 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       StrategiesCarry::RiskMod01(pick.dir, trade_cfg, SS.risk_mult);
    
    OrderPlan plan;
+   const StrategyID sid = (StrategyID)pick.id;
+   
    if(!Risk::ComputeOrder(pick.dir, trade_cfg, SS, plan, pick.bd))
    {
-      _LogRiskReject("risk_reject", sym, (StrategyID)pick.id, pick.dir, SS);
+      _LogRiskReject("risk_reject", sym, sid, pick.dir, SS);
       Panel::Render(S);
       return;
    }
    
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, /*skip_gates=*/false, (StrategyID)pick.id);
+   // Enforcement point #2 (Router gate) even for legacy harness
+   if(!Router_GateWinnerByMode(S, sid))
+   {
+      TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_MODE_BLOCK,
+                   StringFormat("[LEGACY] Router gate blocked sid=%d mode=%s",
+                                (int)sid, StrategyModeNameLocal(S.strat_mode)),
+                   (int)sid, pick.dir, pick.ss.score);
+      Panel::Render(S);
+      return;
+   }
+   
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, /*skip_gates=*/false, sid);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
-   _LogExecReject("exec_reject", sym, (StrategyID)pick.id, pick.dir, SS, plan, ex);
+   _LogExecReject("exec_reject", sym, sid, pick.dir, SS, plan, ex);
    if(ex.ok)
       Policies::NotifyTradePlaced();
    
@@ -3559,7 +3586,12 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
          else
             if(K=='R')
             {
-               if(S.strat_mode == STRAT_MAIN_ONLY)
+               if(!g_is_tester)
+               {
+                  g_use_registry = false;
+                  PrintFormat("[UI] Routing locked to ROUTER (live trading).");
+               }
+               else if(S.strat_mode == STRAT_MAIN_ONLY)
                {
                   g_use_registry = false;
                   PrintFormat("[UI] Routing locked to ROUTER in STRAT_MAIN_ONLY");
@@ -3567,7 +3599,7 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
                else
                {
                   g_use_registry = !g_use_registry;
-                  PrintFormat("[UI] Routing: %s",(g_use_registry?"REGISTRY-ALL":"MANUAL-REGIME"));
+                  PrintFormat("[UI] Routing: %s", (g_use_registry ? "REGISTRY (tester)" : "ROUTER"));
                }
             }
             else

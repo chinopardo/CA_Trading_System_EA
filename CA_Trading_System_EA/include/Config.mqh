@@ -1004,6 +1004,8 @@ namespace Config
           case STRAT_COMBINED:
             return v;
           default:
+            // Optional debug: invalid mode fallback
+            // (avoid noisy logs unless cfg.debug is commonly on)
             return STRAT_MAIN_ONLY;
         }
       }
@@ -2025,6 +2027,7 @@ namespace Config
       const int cur = (int)cfg.strat_mode;
       const int clamped = _ClampStratModeInt(cur);
       if(cur != clamped)
+        if(cfg.debug) PrintFormat("[Config] strat_mode clamped: %d -> %d", cur, clamped);
         _SetStratModeRef(cfg.strat_mode, clamped);
     #endif
     #ifdef CFG_HAS_MODE
