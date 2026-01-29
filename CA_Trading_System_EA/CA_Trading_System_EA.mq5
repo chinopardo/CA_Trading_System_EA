@@ -971,6 +971,7 @@ double StreakRiskScale();
 void EvaluateOneSymbol(const string sym)
   {
     Settings cur = S; // per-symbol snapshot if you later need overrides
+    if(!g_is_tester) return;
    
     // --- Hardening: prevent this path from bypassing the canonical gates ---
     if(!WarmupGateOK())
