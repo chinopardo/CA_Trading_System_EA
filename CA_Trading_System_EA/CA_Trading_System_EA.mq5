@@ -295,6 +295,11 @@ input double           InpP2_ClosePct           = 25.0;          // Position Mgn
 // ================= Strategy family selector =================
 input StrategyMode InpStrat_Mode                = STRAT_MAIN_ONLY; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
 
+// Pack strategies runtime registration/trading (Option 2)
+// Default OFF (confluence-only) unless explicitly enabled.
+input bool InpEnable_PackStrategies          = false; // Allow pack strategies to register/trade in PACK_ONLY / COMBINED
+input bool InpDisable_PackStrategies         = false; // Fail-safe hard disable pack strategies (overrides enable)
+
 // Separate magic ranges (helps you segment PnL & mgmt)
 input int MagicBase_Main               = 11000;
 input int MagicBase_Pack               = 21000;
@@ -2002,6 +2007,14 @@ void BuildSettingsFromInputs(Settings &cfg)
       cfg.enable_strat_ict_wyckoff_turn = InpEnable_ICT_WyckoffTurn;
    #endif
 
+   // --- Pack strategy registration toggle (runtime replacement for ENABLE_LEGACY_STRATEGIES) ---
+   #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      cfg.enable_pack_strats = InpEnable_PackStrategies;
+   #endif
+   #ifdef CFG_HAS_DISABLE_PACKS
+      cfg.disable_packs      = InpDisable_PackStrategies;
+   #endif
+
    // --- Magic bases (per-strategy ranges) ---
    cfg.magic_main_base        = InpMagic_MainBase;
    cfg.magic_sb_base          = InpMagic_SilverBulletBase;
@@ -2244,6 +2257,14 @@ int OnInit()
    ex.log_veto_details       = Inp_LogVetoDetails;
    // ex.weekly_open_spread_ramp = InpWeeklyOpenRamp;  // if you expose it as input
    
+   // Pack strategies runtime gate (requires Config.mqh BuildExtras fields)
+   #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      ex.enable_pack_strats = InpEnable_PackStrategies;
+   #endif
+   #ifdef CFG_HAS_DISABLE_PACKS
+      ex.disable_packs      = InpDisable_PackStrategies;
+   #endif
+
    Config::ApplyExtras(S, ex);
    Config::ApplyStrategyMode(S, InpStrat_Mode);
 
@@ -2437,6 +2458,15 @@ int OnInit()
    // Housekeeping BEFORE registry boot so weights/throttles see normalized settings
    Config::Normalize(S);
 
+   #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      string packs_msg = StringFormat("PackStrats: enable=%s",
+                                      (S.enable_pack_strats ? "true" : "false"));
+      #ifdef CFG_HAS_DISABLE_PACKS
+         packs_msg += StringFormat(" disable=%s", (S.disable_packs ? "true" : "false"));
+      #endif
+      LogX::Info(packs_msg);
+   #endif
+   
    // ----- Boot strategy registry with/without profile -----
    if(InpProfileApply)
       BootRegistry_WithProfile(S, ps);

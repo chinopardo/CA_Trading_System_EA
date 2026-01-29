@@ -73,6 +73,27 @@ struct Settings;
   #define enable_strat_ict_wyckoff enable_strat_ict_wyckoff_turn
 #endif
 
+// --- Pack strategy registration/runtime toggles (used by StrategyRegistry/Router)
+#ifndef CFG_HAS_ENABLE_PACK_STRATS
+  #define CFG_HAS_ENABLE_PACK_STRATS 1
+#endif
+
+// Back-compat: some modules may use the older token name
+#ifndef CFG_HAS_ENABLE_STRAT_PACKS
+  #define CFG_HAS_ENABLE_STRAT_PACKS 1
+#endif
+#ifndef enable_strat_packs
+  #define enable_strat_packs enable_pack_strats
+#endif
+
+// Optional fail-safe kill switch (prefer fail-closed naming)
+#ifndef CFG_HAS_DISABLE_PACKS
+  #define CFG_HAS_DISABLE_PACKS 1
+#endif
+#ifndef disable_pack_strats
+  #define disable_pack_strats disable_packs
+#endif
+
 #ifndef CFG_HAS_PARTIAL_ENABLE
   #define CFG_HAS_PARTIAL_ENABLE 1
 #endif
@@ -686,6 +707,10 @@ namespace Config
      double orderflow_th;
      bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
      ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
+     
+     // Strategy pack registration (runtime replacement for ENABLE_LEGACY_STRATEGIES)
+     bool   enable_pack_strats;   // default false
+     bool   disable_packs;        // default false (fail-safe)
    
      // Volume footprint
      bool   extra_volume_footprint;  double w_volume_footprint;
@@ -1044,6 +1069,27 @@ namespace Config
       }
    #endif
    
+   inline bool CfgEnablePackStrats(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ENABLE_PACK_STRATS
+       #ifdef CFG_HAS_DISABLE_PACKS
+         if(cfg.disable_packs) return false;
+       #endif
+       return (bool)cfg.enable_pack_strats;
+     #else
+       return false;
+     #endif
+   }
+   
+   inline bool CfgDisablePacks(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_DISABLE_PACKS
+       return (bool)cfg.disable_packs;
+     #else
+       return false;
+     #endif
+   }
+
    #ifdef CFG_HAS_PROFILE_ENUM
       inline TradingProfile GetTradingProfile(const Settings &s){
         int p = s.profile;
@@ -1461,6 +1507,13 @@ namespace Config
    // Map extras → Settings (compile-safe)
    inline void ApplyExtras(Settings &cfg, const BuildExtras &x)
    {
+     // Pack strategy registration (StrategyRegistry consumes these)
+     #ifdef CFG_HAS_ENABLE_PACK_STRATS
+       cfg.enable_pack_strats = x.enable_pack_strats;
+     #endif
+     #ifdef CFG_HAS_DISABLE_PACKS
+       cfg.disable_packs = x.disable_packs;
+     #endif
      // Confluence / evaluator
      #ifdef CFG_HAS_CF_MIN_NEEDED
        cfg.cf_min_needed = MathMax(0, x.conf_min_count);
@@ -1792,6 +1845,10 @@ namespace Config
      x.main_require_checklist = true;
      x.main_confirm_any_of_3  = true;
      
+     // Pack strategies off by default (confluence-only unless explicitly enabled)
+     x.enable_pack_strats = false;
+     x.disable_packs      = false;
+
      // Enforce the 1→8 checklist by default (your requirement)
      x.main_sequential_gate   = true;
 
@@ -2079,6 +2136,18 @@ namespace Config
       if(cur != clamped)
         if(cfg.debug) PrintFormat("[Config] strat_mode clamped: %d -> %d", cur, clamped);
         _SetStratModeRef(cfg.strat_mode, clamped);
+    #endif
+    // Pack strategies must never be active under MAIN_ONLY; and disable_packs hard-kills them.
+    #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      #ifdef CFG_HAS_STRAT_MODE
+        if(CfgStrategyMode(cfg) == STRAT_MAIN_ONLY)
+          cfg.enable_pack_strats = false;
+      #endif
+   
+      #ifdef CFG_HAS_DISABLE_PACKS
+        if(cfg.disable_packs)
+          cfg.enable_pack_strats = false;
+      #endif
     #endif
     #ifdef CFG_HAS_MODE
       if((int)cfg.mode<0) cfg.mode=BSM_BOTH;
@@ -2552,6 +2621,21 @@ namespace Config
         if(k > 0) cfg.router_max_strats = k;
       }
     #endif
+    #ifdef CFG_HAS_STRAT_MODE
+      const StrategyMode sm = CfgStrategyMode(cfg);
+      if(sm == STRAT_PACK_ONLY || sm == STRAT_COMBINED)
+      {
+        #ifdef CFG_HAS_ENABLE_PACK_STRATS
+          if(!cfg.enable_pack_strats)
+            warns += "PACK_ONLY/COMBINED selected but enable_pack_strats=false; pack strategies will not be registered/traded.\\n";
+        #endif
+        #ifdef CFG_HAS_DISABLE_PACKS
+          if(cfg.disable_packs)
+            warns += "disable_packs=true; pack strategies are globally disabled (PACK_ONLY/COMBINED may produce no trades).\\n";
+        #endif
+      }
+    #endif
+  
     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
       // router.fb_min should feed both aliases if present
        {
@@ -2617,9 +2701,24 @@ namespace Config
   
   inline bool Validate(const Settings &cfg, string &warns)
   {
-    warns="";
-    bool ok=true;
+     warns="";
+     bool ok=true;
 
+     #ifdef CFG_HAS_STRAT_MODE
+      const StrategyMode sm = CfgStrategyMode(cfg);
+      if(sm == STRAT_PACK_ONLY || sm == STRAT_COMBINED)
+      {
+        #ifdef CFG_HAS_ENABLE_PACK_STRATS
+          if(!cfg.enable_pack_strats)
+            warns += "PACK_ONLY/COMBINED selected but enable_pack_strats=false; pack strategies will not be registered/traded.\\n";
+        #endif
+        #ifdef CFG_HAS_DISABLE_PACKS
+          if(cfg.disable_packs)
+            warns += "disable_packs=true; pack strategies are globally disabled (PACK_ONLY/COMBINED may produce no trades).\\n";
+        #endif
+      }
+    #endif
+    
     // Risk sanity
     if(cfg.risk_pct > cfg.risk_cap_pct && cfg.risk_cap_pct>0.0)
       warns += "risk_pct>risk_cap_pct; capped by engine.\n";
@@ -2795,6 +2894,13 @@ namespace Config
      #endif
      #ifdef CFG_HAS_MODE
        cfg.mode=BSM_BOTH;
+     #endif
+     // Pack strategies default OFF unless explicitly enabled by EA inputs / profile / CSV
+     #ifdef CFG_HAS_ENABLE_PACK_STRATS
+       cfg.enable_pack_strats = false;
+     #endif
+     #ifdef CFG_HAS_DISABLE_PACKS
+       cfg.disable_packs = false;
      #endif
    
      // Baseline new fields (ABI-safe defaults)
@@ -3187,6 +3293,12 @@ namespace Config
     
     #ifdef CFG_HAS_STRAT_MODE
       s+=",sMode="+IntegerToString((int)CfgStrategyMode(c));
+    #endif
+    #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      s += ",packOn=" + BoolStr(c.enable_pack_strats);
+    #endif
+    #ifdef CFG_HAS_DISABLE_PACKS
+      s += ",packsOff=" + BoolStr(c.disable_packs);
     #endif
 
     #ifdef CFG_HAS_PROFILE_ENUM
@@ -4481,6 +4593,12 @@ namespace Config
         else if(k=="sMode")
           _SetStratModeRef(cfg.strat_mode, ToInt(v));
       #endif
+      #ifdef CFG_HAS_ENABLE_PACK_STRATS
+        else if(k=="packOn") cfg.enable_pack_strats = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_DISABLE_PACKS
+        else if(k=="packsOff") cfg.disable_packs = ToBool(v);
+      #endif
 
       // Optional magic number
       #ifdef CFG_HAS_MAGIC_NUMBER
@@ -5003,6 +5121,12 @@ struct Settings
   double            confl_blend_others;
   
   StrategyMode      strat_mode;
+  #ifdef CFG_HAS_ENABLE_PACK_STRATS
+    bool enable_pack_strats;   // runtime gate: allow pack strategies to be registered/tradable
+  #endif
+  #ifdef CFG_HAS_DISABLE_PACKS
+    bool disable_packs;        // fail-safe kill switch for pack strategies
+  #endif
 
   // --- Feature toggles / vetoes used by strategies --------------------------
   bool              vsa_enable;

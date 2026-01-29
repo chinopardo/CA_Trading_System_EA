@@ -1052,6 +1052,7 @@ namespace Policies
   // ----------------------------------------------------------------------------
   static bool     s_loaded          = false;
   static string   s_prefix          = "";    // "CA:POL:<login>:<magic>:"
+  static string   s_last_eval_sym   = "";    // last symbol passed to _EvaluateCoreEx/_EvaluateFullEx (telemetry)
   static long     s_login           = 0;
   static long     s_magic_cached    = 0;
 
@@ -1796,7 +1797,7 @@ namespace Policies
 
   inline void PolicyVetoLog(const PolicyResult &r)
    {
-     const string sym = _Symbol;
+     const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
      string gate_log = "";
    
      if(_ShouldVetoLogOncePerSec(sym, r.primary_reason, r.veto_mask) == false)
@@ -2066,6 +2067,7 @@ namespace Policies
 
   inline bool _EvaluateCoreEx(const Settings &cfg, const string sym, PolicyResult &out, const bool audit)
   {
+    s_last_eval_sym = sym;
     _EnsureLoaded(cfg);
     _EnsureMonthState();
     _EnsureDayState();
@@ -2462,6 +2464,9 @@ namespace Policies
 
   inline void RecordExecutionAttempt()
   {
+    // Legacy overload: prefer RecordExecutionAttempt(sid)
+    if(!MQLInfoInteger(MQL_TESTER))
+      Print("[Policy] WARNING: RecordExecutionAttempt() called without StrategyID (sid=0). Check caller wiring.");
     RecordExecutionAttempt((StrategyID)0);
   }
   
@@ -2504,6 +2509,9 @@ namespace Policies
 
   inline void RecordExecutionResult(const bool ok, const uint retcode, const double filled_volume)
   {
+    // Legacy overload: prefer RecordExecutionResult(sid, ok, retcode, filled_volume)
+    if(!MQLInfoInteger(MQL_TESTER))
+      Print("[Policy] WARNING: RecordExecutionResult() called without StrategyID (sid=0). Check caller wiring.");
     RecordExecutionResult((StrategyID)0, ok, retcode, filled_volume);
   }
   
