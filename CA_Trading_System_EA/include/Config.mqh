@@ -201,6 +201,30 @@ struct Settings;
   #define CFG_HAS_DOM_MIN_ABS_IMB 1
 #endif
 
+// --- OBI (alias of DOM imbalance knobs) ---
+#ifndef CFG_HAS_EXTRA_OBI
+  #define CFG_HAS_EXTRA_OBI 1
+#endif
+#ifndef CFG_HAS_W_OBI
+  #define CFG_HAS_W_OBI 1
+#endif
+
+// Field-name aliases so downstream code can use cfg.<alias> without duplicating storage
+#ifndef CFG_FIELD_EXTRA_OBI
+  #define CFG_FIELD_EXTRA_OBI extra_dom_imbalance
+#endif
+#ifndef CFG_FIELD_W_OBI
+  #define CFG_FIELD_W_OBI w_dom_imbalance
+#endif
+
+// --- Trendlines (new confluence provider) ---
+#ifndef CFG_HAS_EXTRA_TRENDLINES
+  #define CFG_HAS_EXTRA_TRENDLINES 1
+#endif
+#ifndef CFG_HAS_W_TRENDLINES
+  #define CFG_HAS_W_TRENDLINES 1
+#endif
+
 #ifndef CFG_HAS_EXTRA_STOCHRSI
   #define CFG_HAS_EXTRA_STOCHRSI 1
 #endif
@@ -298,6 +322,14 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_W_WYCKOFF_TURN
   #define CFG_HAS_W_WYCKOFF_TURN 1
+#endif
+
+// --- Phase context (Wyckoff/PO3 cycle alignment) ---
+#ifndef CFG_HAS_EXTRA_PHASE_CTX
+  #define CFG_HAS_EXTRA_PHASE_CTX 1
+#endif
+#ifndef CFG_HAS_W_PHASE_CTX
+  #define CFG_HAS_W_PHASE_CTX 1
 #endif
 
 #ifndef CFG_HAS_EXTRA_MTF_ZONES
@@ -678,6 +710,9 @@ namespace Config
      // Correlation
      bool extra_corr; string corr_ref_symbol; int corr_lookback; double corr_min_abs; double w_corr;
    
+     bool   extra_trendlines;
+     double w_trendlines;
+  
      // News (weight)
      bool extra_news; double w_news;
      #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
@@ -708,6 +743,9 @@ namespace Config
      // Wyckoff turn context (Spring / UTAD)
      bool   extra_wyckoff_turn;
      double w_wyckoff_turn;
+
+     bool   extra_phase_ctx;
+     double w_phase_ctx;
 
      // Multi-TF zones (H1/H4 zone proximity as confluence)
      bool   extra_mtf_zones;
@@ -944,13 +982,8 @@ namespace Config
          break;
      }
    
-     // safer default:
-     #ifdef CFG_HAS_STRAT_MODE
-        const StrategyMode sm = CfgStrategyMode(cfg);
-        if(sm != STRAT_COMBINED)
-          return false;
-     #endif
-     return true;
+      // safer default: unknown names are NOT enabled (fail-closed)
+      return false;
    }
    
    bool ConfigCore::EnableStrategyByName(Settings &cfg, string name, const bool on)
@@ -1274,13 +1307,10 @@ namespace Config
    inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID id)
    {
       // Always reject missing/invalid strategy IDs (prevents ghost paths)
-      if(((int)id) <= 0) return false;
+      if(((int)id) <= 0)
+         return false;
 
       const StrategyMode mode = CfgStrategyMode(cfg);
-
-      // Combined mode allows any VALID ID; other modes use the canonical allow-list
-      if(mode == STRAT_COMBINED) return true;
-
       return Strat_AllowedToTrade(mode, id);
    }
 
@@ -1485,6 +1515,13 @@ namespace Config
        cfg.w_dom_imbalance = x.w_dom_imbalance;
      #endif
 
+     #ifdef CFG_HAS_EXTRA_TRENDLINES
+       cfg.extra_trendlines = x.extra_trendlines;
+     #endif
+     #ifdef CFG_HAS_W_TRENDLINES
+       cfg.w_trendlines = x.w_trendlines;
+     #endif
+
     // StochRSI
     #ifdef CFG_HAS_EXTRA_STOCHRSI
       cfg.extra_stochrsi = x.extra_stochrsi;
@@ -1616,6 +1653,13 @@ namespace Config
      #endif
      #ifdef CFG_HAS_W_WYCKOFF_TURN
        cfg.w_wyckoff_turn = x.w_wyckoff_turn;
+     #endif
+
+     #ifdef CFG_HAS_EXTRA_PHASE_CTX
+       cfg.extra_phase_ctx = x.extra_phase_ctx;
+     #endif
+     #ifdef CFG_HAS_W_PHASE_CTX
+       cfg.w_phase_ctx = x.w_phase_ctx;
      #endif
 
      // Multi-TF zones
@@ -1771,6 +1815,9 @@ namespace Config
      x.debug_dom           = false;
      x.w_dom_imbalance     = 0.05;
 
+     x.extra_trendlines   = false;
+     x.w_trendlines       = 0.05;
+  
      x.w_stochrsi   = 0.04;
      x.w_macd       = 0.04;
      x.w_adx_regime = 0.04;
@@ -1806,6 +1853,9 @@ namespace Config
      x.w_amd_h1          = 0.06;
      x.w_amd_h4          = 0.08;
      
+     x.extra_phase_ctx = false;
+     x.w_phase_ctx     = 0.05;
+
      x.w_po3_h1          = 0.05;
      x.w_po3_h4          = 0.07;
      x.w_wyckoff_turn    = 0.05;
@@ -2202,6 +2252,10 @@ namespace Config
       cfg.w_dom_imbalance = MathMax(0.0, cfg.w_dom_imbalance);
     #endif
 
+    #ifdef CFG_HAS_W_TRENDLINES
+      cfg.w_trendlines = MathMax(0.0, cfg.w_trendlines);
+    #endif
+
     #ifdef CFG_HAS_DOM_ZONE_PAD_POINTS
       if(cfg.dom_zone_pad_points < 0) cfg.dom_zone_pad_points = 0;
       if(cfg.dom_zone_pad_points > 500) cfg.dom_zone_pad_points = 500; // sanity cap
@@ -2338,6 +2392,10 @@ namespace Config
 
     #ifdef CFG_HAS_W_WYCKOFF_TURN
       if(cfg.w_wyckoff_turn < 0.0) cfg.w_wyckoff_turn = 0.0;
+    #endif
+
+    #ifdef CFG_HAS_W_PHASE_CTX
+      cfg.w_phase_ctx = MathMax(0.0, cfg.w_phase_ctx);
     #endif
 
     #ifdef CFG_HAS_W_MTF_ZONE_H1
@@ -2611,6 +2669,28 @@ namespace Config
         #ifdef CFG_HAS_DOM_MIN_ABS_IMB
           if(cfg.dom_min_abs_imb <= 0.0 || cfg.dom_min_abs_imb > 1.0)
             warns += "DOM dom_min_abs_imb out of range; Normalize() will clamp.\\n";
+        #endif
+      }
+    #endif
+
+    // Trendlines sanity
+    #ifdef CFG_HAS_EXTRA_TRENDLINES
+      if(cfg.extra_trendlines)
+      {
+        #ifdef CFG_HAS_W_TRENDLINES
+          if(cfg.w_trendlines <= 0.0)
+            warns += "- Trendlines enabled but w_trendlines<=0 (no effect)\n";
+        #endif
+      }
+    #endif
+
+    // Phase context sanity
+    #ifdef CFG_HAS_EXTRA_PHASE_CTX
+      if(cfg.extra_phase_ctx)
+      {
+        #ifdef CFG_HAS_W_PHASE_CTX
+          if(cfg.w_phase_ctx <= 0.0)
+            warns += "- PhaseCtx enabled but w_phase_ctx<=0 (no effect)\n";
         #endif
       }
     #endif
@@ -3224,6 +3304,13 @@ namespace Config
 
     s+=",xWYT="+BoolStr(c.extra_wyckoff_turn);
     s+=",wWYT="+DoubleToString(c.w_wyckoff_turn,3);
+    
+    #ifdef CFG_HAS_EXTRA_PHASE_CTX
+      s+=",xPH="+BoolStr(c.extra_phase_ctx);
+    #endif
+    #ifdef CFG_HAS_W_PHASE_CTX
+      s+=",wPH="+DoubleToString(c.w_phase_ctx,3);
+    #endif
 
     s+=",xMTFZ="+BoolStr(c.extra_mtf_zones);
     s+=",wZ1="+DoubleToString(c.w_mtf_zone_h1,3);
@@ -3254,6 +3341,22 @@ namespace Config
     #endif
     #ifdef CFG_HAS_DEBUG_DOM
       s+=",domDbg="+BoolStr(c.debug_dom);
+    #endif
+
+    // OBI aliases (same storage as DOM imbalance)
+    #ifdef CFG_HAS_EXTRA_OBI
+      s+=",xOBI="+BoolStr(c.extra_dom_imbalance);
+    #endif
+    #ifdef CFG_HAS_W_OBI
+      s+=",wOBI="+DoubleToString(c.w_dom_imbalance,3);
+    #endif
+
+    // Trendlines
+    #ifdef CFG_HAS_EXTRA_TRENDLINES
+      s+=",xTL="+BoolStr(c.extra_trendlines);
+    #endif
+    #ifdef CFG_HAS_W_TRENDLINES
+      s+=",wTL="+DoubleToString(c.w_trendlines,3);
     #endif
 
     #ifdef CFG_HAS_EXTRA_CORR
@@ -4238,6 +4341,9 @@ namespace Config
         else if(k=="sbReqVWAP") cfg.sb_require_vwap_stretch = ToBool(v);
       #endif
       
+      else if(k=="xPH") cfg.extra_phase_ctx = ToBool(v);
+      else if(k=="wPH") cfg.w_phase_ctx = ToDouble(v);
+      
       else if(k=="xSBtz") cfg.extra_silverbullet_tz = ToBool(v);
       else if(k=="wSBtz") cfg.w_silverbullet_tz = ToDouble(v);
 
@@ -4273,6 +4379,14 @@ namespace Config
       else if(k=="domPad")  cfg.dom_zone_pad_points = ToInt(v);
       else if(k=="domMin")  cfg.dom_min_abs_imb = ToDouble(v);
       else if(k=="domDbg")  cfg.debug_dom = ToBool(v);
+      
+      // OBI aliases (same meaning as xDOM/wDOM)
+      else if(k=="xOBI") cfg.extra_dom_imbalance = ToBool(v);
+      else if(k=="wOBI") cfg.w_dom_imbalance = ToDouble(v);
+
+      // Trendlines
+      else if(k=="xTL") cfg.extra_trendlines = ToBool(v);
+      else if(k=="wTL") cfg.w_trendlines = ToDouble(v);
 
       else if(k=="xCorr")    cfg.extra_correlation = ToBool(v);
       else if(k=="wCorr")    cfg.w_correlation = ToDouble(v);
@@ -4438,6 +4552,22 @@ namespace Config
 //   5. Quality thresholds
 //   6. Runtime overrides (Router fills per strategy)
 // -----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Optional confluence breakdown capture (Router "Top-N with reason")
+// ----------------------------------------------------------------------------
+#ifndef CFG_HAS_CONFLUENCE_BREAKDOWN
+  #define CFG_HAS_CONFLUENCE_BREAKDOWN 1
+#endif
+
+#ifdef CFG_HAS_CONFLUENCE_BREAKDOWN
+inline void ConfluenceBreakdown_Reset(ConfluenceBreakdown &b)
+{
+  b.obi_signed = 0.0; b.obi_score = 0.0;
+  b.tl_signed  = 0.0; b.tl_score  = 0.0; b.tl_dist_atr = 0.0;
+  b.ph_signed  = 0.0; b.ph_score  = 0.0;
+}
+#endif
 
 // ================================ SETTINGS ==================================
 /*
@@ -4645,6 +4775,10 @@ struct Settings
    int dom_zone_pad_points;
    double dom_min_abs_imb;
 
+   // Trendlines (Market-Structure swing trendlines) - confluence-only
+   bool   extra_trendlines;
+   double w_trendlines;
+   
    // StochRSI “extra” gate (distinct from base cf_stochrsi flag/weights)
    bool   extra_stochrsi;           // enable StochRSI as an extra gate
    int    stochrsi_rsi_period;      // inner RSI period for StochRSI
@@ -4752,6 +4886,10 @@ struct Settings
   bool   extra_wyckoff_turn;
   double w_wyckoff_turn;
 
+  // Phase context (WyckoffCycle / PO3 alignment) - confluence-only
+  bool   extra_phase_ctx;
+  double w_phase_ctx;
+  
   // Multi-TF zones (H1/H4 zone proximity)
   bool   extra_mtf_zones;
   double w_mtf_zone_h1;
