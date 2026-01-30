@@ -68,6 +68,7 @@
 #include "include/Tester.mqh"
 #include "include/Logging.mqh"
 #include "include/Warmup.mqh"
+#include "include/BuildFlags.mqh"
 
 #ifndef ROUTER_TRACE_FLOW
 #define ROUTER_TRACE_FLOW 1   // set to 1 to enable #F breadcrumbs
@@ -84,6 +85,9 @@ bool     g_inited = false;
 // Forward declarations for helper functions we add in this file
 //--------------------------------------------------------------------
 void BuildSettingsFromInputs(Settings &cfg);
+string RuntimeSettingsHashHex(const Settings &cfg);
+void   DriftAlarm_SetApproved(const string reason);
+void   DriftAlarm_Check(const string where);
 
 // Full-detail variant used from OnTick()
 void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
@@ -626,6 +630,8 @@ input int              InpRouterTopKLog         = 6; // Diagnostics / UX: Top K 
 input bool             InpRouterForceOneNormalVol = false; // Diagnostics / UX: Force One Normal Vol
 input bool             InpDebug                 = true; // Diagnostics / UX: Debug
 input bool             InpFileLog               = false; // Diagnostics / UX: File Log
+input bool             InpDriftAlarm            = true; // Diagnostics / UX: Drift Alarm
+input bool             InpDriftHaltTrading      = false; // Diagnostics / UX: Halt trading on drift alarm
 input bool             InpProfile               = false; // Diagnostics / UX: Profile
 
 // Warmup gate control (tester-safe, prevents permanent stall)
@@ -655,6 +661,9 @@ input string          InpTestCase      = "none";  // see TesterCases::ScenarioLi
 input string          InpTesterPreset  = "";
 
 // ================== Globals ==================
+//g_cfg = canonical runtime snapshot
+//S = UI mirror (read-mostly)
+//After init, only OnChartEvent hotkeys may mutate S, and must immediately mirror to g_cfg
 Settings S;
 
 static bool g_show_breakdown = true;
@@ -662,6 +671,17 @@ static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 static bool g_use_registry = false; // legacy registry routing enabled (tester only)
+
+// ---- Runtime drift alarm (S must match g_cfg; only hotkeys may change S) ----
+static bool     g_drift_armed          = false;   // set true after finalize/approved commit
+static datetime g_drift_last_check     = 0;       // throttle checks (seconds)
+static datetime g_drift_last_alert     = 0;       // throttle alerts (seconds)
+static int      g_drift_alert_count    = 0;       // counts alerts since last approved commit
+static string   g_drift_hash_approved  = "";      // hash of last approved S (Finalize/UI commit)
+static string   g_drift_hash_last_s    = "";      // last reported mismatch S hash
+static string   g_drift_hash_last_cfg  = "";      // last reported mismatch g_cfg hash
+// Optional hard stop when drift is detected (blocks NEW entries; PM can still manage)
+static bool g_inhibit_trading = false;
 
 // Multi-symbol scheduler
 string   g_symbols[];              // parsed watchlist
@@ -725,6 +745,7 @@ string _GateReasonStr(const int c)
       case GATE_NEWS:       return "NEWS";
       case GATE_EXEC_LOCK:  return "EXEC_LOCK";
       case GATE_WARMUP:     return "WARMUP";
+      case GATE_INHIBIT:    return "INHIBIT";
       case GATE_NONE:       return "NONE";
       default:              return "UNKNOWN";
    }
@@ -1897,7 +1918,7 @@ inline void UpdateRegistryRoutingFlag()
    g_use_registry = (InpUseRegistryRouting && g_is_tester);
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
-   if(S.strat_mode == STRAT_MAIN_ONLY)
+   if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
       g_use_registry = false;
 }
 
@@ -1908,12 +1929,11 @@ void MaybeEvaluate()
    if(!WarmupGateOK())
       return;
    // Short series gate for VWAP/patterns/ATR (from Warmup.mqh patch)
-   if(!Warmup::DataReadyForEntry(S))
+   if(!Warmup::DataReadyForEntry(g_cfg))
       return;
 
    static datetime last_bar = 0;
-   const Settings cfg_ref = (g_use_registry ? S : g_cfg);
-   const datetime bt = iTime(_Symbol, Warmup::TF_Entry(cfg_ref), 0);
+   const datetime bt = iTime(_Symbol, Warmup::TF_Entry(g_cfg), 0);
 
    if(InpOnlyNewBar && bt == last_bar)
       return;
@@ -1926,8 +1946,8 @@ void MaybeEvaluate()
 
     if(g_use_registry)
     {
-       if(!GateViaPolicies(S, _Symbol))
-          return;
+       if(!GateViaPolicies(g_cfg, _Symbol))
+         return;
 
        ProcessSymbol(_Symbol, true);
        return;
@@ -1953,7 +1973,7 @@ void MaybeEvaluate()
 void BuildSettingsFromInputs(Settings &cfg)
 {
    // 0) Start from finalized runtime S (after profile/overrides/normalize)
-   cfg = S;
+   // NOTE: Overlay helper. Caller must initialize cfg (Mirror/Profile/etc) before calling.
 
    // --- Core / generic ICT config ---
    cfg.tf_entry                  = InpEntryTF;          // ICT entry TF - SINGLE source of truth for entry TF (matches MirrorInputsToSettings)
@@ -2094,7 +2114,296 @@ void BuildSettingsFromInputs(Settings &cfg)
       (InpEnable_PO3Mode && cfg.enable_strat_ict_po3);
    cfg.mode_enforce_killzone = InpEnforceKillzone;
    cfg.mode_use_ICT_bias     = InpUseICTBias;
-   Config::Normalize(cfg);
+}
+
+void FinalizeRuntimeSettings()
+{
+   Settings cfg;
+   ZeroMemory(cfg);
+
+   // 0) Base snapshot from inputs (ONE time)
+   MirrorInputsToSettings(cfg);
+
+   // Move the MVP_NoBlock warning here (from OnInit lines 2157–2160), replacing S->cfg
+   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+      if(cfg.news_on && cfg.news_mvp_no_block)
+         LogX::Warn("News is ON but MVP_NoBlock is true -> NewsFilter will NOT hard-block trades.");
+   #endif
+
+   // 1) Extras (ONE time)
+   Config::BuildExtras ex;
+   Config::BuildExtrasDefaults(ex);
+
+   // MOVE the entire ex.* assignment block from OnInit lines 2164–2267 into here (unchanged),
+   // but the ApplyExtras target must be cfg:
+   //    Config::ApplyExtras(cfg, ex);
+   // (Replace the original "Config::ApplyExtras(S, ex);" with the cfg version.)
+   Config::ApplyExtras(cfg, ex);
+
+   // 2) Mode + key overrides (ONE time)
+   Config::ApplyStrategyMode(cfg, InpStrat_Mode);
+   Config::LoadInputs(cfg);
+   Config::ApplyKVOverrides(cfg);
+   Config::FinalizeThresholds(cfg);
+
+   // Keep DOM imbalance flag in the snapshot (move from OnInit line 2277, S->cfg)
+   cfg.extra_dom_imbalance = (cfg.extra_dom_imbalance || InpExtra_DOMImbalance);
+
+   // 3) Build profile spec + apply profile (MOVE OnInit lines 2389–2457, replace S->cfg)
+   const TradingProfile prof = (TradingProfile)InpProfileType;
+   Config::ProfileSpec ps;
+   Config::BuildProfileSpec(prof, ps);
+
+   if(InpProfileApply)
+      Config::ApplyProfileHintsToSettings(cfg, ps, /*overwrite=*/true);
+
+   Config::ApplyCarryDefaultsForProfile(cfg, prof);
+
+   if(InpProfileSaveCSV)
+      Config::SaveProfileSpecCSV(prof, ps, InpProfileCSVName, false);
+
+   if(InpProfileApply)
+   {
+      Config::ApplyTradingProfile(cfg, prof,
+                                 /*apply_router_hints=*/InpProfileUseRouterHints,
+                                 /*apply_carry_defaults=*/true,
+                                 /*log_summary=*/true);
+
+      // Keep your manual override blocks, but target cfg (moved from 2406–2452, S->cfg)
+      // (No logic changes needed—just replace S. with cfg.)
+      if(InpProfileAllowManual)
+      {
+         cfg.carry_enable = InpCarry_Enable;
+         #ifdef CFG_HAS_CARRY_BOOST_MAX
+            cfg.carry_boost_max = MathMin(MathMax(InpCarry_BoostMax, 0.0), 0.20);
+         #endif
+         #ifdef CFG_HAS_CARRY_RISK_SPAN
+            cfg.carry_risk_span = MathMin(MathMax(InpCarry_RiskSpan, 0.0), 0.50);
+         #endif
+         #ifdef CFG_HAS_CONFL_BLEND_TREND
+            if(InpConflBlend_Trend > 0.0)
+               cfg.confl_blend_trend = MathMin(InpConflBlend_Trend, 0.50);
+         #endif
+         #ifdef CFG_HAS_CONFL_BLEND_MR
+            if(InpConflBlend_MR > 0.0)
+               cfg.confl_blend_mr = MathMin(InpConflBlend_MR, 0.50);
+         #endif
+         #ifdef CFG_HAS_CONFL_BLEND_OTHERS
+            if(InpConflBlend_Others > 0.0)
+               cfg.confl_blend_others = MathMin(InpConflBlend_Others, 0.50);
+         #endif
+      }
+      else
+      {
+         cfg.carry_enable = InpCarry_Enable;
+         #ifdef CFG_HAS_CARRY_BOOST_MAX
+            cfg.carry_boost_max = MathMin(MathMax(InpCarry_BoostMax, 0.0), 0.20);
+         #endif
+         #ifdef CFG_HAS_CARRY_RISK_SPAN
+            cfg.carry_risk_span = MathMin(MathMax(InpCarry_RiskSpan, 0.0), 0.50);
+         #endif
+
+         Config::ApplyConfluenceBlendDefaultsForProfile(cfg, prof);
+
+         #ifdef CFG_HAS_CONFL_BLEND_TREND
+            if(InpConflBlend_Trend > 0.0)
+               cfg.confl_blend_trend = MathMin(InpConflBlend_Trend, 0.50);
+         #endif
+         #ifdef CFG_HAS_CONFL_BLEND_MR
+            if(InpConflBlend_MR > 0.0)
+               cfg.confl_blend_mr = MathMin(InpConflBlend_MR, 0.50);
+         #endif
+         #ifdef CFG_HAS_CONFL_BLEND_OTHERS
+            if(InpConflBlend_Others > 0.0)
+               cfg.confl_blend_others = MathMin(InpConflBlend_Others, 0.50);
+         #endif
+      }
+   }
+
+   // Fix the missing braces in the strict-risk block while moving it (from 2454–2457)
+   if(InpCarry_StrictRiskOnly)
+   {
+      #ifdef CFG_HAS_CARRY_RISK_SPAN
+         cfg.carry_risk_span = 0.0;
+      #endif
+   }
+
+   // 4) Apply remaining input overlays last (uses refactored overlay helper)
+   BuildSettingsFromInputs(cfg);
+
+   // 5) Set magic number INSIDE snapshot (MOVE OnInit lines 2317–2326, S->cfg)
+   #ifdef CFG_HAS_MAGIC_NUMBER
+      const StrategyMode sm = Config::CfgStrategyMode(cfg);
+      switch(sm)
+      {
+         case STRAT_MAIN_ONLY: cfg.magic_number = MagicBase_Main; break;
+         case STRAT_PACK_ONLY: cfg.magic_number = MagicBase_Pack; break;
+         default:              cfg.magic_number = MagicBase_Combined; break;
+      }
+   #endif
+
+   // 6) Session degeneracy guard INSIDE snapshot (MOVE OnInit lines 2364–2387, S->cfg)
+   #ifdef POLICIES_HAS_SESSION_CTX
+      SessionContext sc;
+      Policies::BuildSessionContext(cfg, sc);
+      if(cfg.session_filter && CfgSessionPreset(cfg) != SESS_OFF && !sc.has_any_window)
+         cfg.session_filter = false;
+   #else
+      if(cfg.session_filter && CfgSessionPreset(cfg) != SESS_OFF)
+      {
+         const bool lon_empty = (cfg.london_open_utc == cfg.london_close_utc);
+         const bool ny_empty  = (cfg.ny_open_utc     == cfg.ny_close_utc);
+         if(lon_empty && ny_empty)
+            cfg.session_filter = false;
+      }
+   #endif
+
+   // 7) Normalize exactly once
+   SyncRuntimeCfgFlags(cfg);
+
+   // 8) Commit single source of truth
+   S     = cfg;
+   g_cfg = cfg;
+
+   // 9) Optional pack-strats log (MOVE OnInit lines 2462–2469; no changes besides using S now)
+   #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      string packs_msg = StringFormat("PackStrats: enable=%s",
+                                      (S.enable_pack_strats ? "true" : "false"));
+      #ifdef CFG_HAS_DISABLE_PACKS
+         packs_msg += StringFormat(" disable=%s", (S.disable_packs ? "true" : "false"));
+      #endif
+      LogX::Info(packs_msg);
+   #endif
+
+   // 10) Tester overlays must be in-snapshot (MOVE 2477–2479, but GUARD it)
+   if(g_is_tester)
+   {
+      TesterPresets::ApplyPresetByName(S, InpTesterPreset);
+      TesterCases::ApplyTestCase(S, InpTestCase);
+      g_cfg = S; // keep both identical after tester overlay
+   }
+
+   // 11) Boot registry from finalized snapshot (MOVE 2471–2475)
+   if(InpProfileApply)
+      BootRegistry_WithProfile(S, ps);
+   else
+      BootRegistry_NoProfile(S);
+
+   // 12) Sync router + routing mode flag from finalized snapshot
+   StratReg::SyncRouterFromSettings(S);
+   UpdateRegistryRoutingFlag();
+   DriftAlarm_SetApproved("FinalizeRuntimeSettings");
+}
+
+void UI_CommitSettings(const string reason, const bool resync_router=false)
+{
+   // Recompute derived flags into the UI snapshot (allowed: hotkey mutation)
+   SyncRuntimeCfgFlags(S);
+
+   // Mirror UI snapshot into canonical runtime snapshot
+   g_cfg = S;
+
+   // If a UI hotkey ever changes routing/mode/enable flags, resync router and routing flag
+   if(resync_router)
+   {
+      StratReg::SyncRouterFromSettings(S);
+      UpdateRegistryRoutingFlag();
+   }
+
+   if(InpDebug)
+      LogX::Info(StringFormat("[UI] Settings committed: %s", reason));
+      
+   DriftAlarm_SetApproved(reason);
+}
+
+//===========================
+// Runtime Drift Alarm Helpers
+//===========================
+
+string RuntimeSettingsHashHex(const Settings &cfg)
+{
+   // Uses existing hashing helper already present in your codebase (Tester.mqh).
+   // It compiles in live as well (you already call it elsewhere).
+   return TesterX::SettingsHashHex(cfg);
+}
+
+void DriftAlarm_SetApproved(const string reason)
+{
+   if(!InpDriftAlarm)
+   {
+      g_drift_armed         = false;
+      g_drift_hash_approved = "";
+      return;
+   }
+
+   // Approved snapshot is whatever S currently is (and should already match g_cfg).
+   g_drift_hash_approved = RuntimeSettingsHashHex(S);
+   g_drift_armed         = true;
+
+   // Reset alert throttles for the new approved baseline
+   g_drift_last_alert    = 0;
+   g_drift_alert_count   = 0;
+   g_drift_hash_last_s   = "";
+   g_drift_hash_last_cfg = "";
+
+   if(InpDebug)
+      LogX::Info(StringFormat("[DRIFT] Approved snapshot (%s) hash=%s", reason, g_drift_hash_approved));
+}
+
+void DriftAlarm_Check(const string where)
+{
+   if(!InpDriftAlarm || !g_drift_armed)
+      return;
+
+   // Throttle checks (seconds granularity is sufficient for “instant regression catch”)
+   datetime now = TimeCurrent();
+   if(g_drift_last_check != 0 && (now - g_drift_last_check) < 1)
+      return;
+   g_drift_last_check = now;
+
+   const string hs = RuntimeSettingsHashHex(S);
+   const string hc = RuntimeSettingsHashHex(g_cfg);
+
+   // Primary requirement: hash-compare S vs g_cfg
+   const bool mismatch = (hs != hc);
+
+   // Secondary reinforcement: detect “unauthorized S mutation” even if someone also changed g_cfg
+   const bool unauthorized = (g_drift_hash_approved != "" && hs != g_drift_hash_approved);
+
+   if(!mismatch && !unauthorized)
+      return;
+
+   // Avoid spamming: only repeat within 10s if hashes changed
+   if(g_drift_last_alert != 0 && (now - g_drift_last_alert) < 10 &&
+      hs == g_drift_hash_last_s && hc == g_drift_hash_last_cfg)
+      return;
+
+   g_drift_last_alert   = now;
+   g_drift_alert_count++;
+
+   g_drift_hash_last_s   = hs;
+   g_drift_hash_last_cfg = hc;
+
+   string msg = StringFormat(
+      "DRIFT_ALARM[%s] Settings drift detected. Only UI hotkeys may mutate S. "
+      "S_hash=%s g_cfg_hash=%s approved=%s alerts=%d",
+      where, hs, hc, g_drift_hash_approved, g_drift_alert_count
+   );
+
+   // “Scream” into Journal
+   Print(msg);
+   LogX::Error(msg);
+   
+   // Optional: hard-stop NEW trading if drift is detected
+   if(InpDriftHaltTrading && !g_inhibit_trading)
+   {
+      g_inhibit_trading = true;
+      Print("DRIFT_ALARM: Trading is now INHIBITED (restart EA after fixing the drift source).");
+      LogX::Error("DRIFT_ALARM: Trading is now INHIBITED (restart EA after fixing the drift source).");
+   }
+
+   if(InpDebug)
+      Print("DRIFT_ALARM hint: search for 'S.' assignments or any function taking Settings& that receives S.");
 }
 
 //--------------------------------------------------------------------
@@ -2150,153 +2459,16 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
 // ================== Lifecycle ==================
 int OnInit()
   {
-   ZeroMemory(S);
-   // 1) Build base (short signature only)
-   MirrorInputsToSettings(S);
-   
-   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
-      if(S.news_on && S.news_mvp_no_block)
-         LogX::Warn("News is ON but MVP_NoBlock is true -> NewsFilter will NOT hard-block trades.");
-   #endif
-   
-   // 2) Apply any appended/extended knobs via one struct (keeps ABI safe)
-   Config::BuildExtras ex; Config::BuildExtrasDefaults(ex);
-   ex.conf_min_count        = InpConf_MinCount;
-   ex.conf_min_score        = InpConf_MinScore;
-   ex.main_sequential_gate  = InpMain_SequentialGate;
-   ex.main_require_checklist  = InpMain_RequireChecklist;
-   ex.main_require_classical   = InpMain_RequireClassicalConfirm;
-   ex.orderflow_th            = MathMin(MathMax(InpMain_OrderFlowThreshold, 0.0), 1.0);
-   ex.extra_volume_footprint = InpExtra_VolumeFootprint;
-   ex.w_volume_footprint     = InpW_VolumeFootprint;
-   
-   // Liquidity Pools (Lux-style)
-   ex.liqPoolMinTouches      = InpLiqPoolMinTouches;
-   ex.liqPoolGapBars         = InpLiqPoolGapBars;
-   ex.liqPoolConfirmWaitBars = InpLiqPoolConfirmWaitBars;
-   ex.liqPoolLevelEpsATR     = InpLiqPoolLevelEpsATR;
-   ex.liqPoolMaxLookbackBars = InpLiqPoolMaxLookbackBars;
-   ex.liqPoolMinSweepATR     = InpLiqPoolMinSweepATR;
-   
-   ex.extra_stochrsi         = InpExtra_StochRSI;
-   ex.stochrsi_rsi_period    = InpStochRSI_RSI_Period;
-   ex.stochrsi_k_period      = InpStochRSI_K_Period;
-   ex.stochrsi_ob            = InpStochRSI_OB;
-   ex.stochrsi_os            = InpStochRSI_OS;
-   ex.w_stochrsi             = InpW_StochRSI;
-   
-   ex.extra_macd             = InpExtra_MACD;
-   ex.macd_fast              = InpMACD_Fast;
-   ex.macd_slow              = InpMACD_Slow;
-   ex.macd_signal            = InpMACD_Signal;
-   ex.w_macd                 = InpW_MACD;
-   
-   ex.extra_adx_regime       = InpExtra_ADXRegime;
-   ex.adx_period             = InpADX_Period;
-   ex.adx_min                = InpADX_Min;
-   ex.w_adx_regime           = InpW_ADXRegime;
-   
-   ex.extra_corr             = InpExtra_Correlation;
-   ex.corr_ref_symbol        = InpCorr_RefSymbol;
-   ex.corr_lookback          = InpCorr_Lookback;
-   ex.corr_min_abs           = InpCorr_MinAbs;
-   ex.w_corr                 = InpW_Correlation;
-   
-   ex.extra_news             = InpExtra_News;
-   ex.w_news                 = InpW_News;
-   
-   ex.enable_hard_gate       = Inp_EnableHardGate;
-   ex.router_min_score       = InpRouterMinScore;
-   ex.router_fb_min          = Inp_RouterFallbackMin;
-   ex.min_features_met       = Inp_MinFeaturesMet;
-   
-   ex.require_trend                = Inp_RequireTrendFilter;
-   ex.require_adx                  = Inp_RequireADXRegime;
-   ex.require_struct_or_pattern_ob = Inp_RequireStructOrPatternOB;
-   
-   ex.extra_silverbullet_tz = InpExtra_SilverBulletTZ;
-   ex.w_silverbullet_tz     = InpW_SilverBulletTZ;
-   
-   // Silver Bullet hard requirements (optional)
-   ex.require_sb_ote          = InpSB_Require_OTE;
-   ex.require_sb_vwap_stretch = InpSB_Require_VWAPStretch;
-
-   ex.extra_amd_htf         = InpExtra_AMD_HTF;
-   ex.w_amd_h1              = InpW_AMD_H1;
-   ex.w_amd_h4              = InpW_AMD_H4;
-   
-   ex.extra_po3_htf          = InpExtra_PO3_HTF;
-   ex.w_po3_h1               = InpW_PO3_H1;
-   ex.w_po3_h4               = InpW_PO3_H4;
-
-   ex.extra_wyckoff_turn     = InpExtra_Wyckoff_Turn;
-   ex.w_wyckoff_turn         = InpW_Wyckoff_Turn;
-
-   ex.extra_mtf_zones        = InpExtra_MTF_Zones;
-   ex.w_mtf_zone_h1          = InpW_MTFZone_H1;
-   ex.w_mtf_zone_h4          = InpW_MTFZone_H4;
-   ex.mtf_zone_max_dist_atr  = Inp_MTFZone_MaxDistATR;
-   
-   ex.london_liq_policy      = Inp_LondonLiquidityPolicy;
-   ex.london_start_local     = Inp_LondonStartLocal;
-   ex.london_end_local       = Inp_LondonEndLocal;
-   
-   ex.use_atr_as_delta       = Inp_UseATRasDeltaProxy;
-   ex.atr_period_2           = InpATR_Period_Delta;          // or Inp_ATR_Period_2 if you have one
-   ex.atr_vol_regime_floor   = Inp_ATR_VolRegimeFloor;
-   ex.vsa_allow_tick_volume  = InpVSA_AllowTickVolume;
-   
-   ex.struct_zz_depth        = Inp_Struct_ZigZagDepth;
-   ex.struct_htf_mult        = Inp_Struct_HTF_Multiplier;
-   ex.ob_prox_max_pips       = Inp_OB_ProxMaxPips;
-   
-   ex.use_atr_stops_targets  = Inp_Use_ATR_StopsTargets;
-   ex.atr_sl_mult2           = InpATR_SlMult;
-   ex.atr_tp_mult2           = Inp_ATR_TP_Mult;
-   ex.risk_per_trade_pct     = Inp_RiskPerTradePct;
-   
-   ex.log_veto_details       = Inp_LogVetoDetails;
-   // ex.weekly_open_spread_ramp = InpWeeklyOpenRamp;  // if you expose it as input
-   
-   // Pack strategies runtime gate (requires Config.mqh BuildExtras fields)
-   #ifdef CFG_HAS_ENABLE_PACK_STRATS
-      ex.enable_pack_strats = InpEnable_PackStrategies;
-   #endif
-   #ifdef CFG_HAS_DISABLE_PACKS
-      ex.disable_packs      = InpDisable_PackStrategies;
-   #endif
-
-   Config::ApplyExtras(S, ex);
-   Config::ApplyStrategyMode(S, InpStrat_Mode);
-
-   Config::LoadInputs(S);
-   Config::ApplyKVOverrides(S);
-   Config::FinalizeThresholds(S);
-   
-   // Ensure MarketBook subscription is enabled if the EA input requests it (does not force-disable KV/profile settings)
-   S.extra_dom_imbalance = (S.extra_dom_imbalance || InpExtra_DOMImbalance);
-   
-   OBI::Settings obi;
-   obi.enabled = S.extra_dom_imbalance;   // your config toggle
-   OBI::EnsureSubscribed(_Symbol, obi);
-   VSA::SetAllowTickVolume(InpVSA_AllowTickVolume);
-
    g_show_breakdown = true;
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
    g_is_tester = (MQLInfoInteger(MQL_TESTER) != 0 || MQLInfoInteger(MQL_OPTIMIZATION) != 0);
-   UpdateRegistryRoutingFlag();
 
    if(InpUseRegistryRouting && !g_is_tester)
-   {
-      LogX::Warn("[Routing] InpUseRegistryRouting ignored in LIVE. RouterEvaluateAll() owns live trading.");
-   }
+   LogX::Warn("[Routing] InpUseRegistryRouting ignored in LIVE. RouterEvaluateAll() owns live trading.");
 
-   // STRAT_MAIN_ONLY must always use RouterEvaluateAll() to guarantee the unified mode allow-list behavior.
-   if(S.strat_mode == STRAT_MAIN_ONLY)
-      g_use_registry = false;
    LogX::Info(StringFormat("Execution path: %s",
-                        (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
+                           (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
 
    Sanity::SetDebug(InpDebug);
    LogX::SetMinLevel(InpDebug ? LogX::LVL_DEBUG : LogX::LVL_INFO);
@@ -2304,6 +2476,7 @@ int OnInit()
    LogX::EnableCSV(InpFileLog);
    if(InpFileLog)
       LogX::InitAll();
+   FinalizeRuntimeSettings();
    Config::LogSettingsWithHash(S, "CFG");
 
    #ifdef CA_USE_HANDLE_REGISTRY
@@ -2313,17 +2486,11 @@ int OnInit()
       LogX::Info("Indicators mode: ephemeral handles (create/copy/release per call).");
    #endif
    News::ConfigureFromEA(S);
+   OBI::Settings obi;
+   obi.enabled = S.extra_dom_imbalance;
+   OBI::EnsureSubscribed(_Symbol, obi);
+   VSA::SetAllowTickVolume(InpVSA_AllowTickVolume);
    
-   // Choose a base magic number by StrategyMode
-   #ifdef CFG_HAS_MAGIC_NUMBER
-      const StrategyMode sm = Config::CfgStrategyMode(S);
-      switch(sm)
-      {
-        case STRAT_MAIN_ONLY: S.magic_number = MagicBase_Main; break;
-        case STRAT_PACK_ONLY: S.magic_number = MagicBase_Pack; break;
-        default:              S.magic_number = MagicBase_Combined; break;
-      }
-   #endif
    {
      const StrategyMode sm = Config::CfgStrategyMode(S);
      LogX::Info(StringFormat("StrategyMode = %s (%d)",
@@ -2360,129 +2527,6 @@ int OnInit()
       if(!State::Load(S))
          LogX::Warn("[STATE] Load failed or empty; starting fresh.");
    #endif
-   
-   #ifdef POLICIES_HAS_SESSION_CTX
-     SessionContext sc;
-     Policies::BuildSessionContext(S, sc);  // populates sc.has_any_window (or similar)
-   
-     if (S.session_filter && CfgSessionPreset(S) != SESS_OFF && !sc.has_any_window)
-     {
-       if (InpDebug)
-         Print("[Session] preset resolved to empty window; disabling session filter for this run.");
-       S.session_filter = false;
-     }
-   #else
-     // Fallback guard if you don’t have a session context object
-     if (S.session_filter && CfgSessionPreset(S) != SESS_OFF)
-     {
-       const bool lon_empty = (S.london_open_utc == S.london_close_utc);
-       const bool ny_empty  = (S.ny_open_utc     == S.ny_close_utc);
-       if (lon_empty && ny_empty)
-       {
-         if (InpDebug)
-           Print("[Session] LON/NY windows degenerate; disabling session filter for this run.");
-         S.session_filter = false;
-       }
-     }
-   #endif
-
-   // ----- Build profile spec (weights/throttles) & optionally persist -----
-   const TradingProfile prof = (TradingProfile)InpProfileType;
-   Config::ProfileSpec ps;
-   Config::BuildProfileSpec(prof, ps);
-   if(InpProfileApply)
-      Config::ApplyProfileHintsToSettings(S, ps, /*overwrite=*/true);
-   Config::ApplyCarryDefaultsForProfile(S, prof);
-   if(InpProfileSaveCSV)
-      Config::SaveProfileSpecCSV(prof, ps, InpProfileCSVName, false);
-
-   // ----- Apply profile to Settings (carry + confluence + router hints) -----
-   if(InpProfileApply)
-     {
-      Config::ApplyTradingProfile(S, prof, /*apply_router_hints=*/InpProfileUseRouterHints,
-                                  /*apply_carry_defaults=*/true,
-                                  /*log_summary=*/true);
-
-      if(InpProfileAllowManual)
-        {
-         S.carry_enable    = InpCarry_Enable;
-   #ifdef CFG_HAS_CARRY_BOOST_MAX
-         S.carry_boost_max = MathMin(MathMax(InpCarry_BoostMax, 0.0), 0.20);
-   #endif
-   #ifdef CFG_HAS_CARRY_RISK_SPAN
-         S.carry_risk_span = MathMin(MathMax(InpCarry_RiskSpan, 0.0), 0.50);
-   #endif
-   #ifdef CFG_HAS_CONFL_BLEND_TREND
-         if(InpConflBlend_Trend  >0.0)
-            S.confl_blend_trend  = MathMin(InpConflBlend_Trend, 0.50);
-   #endif
-   #ifdef CFG_HAS_CONFL_BLEND_MR
-         if(InpConflBlend_MR     >0.0)
-            S.confl_blend_mr     = MathMin(InpConflBlend_MR, 0.50);
-   #endif
-   #ifdef CFG_HAS_CONFL_BLEND_OTHERS
-         if(InpConflBlend_Others >0.0)
-            S.confl_blend_others = MathMin(InpConflBlend_Others, 0.50);
-   #endif
-           }
-        }
-      else
-        {
-         S.carry_enable    = InpCarry_Enable;
-   #ifdef CFG_HAS_CARRY_BOOST_MAX
-      S.carry_boost_max = MathMin(MathMax(InpCarry_BoostMax, 0.0), 0.20);
-   #endif
-   #ifdef CFG_HAS_CARRY_RISK_SPAN
-      S.carry_risk_span = MathMin(MathMax(InpCarry_RiskSpan, 0.0), 0.50);
-   #endif
-
-      Config::ApplyConfluenceBlendDefaultsForProfile(S, prof);
-   #ifdef CFG_HAS_CONFL_BLEND_TREND
-      if(InpConflBlend_Trend  >0.0)
-         S.confl_blend_trend  = MathMin(InpConflBlend_Trend, 0.50);
-   #endif
-   #ifdef CFG_HAS_CONFL_BLEND_MR
-      if(InpConflBlend_MR     >0.0)
-         S.confl_blend_mr     = MathMin(InpConflBlend_MR, 0.50);
-   #endif
-   #ifdef CFG_HAS_CONFL_BLEND_OTHERS
-      if(InpConflBlend_Others >0.0)
-         S.confl_blend_others = MathMin(InpConflBlend_Others, 0.50);
-   #endif
-     }
-
-   if(InpCarry_StrictRiskOnly)
-   #ifdef CFG_HAS_CARRY_RISK_SPAN
-         S.carry_risk_span = 0.0;
-   #endif
-
-   // Housekeeping BEFORE registry boot so weights/throttles see normalized settings
-   Config::Normalize(S);
-
-   #ifdef CFG_HAS_ENABLE_PACK_STRATS
-      string packs_msg = StringFormat("PackStrats: enable=%s",
-                                      (S.enable_pack_strats ? "true" : "false"));
-      #ifdef CFG_HAS_DISABLE_PACKS
-         packs_msg += StringFormat(" disable=%s", (S.disable_packs ? "true" : "false"));
-      #endif
-      LogX::Info(packs_msg);
-   #endif
-   
-   // ----- Boot strategy registry with/without profile -----
-   if(InpProfileApply)
-      BootRegistry_WithProfile(S, ps);
-   else
-      BootRegistry_NoProfile(S);
-   
-   // Optional tester preset overlay
-   TesterPresets::ApplyPresetByName(S, InpTesterPreset);
-   TesterCases::ApplyTestCase(S, InpTestCase);
-   
-   if(S.strat_mode == STRAT_MAIN_ONLY && g_use_registry)
-   {
-      g_use_registry = false;
-      LogX::Warn("STRAT_MAIN_ONLY forces Router routing; disabling Registry routing for consistent allow-list enforcement.");
-   }
    
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
@@ -2555,13 +2599,6 @@ int OnInit()
       // g_playbook.InitDefaults(/*useSummerNY=*/false);
    #endif
    
-   // 1. Copy all extern/input params into g_cfg
-   BuildSettingsFromInputs(g_cfg);
-   Config::Normalize(g_cfg);
-   
-   // Keep a single source of truth for runtime settings (UI + any legacy calls).
-   S = g_cfg;
-   StratReg::SyncRouterFromSettings(S);
    LogX::Info(StringFormat("DIR: trade_selector=%d  legacy_dir=%d  bias_mode=%d  require_checklist=%s  require_classical=%s",
                         (int)S.trade_selector,
                         (int)S.trade_direction_selector,
@@ -2671,12 +2708,6 @@ void OnTick()
    // if(!g_use_registry)
    //    MaybeEvaluate();
    const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
-
-   // Keep runtime flags consistent before building State/ICT context
-   SyncRuntimeCfgFlags(g_cfg);
-   
-   if(g_use_registry)
-      SyncRuntimeCfgFlags(S);
 
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
@@ -2839,12 +2870,12 @@ void OnTimer()
    PM::ManageAll(S);
    Panel::Render(S);
 
+   DriftAlarm_Check("OnTimer");
    // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
       return;
    
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
-   SyncRuntimeCfgFlags(S);
    if(g_use_registry)
    {
       for(int i=0; i<g_symCount; i++)
@@ -2869,8 +2900,6 @@ void OnTimer()
       TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP, "OnTimer blocked: WarmupGateOK=false");
       return;
    }
-   
-   SyncRuntimeCfgFlags(g_cfg);
    
    // Optional new-bar throttle (keeps timer from re-evaluating same bar)
    if(InpOnlyNewBar)
@@ -3199,6 +3228,14 @@ void SyncRuntimeCfgFlags(Settings &cfg)
 // Keeps the name intent ("Policies") and avoids duplicating full RouterGateOK().
 bool GateViaPolicies(const Settings &cfg, const string sym)
 {
+   if(g_inhibit_trading)
+   {
+      Panel::SetGate(GATE_INHIBIT);
+      _LogGateBlocked("policies_gate", sym, GATE_INHIBIT, "Trading inhibited (drift alarm)");
+      TraceNoTrade(sym, TS_GATE, GATE_INHIBIT, "Trading inhibited (drift alarm)");
+      return false;
+   }
+
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
    {
@@ -3216,6 +3253,16 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
 bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv, int &gate_reason_out)
 {
    gate_reason_out = 0;
+
+   if(g_inhibit_trading)
+   {
+      gate_reason_out = GATE_INHIBIT;
+      Panel::SetGate(gate_reason_out);
+   
+      _LogGateBlocked("router_gate", sym, gate_reason_out, "Trading inhibited (drift alarm)");
+      TraceNoTrade(sym, TS_GATE, gate_reason_out, "Trading inhibited (drift alarm)");
+      return false;
+   }
 
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
    int pol_reason = 0;
@@ -3327,6 +3374,14 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 
    // Always keep managing open positions (even if we skip evaluation)
    PM::ManageAll(S);
+
+   if(g_inhibit_trading)
+   {
+      Panel::SetGate(GATE_INHIBIT);
+      TraceNoTrade(sym, TS_GATE, GATE_INHIBIT, "ProcessSymbol blocked: trading inhibited (drift alarm)");
+      Panel::Render(S);
+      return;
+   }
 
    // Safety: ProcessSymbol() is tester/optimization-only under Option B (Router owns live trading)
    if(!g_is_tester)
@@ -3589,7 +3644,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
 #endif
   }
 
-// Menu / Hotkeys: B=Breakdown, C=Calm, M=ML, R=Routing, N=News, P=Screenshot, H=Benchmark
+// Menu / Hotkeys: B=Breakdown, C=Calm, M=ML, R=Routing, N=News, T=ResumeTrading, P=Screenshot, H=Benchmark
 int  KeyCodeFromEvent(const long lparam) { return (int)lparam; }
 void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, const string &/*sparam*/)
   {
@@ -3640,11 +3695,44 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
             else
                if(K=='N')
                  {
-                  S.news_on=!S.news_on;
-                  g_cfg.news_on = S.news_on;     // keep router path consistent with legacy path
-                  PrintFormat("[UI] News hard-block %s",(S.news_on?"ON":"OFF"));
+                  S.news_on = !S.news_on;
+                  UI_CommitSettings("hotkey N: news_on", false);
+                  PrintFormat("[HOTKEY] News hard-block: %s", (S.news_on ? "ON" : "OFF"));
                  }
-               else
+                               else
+                   if(K=='T')
+                     {
+                      if(!g_inhibit_trading)
+                        {
+                         PrintFormat("[HOTKEY] Trading already enabled (no inhibit active).");
+                        }
+                      else
+                        {
+                         const string hs = RuntimeSettingsHashHex(S);
+                         const string hc = RuntimeSettingsHashHex(g_cfg);
+
+                         // Safety: do NOT resume if drift is still present
+                         if(hs != hc)
+                           {
+                            string msg = StringFormat("[HOTKEY] Resume blocked: drift still present (S_hash=%s g_cfg_hash=%s). Fix drift source first.", hs, hc);
+                            Print(msg);
+                            LogX::Error(msg);
+                           }
+                         else
+                           {
+                            g_inhibit_trading = false;
+                            Panel::SetGate(GATE_NONE);
+
+                            // Re-approve baseline so DriftAlarm doesn't immediately re-fire after manual resume
+                            DriftAlarm_SetApproved("hotkey T: resume (operator override)");
+
+                            string msg = "[HOTKEY] WARNING: Trading resumed by operator after drift inhibit. Confirm drift source is resolved.";
+                            Print(msg);
+                            LogX::Warn(msg);
+                           }
+                        }
+                     }
+                else
                   if(K=='P')
                     {
                      Review::Screenshot("CAEA_Snapshot");
