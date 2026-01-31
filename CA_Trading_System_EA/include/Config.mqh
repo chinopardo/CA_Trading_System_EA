@@ -508,6 +508,35 @@ struct Settings;
   #define CFG_MONTHLY_TARGET_PCT 10.0
 #endif
 
+// Monthly target cycle mode (Config contract)
+// 0 = calendar month (current behavior), 1 = rolling 28-day cycle
+#ifndef CFG_TARGET_CYCLE_CALENDAR
+  #define CFG_TARGET_CYCLE_CALENDAR 0
+#endif
+#ifndef CFG_TARGET_CYCLE_ROLLING_28D
+  #define CFG_TARGET_CYCLE_ROLLING_28D 1
+#endif
+#ifndef CFG_TARGET_CYCLE_DEFAULT
+  #define CFG_TARGET_CYCLE_DEFAULT CFG_TARGET_CYCLE_CALENDAR
+#endif
+
+// Monthly target base mode (Config contract)
+// 0 = cycle-start equity (typical compounding behavior)
+// 1 = initial equity (linear target per cycle)
+// 2 = initial equity (compound-style target per cycle)
+#ifndef CFG_TARGET_BASE_CYCLE_START
+  #define CFG_TARGET_BASE_CYCLE_START 0
+#endif
+#ifndef CFG_TARGET_BASE_INITIAL_LINEAR
+  #define CFG_TARGET_BASE_INITIAL_LINEAR 1
+#endif
+#ifndef CFG_TARGET_BASE_INITIAL_COMPOUND
+  #define CFG_TARGET_BASE_INITIAL_COMPOUND 2
+#endif
+#ifndef CFG_TARGET_BASE_DEFAULT
+  #define CFG_TARGET_BASE_DEFAULT CFG_TARGET_BASE_CYCLE_START
+#endif
+
 // --- Account-wide (challenge) DD feature flags (for Policies) ---------------
 #ifndef CFG_HAS_MAX_ACCOUNT_DD_PCT
   #define CFG_HAS_MAX_ACCOUNT_DD_PCT 1
@@ -1281,6 +1310,30 @@ namespace Config
    #endif
    }
   
+   inline int CfgMonthlyTargetCycleMode(const Settings &cfg)
+   {
+   #ifdef CFG_HAS_MONTHLY_TARGET
+     const int m = (int)cfg.monthly_target_cycle_mode;
+     if(m == CFG_TARGET_CYCLE_CALENDAR || m == CFG_TARGET_CYCLE_ROLLING_28D)
+       return m;
+     return CFG_TARGET_CYCLE_DEFAULT;
+   #else
+     return CFG_TARGET_CYCLE_DEFAULT;
+   #endif
+   }
+   
+   inline int CfgMonthlyTargetBaseMode(const Settings &cfg)
+   {
+   #ifdef CFG_HAS_MONTHLY_TARGET
+     const int m = (int)cfg.monthly_target_base_mode;
+     if(m >= CFG_TARGET_BASE_CYCLE_START && m <= CFG_TARGET_BASE_INITIAL_COMPOUND)
+       return m;
+     return CFG_TARGET_BASE_DEFAULT;
+   #else
+     return CFG_TARGET_BASE_DEFAULT;
+   #endif
+   }
+
    inline double CfgTaperFloor(const Settings &cfg)
    {
      #ifdef CFG_HAS_TAPER_FLOOR
@@ -2435,6 +2488,18 @@ namespace Config
     #ifdef CFG_HAS_MONTHLY_TARGET
       if(cfg.monthly_target_pct < 0.0)
         cfg.monthly_target_pct = 0.0;
+      // Clamp monthly target cycle/base modes to known constants
+      if(cfg.monthly_target_cycle_mode != CFG_TARGET_CYCLE_CALENDAR &&
+         cfg.monthly_target_cycle_mode != CFG_TARGET_CYCLE_ROLLING_28D)
+      {
+        cfg.monthly_target_cycle_mode = CFG_TARGET_CYCLE_DEFAULT;
+      }
+      
+      if(cfg.monthly_target_base_mode < CFG_TARGET_BASE_CYCLE_START ||
+         cfg.monthly_target_base_mode > CFG_TARGET_BASE_INITIAL_COMPOUND)
+      {
+        cfg.monthly_target_base_mode = CFG_TARGET_BASE_DEFAULT;
+      }
     #endif
      
     if(cfg.taper_floor <= 0.0) cfg.taper_floor = 0.35;
@@ -4902,7 +4967,7 @@ struct Settings
   bool               fibRRHardReject;   // if true, block trade when below threshold
 
   // --- Day limits / taper ------------------------------------------å---------
-  double            max_daily_dd_pct;    // equity-based DD stop (Policies)
+  double            max_daily_dd_pct;    // DAILY hard-stop (% of INITIAL equity; money-based cap enforced in Policies)
   #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
   double            day_dd_limit_pct;    // onset of risk taper (RiskEngine), e.g., 2.0
   #endif
@@ -4943,6 +5008,11 @@ struct Settings
   #ifdef CFG_HAS_MONTHLY_TARGET
     // Configured target in PERCENT units (1.0 = 1%, 10.0 = 10%)
     double monthly_target_pct;
+
+    // Monthly target cycle/base modes (Config contract)
+    // NOTE: Policies decides how to apply these; Config only clamps/standardizes values.
+    int monthly_target_cycle_mode; // CFG_TARGET_CYCLE_* (0=calendar, 1=rolling_28d)
+    int monthly_target_base_mode;  // CFG_TARGET_BASE_*  (0=cycle_start, 1=initial_linear, 2=initial_compound)
 
     // Runtime state managed by Policies::_EnsureMonthState():
     // - baseline: equity snapshot at first detection of this calendar month

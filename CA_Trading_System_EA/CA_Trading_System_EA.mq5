@@ -245,6 +245,7 @@ input double           InpAdaptiveDD_Pct          = 0.0;   // Adaptive Daily DD 
 // --- Monthly profit target gate ---
 // 0.0 = disabled; otherwise stop new entries once equity is up by this % vs month-start.
 input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month
+input int              InpMonthlyTargetCycleMode = 0; // Monthly Target cycle: 0=calendar, 1=
 
 input int              InpMaxLossesDay          = 6; // Max Daily Losses
 input int              InpMaxTradesDay          = 20; // Max Daily Trades
@@ -1227,6 +1228,12 @@ void MirrorInputsToSettings(Settings &cfg)
   #ifdef CFG_HAS_MONTHLY_TARGET
     // Interpret as “percent gain vs. month-start equity”.
     cfg.monthly_target_pct = MathMax(0.0, InpMonthlyTargetPct);
+    #ifdef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
+      int cm = InpMonthlyTargetCycleMode;
+      if(cm < 0) cm = 0;
+      if(cm > 1) cm = 1;
+      cfg.monthly_target_cycle_mode = cm;
+    #endif
   #endif
   
   // ---- Sessions (legacy union) + Preset ----
@@ -3248,6 +3255,12 @@ void MaybeResetStreaksDaily(const datetime now_srv)
 // -------- Streak lot multiplier (applied to risk_mult safely) ------
 bool AllowStreakScalingNow(const double news_risk_mult, const bool news_skip)
 {
+   // Optional: big-loss latch from Policies (requires implementation in Policies.mqh)
+   #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
+      if(Policies::SizingResetActive())
+         return false;
+   #endif
+
    if(!InpResetStreakOnNewsDerisk)
       return true;
 
@@ -3256,12 +3269,6 @@ bool AllowStreakScalingNow(const double news_risk_mult, const bool news_skip)
 
    if(news_risk_mult < 1.0)
       return false;
-
-   // Optional: big-loss latch from Policies (requires implementation in Policies.mqh)
-   #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
-      if(Policies::SizingResetActive())
-         return false;
-   #endif
 
    return true;
 }
@@ -3697,7 +3704,7 @@ void SmokeTestOne(const Settings &cfg)
 //|                                                                  |
 //+------------------------------------------------------------------+
 void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq, const MqlTradeResult &rs)
-  {
+{
    if(false)
      {
       Print(rq.symbol);   // silence warning
@@ -3709,7 +3716,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
 
    // Streak accounting (simple per-position logic)
    if(tx.type==TRADE_TRANSACTION_DEAL_ADD)
-     {
+   {
       long entry = 0;
       HistoryDealGetInteger(tx.deal, DEAL_ENTRY, entry);
       double profit    = 0.0;
@@ -3729,7 +3736,11 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
             g_consec_wins=0;
          }
       }
-     }
+      #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
+         if(Policies::SizingResetActive())
+            ResetStreakCounters();
+      #endif
+   }
 
    // --- FLOW breadcrumb (#F[..]) ---
    // Case A: successful trade request (server accepted)

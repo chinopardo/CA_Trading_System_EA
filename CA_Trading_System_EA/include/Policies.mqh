@@ -431,6 +431,16 @@ namespace Policies
     #endif
   }
   
+  // 0 = calendar month, 1 = rolling 28 days (compile-safe default is calendar)
+  inline bool CfgMonthlyTargetRolling28D(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
+      return (cfg.monthly_target_cycle_mode == 1);
+    #else
+      return false;
+    #endif
+  }
+
   inline long CfgMagicNumber(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAGIC_NUMBER
@@ -1077,6 +1087,10 @@ namespace Policies
   static int      s_monthKey        = -1;    // YYYYMM (e.g. 202512)
   static double   s_monthStartEq    = 0.0;   // equity at start of month
   static bool     s_monthTargetHit  = false; // latched once target reached
+  
+  static datetime s_cycleStartTs   = 0;
+  static double   s_cycleStartEq   = 0.0;
+  static bool     s_cycleTargetHit = false;
 
   static int      s_loss_streak     = 0;
   static int      s_cooldown_losses = 2;
@@ -1185,6 +1199,10 @@ namespace Policies
     _GVSetD(_Key("MONTH_KEY"),         (double)s_monthKey);
     _GVSetD(_Key("MONTH_EQ0"),         s_monthStartEq);
     _GVSetB(_Key("MONTH_TARGET_HIT"),  s_monthTargetHit);
+    
+    _GVSetD(_Key("C28_TS"),          (double)s_cycleStartTs);
+    _GVSetD(_Key("C28_EQ0"),         s_cycleStartEq);
+    _GVSetB(_Key("C28_TARGET_HIT"),  s_cycleTargetHit);
   }
 
   inline void _ResetDayStopForNewDayIfNeeded(const int curD)
@@ -1272,6 +1290,36 @@ namespace Policies
     s_monthTargetHit = tgtHit;
   }
   
+  inline void _EnsureCycle28DState(const Settings &cfg)
+  {
+    MqlDateTime dt;
+    TimeToStruct(TimeCurrent(), dt);
+    dt.hour = 0; dt.min = 0; dt.sec = 0;
+    const datetime day0 = StructToTime(dt);
+
+    datetime ts0 = (datetime)_GVGetD(_Key("C28_TS"), 0.0);
+    double   eq0 = _GVGetD(_Key("C28_EQ0"), 0.0);
+    bool     hit = _GVGetB(_Key("C28_TARGET_HIT"), false);
+
+    const int cycle_sec = 28 * 86400;
+    if(ts0 <= 0 || eq0 <= 0.0 || (day0 - ts0) >= (datetime)cycle_sec)
+    {
+      ts0 = day0;
+      eq0 = AccountInfoDouble(ACCOUNT_EQUITY);
+      if(eq0 <= 0.0) eq0 = _GVGetD(_Key("ACCT_EQ0"), 0.0);
+
+      hit = false;
+
+      _GVSetD(_Key("C28_TS"), (double)ts0);
+      _GVSetD(_Key("C28_EQ0"), eq0);
+      _GVSetB(_Key("C28_TARGET_HIT"), hit);
+    }
+
+    s_cycleStartTs   = ts0;
+    s_cycleStartEq   = eq0;
+    s_cycleTargetHit = hit;
+  }
+
   inline void _EnsureAccountBaseline(const Settings &cfg)
    {
      if(s_acctEqStart > 0.0) return;
@@ -1436,6 +1484,7 @@ namespace Policies
   {
     _EnsureLoaded(cfg);
     _EnsureDayState();
+    _EnsureAccountBaseline(cfg);
 
     dd_pct_out = 0.0;
 
@@ -1458,32 +1507,55 @@ namespace Policies
     if(window_days < 1) window_days = 30;
     if(adaptive_pct <= 0.0) adaptive_pct = limit_pct;
 
-    const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-    if(eq1 <= 0.0) return false;
+    const double eq_now = AccountInfoDouble(ACCOUNT_EQUITY);
+    if(eq_now <= 0.0) return false;
 
     // keep intraday peak fresh
-    if(eq1 > s_dayEqPeak)
+    if(eq_now > s_dayEqPeak)
     {
-      s_dayEqPeak = eq1;
+      s_dayEqPeak = eq_now;
       _GVSetD(_Key("DAYEQ_PEAK"), s_dayEqPeak);
     }
 
-    double base_eq = s_dayEqStart;
+    // 1) Fixed-base daily DD:
+    //    loss measured from day start, limit amount based on initial equity
+    const double base_init = (s_acctEqStart > 0.0 ? s_acctEqStart : s_dayEqStart);
+    if(base_init <= 0.0) return false;
+
+    const double day_loss_money = (s_dayEqStart - eq_now);
+    const double limit_money    = base_init * (limit_pct / 100.0);
+
+    const bool fixed_hit = (day_loss_money >= limit_money);
+
+    double fixed_pct = 0.0;
+    if(day_loss_money > 0.0)
+      fixed_pct = 100.0 * day_loss_money / base_init;
+
+    // 2) Adaptive DD: rolling peak over window_days, compared to adaptive_pct
+    bool   adaptive_hit     = false;
+    double adaptive_now_pct = 0.0;
 
     if(adaptive_on)
     {
-      const double rp = _RollingPeakEq(s_dayKey, window_days);
-      if(rp > 0.0) base_eq = rp;
-      limit_pct = adaptive_pct;
+      double rp = _RollingPeakEq(s_dayKey, window_days);
+      if(rp < s_dayEqStart) rp = s_dayEqStart;
+
+      if(rp > 0.0)
+      {
+        const double dd_from_peak = (rp - eq_now);
+        if(dd_from_peak > 0.0)
+        {
+          adaptive_now_pct = 100.0 * dd_from_peak / rp;
+          adaptive_hit     = (adaptive_now_pct >= adaptive_pct);
+        }
+      }
     }
 
-    if(base_eq <= 0.0) return false;
+    // For logs/diagnostics: report the stricter of the two current drawdown percents
+    dd_pct_out = MathMax(fixed_pct, adaptive_now_pct);
 
-    const double dd = (base_eq - eq1);
-    if(dd <= 0.0) return false;
-
-    dd_pct_out = 100.0 * dd / base_eq;
-    return (dd_pct_out >= limit_pct);
+    // Trip if either guardrail trips
+    return (fixed_hit || adaptive_hit);
   }
   
   // ----------------------------------------------------------------------------
@@ -1536,12 +1608,14 @@ namespace Policies
                                  bool   &target_hit_out)
   {
     _EnsureLoaded(cfg);
-    _EnsureMonthState();
+    const bool roll28 = CfgMonthlyTargetRolling28D(cfg);
+    if(roll28) _EnsureCycle28DState(cfg);
+    else       _EnsureMonthState();
 
     profit_pct_out  = 0.0;
     target_hit_out  = false;
 
-    const double eq0 = s_monthStartEq;
+    const double eq0 = (roll28 ? s_cycleStartEq : s_monthStartEq);
     const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
     if(eq0 <= 0.0 || eq1 <= 0.0)
       return;
@@ -1552,19 +1626,37 @@ namespace Policies
     const double target_pct = CfgMonthlyTargetPct(cfg);
     if(target_pct > 0.0 && profit_pct_out >= target_pct)
     {
-      // latch once per month
-      s_monthTargetHit = true;
-      target_hit_out   = true;
-
-      _GVSetB(_Key("MONTH_TARGET_HIT"), true);
+      if(roll28)
+      {
+        s_cycleTargetHit = true;
+        target_hit_out   = true;
+        _GVSetB(_Key("C28_TARGET_HIT"), true);
+      }
+      else
+      {
+        s_monthTargetHit = true;
+        target_hit_out   = true;
+        _GVSetB(_Key("MONTH_TARGET_HIT"), true);
+      }
     }
     else
     {
       // if target already latched from earlier run, respect it
-      if(_GVGetB(_Key("MONTH_TARGET_HIT"), false))
+      if(roll28)
       {
-        s_monthTargetHit = true;
-        target_hit_out   = true;
+        if(_GVGetB(_Key("C28_TARGET_HIT"), false))
+        {
+          s_cycleTargetHit = true;
+          target_hit_out   = true;
+        }
+      }
+      else
+      {
+        if(_GVGetB(_Key("MONTH_TARGET_HIT"), false))
+        {
+          s_monthTargetHit = true;
+          target_hit_out   = true;
+        }
       }
     }
   }
@@ -1804,17 +1896,27 @@ namespace Policies
   inline void SetLossCooldownParams(const int losses, const int minutes)
   { s_cooldown_losses=(losses<1?1:losses); s_cooldown_min=(minutes<1?1:minutes); _GVSetD(_Key("COOL_N"), (double)s_cooldown_losses); _GVSetD(_Key("COOL_MIN"), (double)s_cooldown_min); }
 
+  inline void ArmSizingResetForMins(const int mins)
+  {
+    if(mins <= 0) return;
+
+    const datetime until_ts = TimeCurrent() + (datetime)(mins * 60);
+    if(until_ts > s_sizing_reset_until)
+    {
+      s_sizing_reset_until = until_ts;
+      _GVSetD(_Key("SIZRST_UNTIL"), (double)s_sizing_reset_until);
+    }
+  }
+  
   inline void NotifyTradeResult(const double r_multiple)
   {
     // Big-loss sizing reset latch (neutralize streak-based sizing for a window)
-    if(s_bigloss_reset_enable && s_bigloss_reset_r > 0.0 && r_multiple <= -s_bigloss_reset_r)
+    if(s_bigloss_reset_mins > 0)
+      ArmSizingResetForMins(s_bigloss_reset_mins);
+    else
     {
-      if(s_bigloss_reset_mins > 0)
-        s_sizing_reset_until = TimeCurrent() + (datetime)(s_bigloss_reset_mins * 60);
-      else
-        s_sizing_reset_until = 0;
-
-      _GVSetD(_Key("SIZRST_UNTIL"), (double)s_sizing_reset_until);
+      s_sizing_reset_until = 0;
+      _GVSetD(_Key("SIZRST_UNTIL"), 0.0);
     }
 
     if(r_multiple<0.0) s_loss_streak++; else s_loss_streak=0;
@@ -2491,6 +2593,8 @@ namespace Policies
       {
         out.news_blocked   = true;
         out.news_mins_left = mins_left;
+        if(s_bigloss_reset_enable && mins_left > 0)
+         ArmSizingResetForMins(mins_left);
         _PolicyVeto(out, GATE_NEWS, CA_POLMASK_NEWS);
         if(!audit) return false;
       }
