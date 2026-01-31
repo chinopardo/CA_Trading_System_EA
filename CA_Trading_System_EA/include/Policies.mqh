@@ -1604,62 +1604,83 @@ namespace Policies
    }
 
    inline void MonthlyProfitStats(const Settings &cfg,
-                                 double &profit_pct_out,
-                                 bool   &target_hit_out)
-  {
-    _EnsureLoaded(cfg);
-    const bool roll28 = CfgMonthlyTargetRolling28D(cfg);
-    if(roll28) _EnsureCycle28DState(cfg);
-    else       _EnsureMonthState();
-
-    profit_pct_out  = 0.0;
-    target_hit_out  = false;
-
-    const double eq0 = (roll28 ? s_cycleStartEq : s_monthStartEq);
-    const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-    if(eq0 <= 0.0 || eq1 <= 0.0)
-      return;
-
-    const double profit = (eq1 - eq0);
-    profit_pct_out      = 100.0 * profit / eq0;  // 0–100 %
-
-    const double target_pct = CfgMonthlyTargetPct(cfg);
-    if(target_pct > 0.0 && profit_pct_out >= target_pct)
-    {
-      if(roll28)
-      {
-        s_cycleTargetHit = true;
-        target_hit_out   = true;
-        _GVSetB(_Key("C28_TARGET_HIT"), true);
-      }
-      else
-      {
-        s_monthTargetHit = true;
-        target_hit_out   = true;
-        _GVSetB(_Key("MONTH_TARGET_HIT"), true);
-      }
-    }
-    else
-    {
-      // if target already latched from earlier run, respect it
-      if(roll28)
-      {
-        if(_GVGetB(_Key("C28_TARGET_HIT"), false))
-        {
-          s_cycleTargetHit = true;
-          target_hit_out   = true;
-        }
-      }
-      else
-      {
-        if(_GVGetB(_Key("MONTH_TARGET_HIT"), false))
-        {
-          s_monthTargetHit = true;
-          target_hit_out   = true;
-        }
-      }
-    }
-  }
+                                  double &profit_pct_out,
+                                  bool   &target_hit_out)
+   {
+     _EnsureLoaded(cfg);
+   
+     const bool roll28 = CfgMonthlyTargetRolling28D(cfg);
+     if(roll28) _EnsureCycle28DState(cfg);
+     else       _EnsureMonthState();
+   
+     profit_pct_out = 0.0;
+     target_hit_out = false;
+   
+     const double eq_cycle0 = (roll28 ? s_cycleStartEq : s_monthStartEq);
+     const double eq_now    = AccountInfoDouble(ACCOUNT_EQUITY);
+     if(eq_cycle0 <= 0.0 || eq_now <= 0.0)
+       return;
+   
+     // Profit is always measured vs cycle-start equity (so cycle P/L is true “this cycle” performance)
+     const double profit_money = (eq_now - eq_cycle0);
+   
+     // Target size can be based on cycle-start equity OR initial equity (your requirement)
+     int base_mode = CfgMonthlyTargetBaseMode(cfg);
+     if(base_mode == CFG_TARGET_BASE_INITIAL_COMPOUND)
+       base_mode = CFG_TARGET_BASE_INITIAL_LINEAR; // compound reserved; keep behavior deterministic
+   
+     double eq_base = eq_cycle0; // default: cycle-start
+     if(base_mode != CFG_TARGET_BASE_CYCLE_START)
+     {
+       _EnsureAccountBaseline(cfg);
+       if(s_acctEqStart > 0.0)
+         eq_base = s_acctEqStart;
+     }
+   
+     const double target_pct = CfgMonthlyTargetPct(cfg);
+     if(eq_base > 0.0)
+       profit_pct_out = 100.0 * profit_money / eq_base;
+   
+     // Use money comparison for exactness and to avoid percent drift
+     const double target_money = (target_pct > 0.0 ? (eq_base * (target_pct / 100.0)) : 0.0);
+     const bool hit_now = (target_pct > 0.0 && target_money > 0.0 && profit_money >= target_money);
+   
+     if(hit_now)
+     {
+       if(roll28)
+       {
+         s_cycleTargetHit = true;
+         target_hit_out   = true;
+         _GVSetB(_Key("C28_TARGET_HIT"), true);
+       }
+       else
+       {
+         s_monthTargetHit = true;
+         target_hit_out   = true;
+         _GVSetB(_Key("MONTH_TARGET_HIT"), true);
+       }
+     }
+     else
+     {
+       // If target already latched from earlier run, respect it
+       if(roll28)
+       {
+         if(_GVGetB(_Key("C28_TARGET_HIT"), false))
+         {
+           s_cycleTargetHit = true;
+           target_hit_out   = true;
+         }
+       }
+       else
+       {
+         if(_GVGetB(_Key("MONTH_TARGET_HIT"), false))
+         {
+           s_monthTargetHit = true;
+           target_hit_out   = true;
+         }
+       }
+     }
+   }
  
   inline bool MonthlyProfitTargetHit(const Settings &cfg, double &profit_pct_out)
   {
@@ -1908,26 +1929,30 @@ namespace Policies
     }
   }
   
-  inline void NotifyTradeResult(const double r_multiple)
+inline void NotifyTradeResult(const double r_multiple)
+{
+  // Big-loss sizing reset latch:
+  // Only arm the reset window when the loss is <= -R (e.g., -2.0R or worse).
+  if(s_bigloss_reset_enable && s_bigloss_reset_mins > 0 && s_bigloss_reset_r > 0.0)
   {
-    // Big-loss sizing reset latch (neutralize streak-based sizing for a window)
-    if(s_bigloss_reset_mins > 0)
+    if(r_multiple <= -s_bigloss_reset_r)
       ArmSizingResetForMins(s_bigloss_reset_mins);
-    else
-    {
-      s_sizing_reset_until = 0;
-      _GVSetD(_Key("SIZRST_UNTIL"), 0.0);
-    }
-
-    if(r_multiple<0.0) s_loss_streak++; else s_loss_streak=0;
-    _GVSetD(_Key("LOSS_STREAK"), (double)s_loss_streak);
-    if(s_loss_streak >= s_cooldown_losses)
-    {
-      s_cooldown_until = TimeCurrent() + (datetime)(s_cooldown_min*60);
-      _GVSetD(_Key("COOL_UNTIL"), (double)s_cooldown_until);
-      s_loss_streak = 0; _GVSetD(_Key("LOSS_STREAK"), 0.0);
-    }
   }
+
+  // Loss streak tracking (unchanged behavior)
+  if(r_multiple < 0.0) s_loss_streak++;
+  else                s_loss_streak = 0;
+
+  _GVSetD(_Key("LOSS_STREAK"), (double)s_loss_streak);
+
+  if(s_loss_streak >= s_cooldown_losses)
+  {
+    s_cooldown_until = TimeCurrent() + (datetime)(s_cooldown_min * 60);
+    _GVSetD(_Key("COOL_UNTIL"), (double)s_cooldown_until);
+    s_loss_streak = 0;
+    _GVSetD(_Key("LOSS_STREAK"), 0.0);
+  }
+}
 
   inline bool SizingResetActive()
   {

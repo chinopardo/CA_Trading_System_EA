@@ -508,8 +508,32 @@ struct Settings;
   #define CFG_MONTHLY_TARGET_PCT 10.0
 #endif
 
+// --- Monthly profit target (compile-safe) ------------------------------------
+// Primary feature switch (used by Settings and Policies)
+#ifndef CFG_HAS_MONTHLY_TARGET
+  #define CFG_HAS_MONTHLY_TARGET 1
+#endif
+
+// Settings fields exist: allow EA to load cycle/base mode from inputs
+#ifndef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
+  #define CFG_HAS_MONTHLY_TARGET_CYCLE_MODE 1
+#endif
+#ifndef CFG_HAS_MONTHLY_TARGET_BASE_MODE
+  #define CFG_HAS_MONTHLY_TARGET_BASE_MODE 1
+#endif
+
+// Backward-compat alias for any existing CFG_HAS_MONTHLY_TARGET_PCT usage
+#ifndef CFG_HAS_MONTHLY_TARGET_PCT
+  #define CFG_HAS_MONTHLY_TARGET_PCT CFG_HAS_MONTHLY_TARGET
+#endif
+
+// Default monthly target: 10.0 = +10%
+#ifndef CFG_MONTHLY_TARGET_PCT
+  #define CFG_MONTHLY_TARGET_PCT 10.0
+#endif
+
 // Monthly target cycle mode (Config contract)
-// 0 = calendar month (current behavior), 1 = rolling 28-day cycle
+// 0 = calendar month, 1 = rolling 28-day cycle
 #ifndef CFG_TARGET_CYCLE_CALENDAR
   #define CFG_TARGET_CYCLE_CALENDAR 0
 #endif
@@ -534,7 +558,8 @@ struct Settings;
   #define CFG_TARGET_BASE_INITIAL_COMPOUND 2
 #endif
 #ifndef CFG_TARGET_BASE_DEFAULT
-  #define CFG_TARGET_BASE_DEFAULT CFG_TARGET_BASE_CYCLE_START
+  // Default to INITIAL_LINEAR to meet “10% of initial equity per cycle” behavior out-of-box
+  #define CFG_TARGET_BASE_DEFAULT CFG_TARGET_BASE_INITIAL_LINEAR
 #endif
 
 // --- Account-wide (challenge) DD feature flags (for Policies) ---------------

@@ -244,8 +244,9 @@ input double           InpAdaptiveDD_Pct          = 0.0;   // Adaptive Daily DD 
 
 // --- Monthly profit target gate ---
 // 0.0 = disabled; otherwise stop new entries once equity is up by this % vs month-start.
-input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month
-input int              InpMonthlyTargetCycleMode = 0; // Monthly Target cycle: 0=calendar, 1=
+input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month: 0.0 = disabled; otherwise stop new entries once equity is up by this % for the cycle.
+input int              InpMonthlyTargetCycleMode = 0; // Monthly Target cycle: 0 = calendar month, 1 = rolling 28-day cycle
+input int              InpMonthlyTargetBaseMode  = 1;    // Base mode 0 = cycle-start equity, 1 = initial equity (linear per cycle), 2 = initial equity (compound; reserved)
 
 input int              InpMaxLossesDay          = 6; // Max Daily Losses
 input int              InpMaxTradesDay          = 20; // Max Daily Trades
@@ -1226,13 +1227,20 @@ void MirrorInputsToSettings(Settings &cfg)
 
   // ---- Monthly profit target gate ----
   #ifdef CFG_HAS_MONTHLY_TARGET
-    // Interpret as “percent gain vs. month-start equity”.
     cfg.monthly_target_pct = MathMax(0.0, InpMonthlyTargetPct);
+   
     #ifdef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
       int cm = InpMonthlyTargetCycleMode;
       if(cm < 0) cm = 0;
       if(cm > 1) cm = 1;
       cfg.monthly_target_cycle_mode = cm;
+    #endif
+   
+    #ifdef CFG_HAS_MONTHLY_TARGET_BASE_MODE
+      int mbm = InpMonthlyTargetBaseMode;
+      if(mbm < 0) mbm = 0;
+      if(mbm > 2) mbm = 2;
+      cfg.monthly_target_base_mode = mbm;
     #endif
   #endif
   
@@ -1247,10 +1255,10 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.news_on = InpNewsOn; cfg.block_pre_m = InpNewsBlockPreMins; cfg.block_post_m = InpNewsBlockPostMins;
   cfg.news_impact_mask = InpNewsImpactMask;
   #ifdef CFG_HAS_NEWS_BACKEND
-      int bm = InpNewsBackendMode;
-      if(bm < 0) bm = 0;
-      if(bm > 2) bm = 2;
-      cfg.news_backend_mode = bm;
+      int nbm = InpNewsBackendMode;
+      if(nbm < 0) nbm = 0;
+      if(nbm > 2) nbm = 2;
+      cfg.news_backend_mode = nbm;
   #endif
    
   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
