@@ -18,6 +18,9 @@
 #ifndef POLICIES_HAS_RECORD_EXECUTION_RESULT_SID
 #define POLICIES_HAS_RECORD_EXECUTION_RESULT_SID 1
 #endif
+#ifndef POLICIES_HAS_SIZING_RESET_ACTIVE
+#define POLICIES_HAS_SIZING_RESET_ACTIVE 1
+#endif
 //=============================================================================
 // Policies.mqh - Core gates, filters & orchestration (Persistent)
 //-----------------------------------------------------------------------------
@@ -1058,6 +1061,9 @@ namespace Policies
 
   static int      s_dayKey          = -1;    // epoch-day
   static double   s_dayEqStart      =  0.0;
+  static double   s_dayEqPeak       =  0.0;  // intraday peak equity (persisted)
+  static int const DDPK_MAX         =  40;   // ring buffer capacity (days)
+  static int      s_ddpk_idx        =  0;    // ring index (persisted)
 
   // day-loss hard stop persistence
   static bool     s_dayStopHit      = false;
@@ -1079,6 +1085,12 @@ namespace Policies
 
   static int      s_trade_cd_sec    = 0;
   static datetime s_trade_cd_until  = 0;
+  static datetime s_sizing_reset_until   = 0;     // big-loss sizing reset latch (persisted)
+
+  // Big-loss sizing reset knobs (loaded from cfg in _LoadPersistent)
+  static bool     s_bigloss_reset_enable = false;
+  static double   s_bigloss_reset_r      = 2.0;
+  static int      s_bigloss_reset_mins   = 120;
 
   // --- GV helpers ---
   inline string _Key(const string name){ return s_prefix + name; }
@@ -1088,6 +1100,34 @@ namespace Policies
   inline void   _GVSetD(const string k, const double v){ GlobalVariableSet(k, v); }
   inline void   _GVSetB(const string k, const bool v){ GlobalVariableSet(k, (v?1.0:0.0)); }
   inline void   _GVDel (const string k){ if(GlobalVariableCheck(k)) GlobalVariableDel(k); }
+  
+  // --- Adaptive DD rolling peak ring buffer (persisted) ---
+  inline string _DDPkDayKey(const int i){ return _Key(StringFormat("DDPK_DAY_%d", i)); }
+  inline string _DDPkEqKey (const int i){ return _Key(StringFormat("DDPK_EQ_%d",  i)); }
+
+  inline void _DDPkSetIdx(const int i)
+  {
+    s_ddpk_idx = i;
+    _GVSetD(_Key("DDPK_IDX"), (double)s_ddpk_idx);
+  }
+
+  inline void _PushDailyPeak(const int day, const double peak_eq)
+  {
+    if(day < 0) return;
+    if(peak_eq <= 0.0) return;
+
+    int idx = s_ddpk_idx;
+    if(idx < 0) idx = 0;
+    if(idx >= DDPK_MAX) idx = 0;
+
+    _GVSetD(_DDPkDayKey(idx), (double)day);
+    _GVSetD(_DDPkEqKey(idx),  peak_eq);
+
+    idx++;
+    if(idx >= DDPK_MAX) idx = 0;
+    _DDPkSetIdx(idx);
+  }
+
 
   // --- Silver Bullet (SB) persistent keys (per-symbol / per-day / per-slot) ---
   inline string _SymKey(const string sym)
@@ -1123,6 +1163,10 @@ namespace Policies
   {
     _GVSetD(_Key("DAYKEY"),        (double)s_dayKey);
     _GVSetD(_Key("DAYEQ0"),        s_dayEqStart);
+    _GVSetD(_Key("DAYEQ_PEAK"),     s_dayEqPeak);
+    _GVSetD(_Key("DDPK_IDX"),       (double)s_ddpk_idx);
+    _GVSetD(_Key("SIZRST_UNTIL"),   (double)s_sizing_reset_until);
+
     _GVSetB(_Key("DAY_STOP_FLAG"), s_dayStopHit);
     _GVSetD(_Key("DAY_STOP_DAY"),  (double)s_dayStopDay);
 
@@ -1158,16 +1202,41 @@ namespace Policies
     const int curD = EpochDay(TimeCurrent());
     int    storedD = _GVGetI(_Key("DAYKEY"), -1);
     double eq0     = _GVGetD(_Key("DAYEQ0"), 0.0);
+    double peak0   = _GVGetD(_Key("DAYEQ_PEAK"), 0.0);
 
-    if(storedD!=curD || eq0<=0.0)
+    const double eqNow = AccountInfoDouble(ACCOUNT_EQUITY);
+
+    // New day (or missing baseline): push prior day's peak into ring, then re-anchor
+    if(storedD != curD || eq0 <= 0.0)
     {
+      if(storedD >= 0 && storedD != curD)
+      {
+        double oldPeak = peak0;
+        if(oldPeak <= 0.0) oldPeak = eq0;
+        if(oldPeak > 0.0) _PushDailyPeak(storedD, oldPeak);
+      }
+
       storedD = curD;
-      eq0 = AccountInfoDouble(ACCOUNT_EQUITY);
-      _GVSetD(_Key("DAYKEY"), (double)storedD);
-      _GVSetD(_Key("DAYEQ0"), eq0);
+      eq0     = eqNow;
+      peak0   = eqNow;
+
+      _GVSetD(_Key("DAYKEY"),      (double)storedD);
+      _GVSetD(_Key("DAYEQ0"),      eq0);
+      _GVSetD(_Key("DAYEQ_PEAK"),  peak0);
     }
+    else
+    {
+      // Same day: update intraday peak if needed
+      if(eqNow > peak0)
+      {
+        peak0 = eqNow;
+        _GVSetD(_Key("DAYEQ_PEAK"), peak0);
+      }
+    }
+
     s_dayKey     = storedD;
     s_dayEqStart = eq0;
+    s_dayEqPeak  = peak0;
 
     // sync day-stop
     s_dayStopHit = _GVGetB(_Key("DAY_STOP_FLAG"), false);
@@ -1240,11 +1309,41 @@ namespace Policies
     _GVSetD(_Key("COOL_N"),      (double)s_cooldown_losses);
     _GVSetD(_Key("COOL_MIN"),    (double)s_cooldown_min);
     _GVSetD(_Key("TRADECD_SEC"), (double)s_trade_cd_sec);
+    
+    // Big-loss sizing reset knobs (compile-safe)
+    #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+      s_bigloss_reset_enable = cfg.bigloss_reset_enable;
+    #else
+      s_bigloss_reset_enable = false;
+    #endif
+
+    #ifdef CFG_HAS_BIGLOSS_RESET_R
+      s_bigloss_reset_r = cfg.bigloss_reset_r;
+    #else
+      s_bigloss_reset_r = 2.0;
+    #endif
+    if(s_bigloss_reset_r < 0.0) s_bigloss_reset_r = 0.0;
+
+    #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+      s_bigloss_reset_mins = cfg.bigloss_reset_mins;
+    #else
+      s_bigloss_reset_mins = 120;
+    #endif
+    if(s_bigloss_reset_mins < 0) s_bigloss_reset_mins = 0;
 
     // Restore persisted running state
     s_loss_streak    = _GVGetI(_Key("LOSS_STREAK"), 0);
     s_cooldown_until = (datetime)_GVGetD(_Key("COOL_UNTIL"), 0.0);
     s_trade_cd_until = (datetime)_GVGetD(_Key("TRADECD_UNTIL"), 0.0);
+    
+    // Adaptive DD ring index + day peak + sizing reset latch
+    s_ddpk_idx = _GVGetI(_Key("DDPK_IDX"), 0);
+    if(s_ddpk_idx < 0) s_ddpk_idx = 0;
+    if(s_ddpk_idx >= DDPK_MAX) s_ddpk_idx = 0;
+
+    s_dayEqPeak = _GVGetD(_Key("DAYEQ_PEAK"), 0.0);
+    s_sizing_reset_until = (datetime)_GVGetD(_Key("SIZRST_UNTIL"), 0.0);
+
     
     // account-wide floor (challenge)
     s_acctEqStart = _GVGetD(_Key("ACCT_EQ0"), 0.0);
@@ -1313,23 +1412,77 @@ namespace Policies
     return (int)(until - now);
   }
 
+  inline double _RollingPeakEq(const int curD, const int window_days)
+  {
+    int win = window_days;
+    if(win < 1) win = 30;
+
+    double peak = s_dayEqPeak;
+    if(peak <= 0.0) peak = s_dayEqStart;
+
+    const int minD = curD - (win - 1);
+    for(int i=0; i<DDPK_MAX; i++)
+    {
+      const int d = _GVGetI(_DDPkDayKey(i), -1);
+      if(d < minD) continue;
+
+      const double e = _GVGetD(_DDPkEqKey(i), 0.0);
+      if(e > peak) peak = e;
+    }
+    return peak;
+  }
+
   inline bool DailyEquityDDHit(const Settings &cfg, double &dd_pct_out)
   {
     _EnsureLoaded(cfg);
     _EnsureDayState();
 
-    dd_pct_out=0.0;
-    const double limit_pct = CfgMaxDailyDDPct(cfg);
-    if(limit_pct<=0.0) return false;
+    dd_pct_out = 0.0;
 
-    const double eq0 = s_dayEqStart;
+    double limit_pct = CfgMaxDailyDDPct(cfg);
+    if(limit_pct <= 0.0) return false;
+
+    bool   adaptive_on  = false;
+    int    window_days  = 30;
+    double adaptive_pct = 0.0;
+
+    #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+      adaptive_on = cfg.adaptive_dd_enable;
+    #endif
+    #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+      window_days = cfg.adaptive_dd_window_days;
+    #endif
+    #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+      adaptive_pct = cfg.adaptive_dd_pct;
+    #endif
+    if(window_days < 1) window_days = 30;
+    if(adaptive_pct <= 0.0) adaptive_pct = limit_pct;
+
     const double eq1 = AccountInfoDouble(ACCOUNT_EQUITY);
-    if(eq0<=0.0 || eq1<=0.0) return false;
+    if(eq1 <= 0.0) return false;
 
-    const double dd = (eq0 - eq1);
-    if(dd<=0.0) return false;
+    // keep intraday peak fresh
+    if(eq1 > s_dayEqPeak)
+    {
+      s_dayEqPeak = eq1;
+      _GVSetD(_Key("DAYEQ_PEAK"), s_dayEqPeak);
+    }
 
-    dd_pct_out = 100.0 * dd / eq0;
+    double base_eq = s_dayEqStart;
+
+    if(adaptive_on)
+    {
+      const double rp = _RollingPeakEq(s_dayKey, window_days);
+      if(rp > 0.0) base_eq = rp;
+      limit_pct = adaptive_pct;
+    }
+
+    if(base_eq <= 0.0) return false;
+
+    const double dd = (base_eq - eq1);
+    if(dd <= 0.0) return false;
+
+    dd_pct_out = 100.0 * dd / base_eq;
     return (dd_pct_out >= limit_pct);
   }
   
@@ -1653,6 +1806,17 @@ namespace Policies
 
   inline void NotifyTradeResult(const double r_multiple)
   {
+    // Big-loss sizing reset latch (neutralize streak-based sizing for a window)
+    if(s_bigloss_reset_enable && s_bigloss_reset_r > 0.0 && r_multiple <= -s_bigloss_reset_r)
+    {
+      if(s_bigloss_reset_mins > 0)
+        s_sizing_reset_until = TimeCurrent() + (datetime)(s_bigloss_reset_mins * 60);
+      else
+        s_sizing_reset_until = 0;
+
+      _GVSetD(_Key("SIZRST_UNTIL"), (double)s_sizing_reset_until);
+    }
+
     if(r_multiple<0.0) s_loss_streak++; else s_loss_streak=0;
     _GVSetD(_Key("LOSS_STREAK"), (double)s_loss_streak);
     if(s_loss_streak >= s_cooldown_losses)
@@ -1662,6 +1826,20 @@ namespace Policies
       s_loss_streak = 0; _GVSetD(_Key("LOSS_STREAK"), 0.0);
     }
   }
+
+  inline bool SizingResetActive()
+  {
+    if(s_sizing_reset_until <= 0) return false;
+    if(TimeCurrent() >= s_sizing_reset_until)
+    {
+      s_sizing_reset_until = 0;
+      _GVSetD(_Key("SIZRST_UNTIL"), 0.0);
+      return false;
+    }
+    return true;
+  }
+
+  inline int SizingResetSecondsLeft(){ return _SecondsLeft(s_sizing_reset_until); }
 
   inline bool LossCooldownActive()
   {

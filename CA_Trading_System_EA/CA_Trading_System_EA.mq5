@@ -235,6 +235,13 @@ input double           InpMaxSLCeiling_Pips     = 2500.0; // Max Ceiling (Pips)
 input double           InpMaxDailyDD_Pct        = 2.0; // Max Daily DD Percentage
 input double           InpDayDD_LimitPct        = 2.0; // Max Daily DD taper onset (%); scales risk down from here
 
+// ---- Adaptive Daily DD (rolling peak equity) ----
+// Uses rolling peak equity over N days as the anchor for daily DD.
+// 0.0 pct means "use InpMaxDailyDD_Pct".
+input bool             InpAdaptiveDD_Enable       = false; // Adaptive DD Enable
+input int              InpAdaptiveDD_WindowDays   = 30;    // Adaptive DD Window (days)
+input double           InpAdaptiveDD_Pct          = 0.0;   // Adaptive Daily DD % of rolling peak (0=use InpMaxDailyDD_Pct)
+
 // --- Monthly profit target gate ---
 // 0.0 = disabled; otherwise stop new entries once equity is up by this % vs month-start.
 input double           InpMonthlyTargetPct      = 10.0; // Monthly Target: +10% equity per calendar month
@@ -275,6 +282,16 @@ input int              InpStreakLossesToHalve   = 2;       // Streak-based Lot S
 input double           InpStreakMaxBoost        = 2.0;     // Streak-based Lot Scaling: Max Boost Streaks cap multiplier (>=1)
 input double           InpStreakMinScale        = 0.5;     // Streak-based Lot Scaling: Min Scale Streaksfloor multiplier (<=1)
 
+// ---- Streak hard reset triggers ----
+// When News derisks or blocks entries, reset streak counters so boosts cannot "undo" derisking.
+input bool             InpResetStreakOnNewsDerisk = true;  // Reset streaks when news derisks/blocks
+
+// ---- Big-loss sizing reset (handled by Policies via r_multiple) ----
+// Requires Policies to latch a reset window and expose SizingResetActive().
+input bool             InpBigLossReset_Enable     = true;  // Enable big-loss sizing reset
+input double           InpBigLossReset_R          = 2.0;   // Threshold in R (reset if r_multiple <= -InpBigLossReset_R)
+input int              InpBigLossReset_Mins       = 120;   // Reset window minutes
+
 // -------- Registry Router & Strategy knobs --------
 input int              InpRouterMode            = 0;    // Registry Router & Strategy: Mode - 0=MAX,1=WEIGHTED,2=AB
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
@@ -286,9 +303,15 @@ input bool             InpBE_Enable             = true;  // Position Mgnt: BE En
 input double           InpBE_At_R               = 0.80;  // Position Mgnt: BE ATR
 input double           InpBE_Lock_Pips          = 2.0;   // Position Mgnt: BE Lock pips
 
-input TrailType        InpTrailType             = TRAIL_ATR;   // Position Mgnt: Trail Type - 0=None 1=Fixed 2=ATR 3=PSAR
+input TrailType        InpTrailType             = TRAIL_ATR;   // Position Mgnt: Trail Type - 0=None 1=Fixed 2=ATR 3=PSAR 4=ATRChannel 5=AUTO
 input double           InpTrailPips             = 10.0;          // Position Mgnt: Trail Pips
 input double           InpTrailATR_Mult         = 1.7;           // Position Mgnt: Trail ATR Mult
+
+// ---- AUTO Trailing Regime Switch (ADX) ----
+// Requires TRAIL_AUTO support inside PositionMgmt: ATR trail in trends, Fixed-pip trail in ranges.
+input ENUM_TIMEFRAMES  InpTrailAuto_ADX_TF        = PERIOD_H1; // AUTO Trail: ADX timeframe
+input int              InpTrailAuto_ADX_Period    = 14;        // AUTO Trail: ADX period
+input double           InpTrailAuto_ADX_Min       = 25.0;      // AUTO Trail: ADX threshold (trend if >=)
 
 input bool             InpPartial_Enable        = true;          // Position Mgnt: Partial TP Enable
 input double           InpP1_At_R               = 1.50;           // Position Mgnt: Partial 1 TP ATR
@@ -980,11 +1003,23 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint v
 // ------------------------------------------------------------------
 // Forward declarations (defined later in this file)
 // ------------------------------------------------------------------
-bool   TryMinimalPathIntent(const string sym,
-                            const Settings &cfg,
+bool   TryMinimalPathIntent(const string sym, const Settings &cfg,
                             StratReg::RoutedPick &pick_out);
 
 double StreakRiskScale();
+void   ResetStreakCounters();
+bool   AllowStreakScalingNow(const double news_risk_mult, const bool news_skip);
+
+inline bool NewsDefensiveStateAtBarClose(const Settings &cfg,
+                                        const string sym,
+                                        const int shift,
+                                        double &risk_mult,
+                                        bool &skip,
+                                        int &mins_left)
+{
+   News::CompositeRiskAtBarClose(cfg, sym, shift, risk_mult, skip, mins_left);
+   return (skip || (risk_mult < 1.0));
+}
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -1018,21 +1053,28 @@ void EvaluateOneSymbol(const string sym)
    int mins_left=0;
    const datetime now_srv = TimeUtils::NowServer();
 
-   News::CompositeRiskAtBarClose(cur, sym, /*shift*/1, risk_mult, skip, mins_left);
+   NewsDefensiveStateAtBarClose(cur, sym, 1, risk_mult, skip, mins_left);
    News::SurpriseRiskAdjust(now_srv, sym, cur.news_impact_mask, cur.cal_lookback_mins,
                             cur.cal_hard_skip, cur.cal_soft_knee, cur.cal_min_scale,
                             risk_mult, skip);
+   
    if(skip)
-     {
+   {
+      if(InpResetStreakOnNewsDerisk)
+         ResetStreakCounters();
+         
       Panel::Render(S);
       return;
-     }
+   }
 
    StratScore ss = pick.ss;
    Settings trade_cfg = cur;
    ApplyPickOverrides(pick, trade_cfg, ss);
    ss.risk_mult *= risk_mult;
-   ss.risk_mult *= StreakRiskScale();
+   if(AllowStreakScalingNow(risk_mult, skip))
+      ss.risk_mult *= StreakRiskScale();
+   else
+      ResetStreakCounters();
 
    ApplyMetaLayers(pick.dir, ss, pick.bd);
 
@@ -1154,6 +1196,30 @@ void MirrorInputsToSettings(Settings &cfg)
   #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
     cfg.day_dd_limit_pct = InpDayDD_LimitPct;
   #endif
+  cfg.max_daily_dd_pct = InpMaxDailyDD_Pct;
+  
+  // ---- Adaptive Daily DD (rolling peak) ----
+  #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+    cfg.adaptive_dd_enable = InpAdaptiveDD_Enable;
+  #endif
+  #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+    cfg.adaptive_dd_window_days = MathMax(1, InpAdaptiveDD_WindowDays);
+  #endif
+  #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+    cfg.adaptive_dd_pct = InpAdaptiveDD_Pct;
+  #endif
+   
+  // ---- Big-loss sizing reset (R-multiple latch via Policies) ----
+  #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+    cfg.bigloss_reset_enable = InpBigLossReset_Enable;
+  #endif
+  #ifdef CFG_HAS_BIGLOSS_RESET_R
+    cfg.bigloss_reset_r = MathMax(0.0, InpBigLossReset_R);
+  #endif
+  #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+    cfg.bigloss_reset_mins = MathMax(0, InpBigLossReset_Mins);
+  #endif
+  
   cfg.max_losses_day = InpMaxLossesDay; cfg.max_trades_day = InpMaxTradesDay;
   cfg.max_spread_points = InpMaxSpreadPoints; cfg.slippage_points = InpSlippagePoints;
 
@@ -1203,6 +1269,17 @@ void MirrorInputsToSettings(Settings &cfg)
   // ---- Position mgmt ----
   cfg.be_enable = InpBE_Enable; cfg.be_at_R = InpBE_At_R; cfg.be_lock_pips = InpBE_Lock_Pips;
   cfg.trail_type = InpTrailType; cfg.trail_pips = InpTrailPips; cfg.trail_atr_mult = InpTrailATR_Mult;
+  
+  #ifdef CFG_HAS_TRAIL_AUTO_ADX_TF
+     cfg.trail_auto_adx_tf = InpTrailAuto_ADX_TF;
+   #endif
+   #ifdef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+     cfg.trail_auto_adx_period = InpTrailAuto_ADX_Period;
+   #endif
+   #ifdef CFG_HAS_TRAIL_AUTO_ADX_MIN
+     cfg.trail_auto_adx_min = InpTrailAuto_ADX_Min;
+   #endif
+   
   cfg.p1_at_R = InpP1_At_R; cfg.p1_close_pct = InpP1_ClosePct; cfg.p2_at_R = InpP2_At_R; cfg.p2_close_pct = InpP2_ClosePct;
   cfg.partial_enable = (InpPartial_Enable ? 1 : 0);
 
@@ -2123,6 +2200,33 @@ void FinalizeRuntimeSettings()
 
    // 0) Base snapshot from inputs (ONE time)
    MirrorInputsToSettings(cfg);
+   if(cfg.max_daily_dd_pct <= 0.0) cfg.max_daily_dd_pct = InpMaxDailyDD_Pct;
+
+   // ---- Adaptive DD clamps ----
+   #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+     if(cfg.adaptive_dd_enable)
+     {
+       #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+         if(cfg.adaptive_dd_window_days < 1) cfg.adaptive_dd_window_days = 30;
+       #endif
+       #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+         if(cfg.adaptive_dd_pct <= 0.0) cfg.adaptive_dd_pct = cfg.max_daily_dd_pct;
+       #endif
+     }
+   #endif
+   
+   // ---- Big-loss sizing reset clamps ----
+   #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+     if(cfg.bigloss_reset_enable)
+     {
+       #ifdef CFG_HAS_BIGLOSS_RESET_R
+         if(cfg.bigloss_reset_r <= 0.0) cfg.bigloss_reset_r = 2.0;
+       #endif
+       #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+         if(cfg.bigloss_reset_mins < 0) cfg.bigloss_reset_mins = 0;
+       #endif
+     }
+   #endif
 
    // Move the MVP_NoBlock warning here (from OnInit lines 2157–2160), replacing S->cfg
    #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
@@ -2866,15 +2970,17 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    MarketData::OnTimerRefresh();
-   Risk::Heartbeat(TimeUtils::NowServer());
+   datetime now_srv = TimeUtils::NowServer();
+   Risk::Heartbeat(now_srv);
    PM::ManageAll(S);
    Panel::Render(S);
+   MaybeResetStreaksDaily(now_srv);
 
    DriftAlarm_Check("OnTimer");
    // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
       return;
-   
+
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
    if(g_use_registry)
    {
@@ -2891,8 +2997,6 @@ void OnTimer()
    
    // If ticks are sparse, allow timer-driven router eval (chart symbol only)
    int gate_reason = 0;
-   datetime now_srv = TimeUtils::NowServer();
-   MaybeResetStreaksDaily(now_srv);
    
    // Router mode path (ICT RouterEvaluateAll)
    if(!WarmupGateOK())
@@ -3123,6 +3227,12 @@ void CheckStopTradeAtPrice()
 // -------- Reset streaks once per server day (live-safe, tester-safe) ------
 static int g_streak_day_key = -1;
 
+void ResetStreakCounters()
+{
+   g_consec_wins   = 0;
+   g_consec_losses = 0;
+}
+
 void MaybeResetStreaksDaily(const datetime now_srv)
 {
    MqlDateTime dt;
@@ -3130,13 +3240,32 @@ void MaybeResetStreaksDaily(const datetime now_srv)
    const int key = dt.year*10000 + dt.mon*100 + dt.day;
    if(g_streak_day_key != key)
    {
+      ResetStreakCounters();
       g_streak_day_key = key;
-      g_consec_wins    = 0;
-      g_consec_losses  = 0;
    }
 }
 
 // -------- Streak lot multiplier (applied to risk_mult safely) ------
+bool AllowStreakScalingNow(const double news_risk_mult, const bool news_skip)
+{
+   if(!InpResetStreakOnNewsDerisk)
+      return true;
+
+   if(news_skip)
+      return false;
+
+   if(news_risk_mult < 1.0)
+      return false;
+
+   // Optional: big-loss latch from Policies (requires implementation in Policies.mqh)
+   #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
+      if(Policies::SizingResetActive())
+         return false;
+   #endif
+
+   return true;
+}
+
 double StreakRiskScale()
   {
    double mult = 1.0;
@@ -3463,12 +3592,15 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    int mins_left = 0;
    double risk_mult=1.0;
    bool skip=false;
-   News::CompositeRiskAtBarClose(S, sym, /*shift*/1, risk_mult, skip, mins_left);
+   NewsDefensiveStateAtBarClose(S, sym, 1, risk_mult, skip, mins_left);
    News::SurpriseRiskAdjust(now_srv, sym, S.news_impact_mask, S.cal_lookback_mins,
                             S.cal_hard_skip, S.cal_soft_knee, S.cal_min_scale,
                             risk_mult, skip);
+   
    if(skip)
      {
+      if(InpResetStreakOnNewsDerisk)
+         ResetStreakCounters();
       PM::ManageAll(S);
       Panel::Render(S);
       TraceNoTrade(sym, TS_POLICIES, TR_POLICIES_SOFT_SKIP,
@@ -3482,7 +3614,10 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    SS.risk_mult *= risk_mult;
 
    // Streak scaling (before ML so downstream can log final)
-   SS.risk_mult *= StreakRiskScale();
+   if(AllowStreakScalingNow(risk_mult, skip))
+      SS.risk_mult *= StreakRiskScale();
+   else
+      ResetStreakCounters();
 
    ApplyMetaLayers(pick.dir, SS, pick.bd);
    

@@ -454,6 +454,44 @@ struct Settings;
   #define CFG_HAS_TAPER_FLOOR 1
 #endif
 
+// --- Adaptive rolling-peak DD (compile-safe) ----------------------------------
+#ifndef CFG_HAS_ADAPTIVE_DD_ENABLE
+  #define CFG_HAS_ADAPTIVE_DD_ENABLE 1
+#endif
+#ifndef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+  #define CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS 1
+#endif
+#ifndef CFG_HAS_ADAPTIVE_DD_PCT
+  #define CFG_HAS_ADAPTIVE_DD_PCT 1
+#endif
+
+// --- Big-loss reset latch (compile-safe) --------------------------------------
+#ifndef CFG_HAS_BIGLOSS_RESET_ENABLE
+  #define CFG_HAS_BIGLOSS_RESET_ENABLE 1
+#endif
+#ifndef CFG_HAS_BIGLOSS_RESET_R
+  #define CFG_HAS_BIGLOSS_RESET_R 1
+#endif
+#ifndef CFG_HAS_BIGLOSS_RESET_MINS
+  #define CFG_HAS_BIGLOSS_RESET_MINS 1
+#endif
+
+// --- Risk multiplier max cap (compile-safe) -----------------------------------
+#ifndef CFG_HAS_RISK_MULT_MAX
+  #define CFG_HAS_RISK_MULT_MAX 1
+#endif
+
+// --- Trailing AUTO ADX regime fields (compile-safe) ----------------------------
+#ifndef CFG_HAS_TRAIL_AUTO_ADX_TF
+  #define CFG_HAS_TRAIL_AUTO_ADX_TF 1
+#endif
+#ifndef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+  #define CFG_HAS_TRAIL_AUTO_ADX_PERIOD 1
+#endif
+#ifndef CFG_HAS_TRAIL_AUTO_ADX_MIN
+  #define CFG_HAS_TRAIL_AUTO_ADX_MIN 1
+#endif
+
 // --- Monthly profit target (compile-safe) ------------------------------------
 // Primary feature switch (used by Settings and Policies)
 #ifndef CFG_HAS_MONTHLY_TARGET
@@ -2206,11 +2244,15 @@ namespace Config
       
     // Risk (cfg.* are in PERCENT units, e.g., 1.0 = 1%)
     if(cfg.risk_pct<0.0001) cfg.risk_pct=0.0001;
-    if(cfg.risk_cap_pct<0.0001) cfg.risk_cap_pct=0.0001;
+    #ifdef CFG_HAS_RISK_MULT_MAX
+      if(cfg.risk_mult_max <= 0.0) cfg.risk_mult_max = 1.0;
+      if(cfg.risk_mult_max > 5.0)  cfg.risk_mult_max = 5.0;
+    #endif
+    
     if(cfg.min_sl_pips<0.0) cfg.min_sl_pips=0.0;
     if(cfg.min_tp_pips<0.0) cfg.min_tp_pips=0.0;
     if(cfg.max_sl_ceiling_pips<cfg.min_sl_pips) cfg.max_sl_ceiling_pips=cfg.min_sl_pips;
-    if(cfg.max_daily_dd_pct<0.0) cfg.max_daily_dd_pct=0.0;
+    if(cfg.max_daily_dd_pct <= 0.0) cfg.max_daily_dd_pct = 2.0;
     // Broker-enforced SL floor: use StopsLevel + FreezeLevel (in points).
     // We treat min_sl_pips as "points" here to avoid double-guessing your pip math.
     // If your pipeline already treats it as true pips, you can scale accordingly.
@@ -2237,6 +2279,26 @@ namespace Config
     #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
       if(cfg.day_dd_limit_pct<0.0) cfg.day_dd_limit_pct=0.0;
     #endif
+    
+    #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+      if(cfg.adaptive_dd_window_days < 2)   cfg.adaptive_dd_window_days = 30;
+      if(cfg.adaptive_dd_window_days > 365) cfg.adaptive_dd_window_days = 365;
+    #endif
+   
+    #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+      if(cfg.adaptive_dd_pct <= 0.0)
+        cfg.adaptive_dd_pct = cfg.max_daily_dd_pct;
+    #endif
+   
+    #ifdef CFG_HAS_BIGLOSS_RESET_R
+      if(cfg.bigloss_reset_r <= 0.0) cfg.bigloss_reset_r = 2.0;
+    #endif
+   
+    #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+      if(cfg.bigloss_reset_mins < 0)      cfg.bigloss_reset_mins = 0;
+      if(cfg.bigloss_reset_mins > 24*60)  cfg.bigloss_reset_mins = 24*60;
+    #endif
+
     // Legacy aliases / HTF slot
     if(cfg.risk_per_trade <= 0.0)
       cfg.risk_per_trade = cfg.risk_pct;
@@ -2386,9 +2448,27 @@ namespace Config
     // Position mgmt
     if(cfg.be_at_R<0.0) cfg.be_at_R=0.0;
     if(cfg.be_lock_pips<0.0) cfg.be_lock_pips=0.0;
-    if((int)cfg.trail_type<0) cfg.trail_type=(TrailType)0;
+    if((int)cfg.trail_type < 0) cfg.trail_type = (TrailType)0;
+    if((int)cfg.trail_type > 5) cfg.trail_type = (TrailType)5;
     if(cfg.trail_pips<0.0) cfg.trail_pips=0.0;
     if(cfg.trail_atr_mult<0.0) cfg.trail_atr_mult=0.0;
+    
+    #ifdef CFG_HAS_TRAIL_AUTO_ADX_TF
+      if((int)cfg.trail_auto_adx_tf < (int)PERIOD_M1)
+        cfg.trail_auto_adx_tf = cfg.tf_h1;
+    #endif
+   
+    #ifdef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+      if(cfg.trail_auto_adx_period < 2)
+        cfg.trail_auto_adx_period = 14;
+    #endif
+   
+    #ifdef CFG_HAS_TRAIL_AUTO_ADX_MIN
+      if(cfg.trail_auto_adx_min <= 0.0)
+        cfg.trail_auto_adx_min = 25.0;
+      if(cfg.trail_auto_adx_min > 80.0)
+        cfg.trail_auto_adx_min = 80.0;
+    #endif
 
     if(cfg.p1_at_R<0.0) cfg.p1_at_R=0.0;
     if(cfg.p2_at_R<0.0) cfg.p2_at_R=0.0;
@@ -2950,10 +3030,34 @@ namespace Config
      // Risk (percent)
      cfg.risk_pct            = risk_pct;
      cfg.risk_cap_pct        = risk_cap_pct;
+     #ifdef CFG_HAS_RISK_MULT_MAX
+       cfg.risk_mult_max = 1.0;
+     #endif
+     
      cfg.min_sl_pips         = min_sl_pips;
      cfg.min_tp_pips         = min_tp_pips;
      cfg.max_sl_ceiling_pips = max_sl_ceiling_pips;
      cfg.max_daily_dd_pct    = max_dd_day_pct;
+     
+     #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+       cfg.adaptive_dd_enable = false;
+     #endif
+     #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+       cfg.adaptive_dd_window_days = 30;
+     #endif
+     #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+       cfg.adaptive_dd_pct = cfg.max_daily_dd_pct;
+     #endif
+
+     #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+       cfg.bigloss_reset_enable = true;
+     #endif
+     #ifdef CFG_HAS_BIGLOSS_RESET_R
+       cfg.bigloss_reset_r = 2.0;
+     #endif
+     #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+       cfg.bigloss_reset_mins = 60;
+     #endif
    
      // Legacy alias: keep risk_per_trade in sync with risk_pct
      cfg.risk_per_trade      = risk_pct;
@@ -3038,6 +3142,17 @@ namespace Config
      cfg.trail_type     = (TrailType)trail_type;
      cfg.trail_pips     = trail_pips;
      cfg.trail_atr_mult = trail_atr_mult;
+     
+     #ifdef CFG_HAS_TRAIL_AUTO_ADX_TF
+       cfg.trail_auto_adx_tf = PERIOD_H1;
+     #endif
+     #ifdef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+       cfg.trail_auto_adx_period = 14;
+     #endif
+     #ifdef CFG_HAS_TRAIL_AUTO_ADX_MIN
+       cfg.trail_auto_adx_min = 25.0;
+     #endif
+     
      cfg.partial_enable = partial_enable;
      cfg.p1_at_R        = p1_at_R;
      cfg.p1_close_pct   = p1_close_pct;
@@ -4299,6 +4414,10 @@ namespace Config
 
       else if(k=="risk") cfg.risk_pct=ToDouble(v);
       else if(k=="cap") cfg.risk_cap_pct=ToDouble(v);
+      #ifdef CFG_HAS_RISK_MULT_MAX
+        else if(k=="rmmax") cfg.risk_mult_max = ToDouble(v);
+      #endif
+      
       else if(k=="minsl") cfg.min_sl_pips=ToDouble(v);
       else if(k=="mintp") cfg.min_tp_pips=ToDouble(v);
       else if(k=="slceil") cfg.max_sl_ceiling_pips=ToDouble(v);
@@ -4306,6 +4425,26 @@ namespace Config
       else if(k=="dd")     cfg.max_daily_dd_pct=ToDouble(v);
       #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
         else if(k=="ddlim")  cfg.day_dd_limit_pct=ToDouble(v);
+      #endif
+      
+      #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+        else if(k=="adOn") cfg.adaptive_dd_enable = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+        else if(k=="adWin") cfg.adaptive_dd_window_days = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+        else if(k=="adPct") cfg.adaptive_dd_pct = ToDouble(v);
+      #endif
+      
+      #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+        else if(k=="blOn") cfg.bigloss_reset_enable = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_BIGLOSS_RESET_R
+        else if(k=="blR") cfg.bigloss_reset_r = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+        else if(k=="blMin") cfg.bigloss_reset_mins = ToInt(v);
       #endif
 
       #ifdef CFG_HAS_MAX_ACCOUNT_DD_PCT
@@ -4397,6 +4536,16 @@ namespace Config
       else if(k=="trt") cfg.trail_type=(TrailType)ToInt(v);
       else if(k=="trp") cfg.trail_pips=ToDouble(v);
       else if(k=="trat") cfg.trail_atr_mult=ToDouble(v);
+      
+      #ifdef CFG_HAS_TRAIL_AUTO_ADX_TF
+        else if(k=="tAdxTf") cfg.trail_auto_adx_tf = (ENUM_TIMEFRAMES)ToInt(v);
+      #endif
+      #ifdef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+        else if(k=="tAdxPer") cfg.trail_auto_adx_period = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_TRAIL_AUTO_ADX_MIN
+        else if(k=="tAdxMin") cfg.trail_auto_adx_min = ToDouble(v);
+      #endif
 
       else if(k=="pe") cfg.partial_enable=ToBool(v);
       else if(k=="p1r") cfg.p1_at_R=ToDouble(v);
@@ -4722,6 +4871,10 @@ struct Settings
   // --- Risk core (RiskEngine) ----------------------------------------------
   double            risk_pct;            // % balance per trade (e.g., 1.00 = 1%)
   double            risk_cap_pct;        // hard cap per trade (% balance)
+  #ifdef CFG_HAS_RISK_MULT_MAX
+  double            risk_mult_max;       // cap for any risk multiplier scaling
+  #endif
+  
   double            min_sl_pips;         // SL floor (pips)
   double            min_tp_pips;         // TP floor (pips)
   double            max_sl_ceiling_pips; // SL ceiling (pips)
@@ -4753,6 +4906,29 @@ struct Settings
   #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
   double            day_dd_limit_pct;    // onset of risk taper (RiskEngine), e.g., 2.0
   #endif
+  
+  // --- Adaptive DD (rolling peak) ---------------------------------------------
+  #ifdef CFG_HAS_ADAPTIVE_DD_ENABLE
+  bool              adaptive_dd_enable;
+  #endif
+  #ifdef CFG_HAS_ADAPTIVE_DD_WINDOW_DAYS
+  int               adaptive_dd_window_days;
+  #endif
+  #ifdef CFG_HAS_ADAPTIVE_DD_PCT
+  double            adaptive_dd_pct;     // percent of rolling peak
+  #endif
+
+  // --- Big-loss reset latch ---------------------------------------------------
+  #ifdef CFG_HAS_BIGLOSS_RESET_ENABLE
+  bool              bigloss_reset_enable;
+  #endif
+  #ifdef CFG_HAS_BIGLOSS_RESET_R
+  double            bigloss_reset_r;     // reset trigger at or below -R
+  #endif
+  #ifdef CFG_HAS_BIGLOSS_RESET_MINS
+  int               bigloss_reset_mins;  // cooldown after big loss
+  #endif
+  
   int               max_losses_day;      // legacy (count)
   int               max_trades_day;      // trades/day cap (RiskEngine)
 
@@ -5069,6 +5245,17 @@ struct Settings
   double            trail_pips;
   double            trail_atr_mult;
 
+  // AUTO trailing regime inputs (ADX-based)
+  #ifdef CFG_HAS_TRAIL_AUTO_ADX_TF
+  ENUM_TIMEFRAMES    trail_auto_adx_tf;
+  #endif
+  #ifdef CFG_HAS_TRAIL_AUTO_ADX_PERIOD
+  int               trail_auto_adx_period;
+  #endif
+  #ifdef CFG_HAS_TRAIL_AUTO_ADX_MIN
+  double            trail_auto_adx_min;
+  #endif
+  
   bool              partial_enable;
   double            p1_at_R;
   double            p1_close_pct;
