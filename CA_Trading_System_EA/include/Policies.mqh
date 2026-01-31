@@ -441,6 +441,19 @@ namespace Policies
     #endif
   }
 
+  // 0 = cycle-start equity, 1 = initial equity (linear), 2 = initial equity (compound; reserved)
+  inline int CfgMonthlyTargetBaseMode(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MONTHLY_TARGET_BASE_MODE
+      const int m = (int)cfg.monthly_target_base_mode;
+      if(m >= CFG_TARGET_BASE_CYCLE_START && m <= CFG_TARGET_BASE_INITIAL_COMPOUND)
+        return m;
+      return CFG_TARGET_BASE_DEFAULT;
+    #else
+      return CFG_TARGET_BASE_DEFAULT;
+    #endif
+  }
+
   inline long CfgMagicNumber(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAGIC_NUMBER
