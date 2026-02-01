@@ -51,6 +51,7 @@
 
 // Optional meta-layers
 #define ENABLE_ML_BLENDER
+//#define ML_HAS_TRADE_OUTCOME_HOOKS
 #include "include/MLBlender.mqh"
 
 // Core trading stack
@@ -644,6 +645,9 @@ input double           InpML_MinOOS_Acc         = 0.52; // ML Min OOS Acc
 
 input int              InpML_LabelHorizonBars   = 6; // ML Label Horizon Bars
 input double           InpML_LabelATRMult       = 0.25; // ML Label ATR Mult (or points threshold if you prefer)
+input bool             InpML_TrainOnTesterEnd   = true; // ML Train at end of tester
+input int              InpML_BackfillBars       = 0; // ML Backfill bars (0=off)
+input int              InpML_BackfillStep       = 3; // ML Backfill step (e.g., every 3 bars)
 
 input bool             InpML_ExternalEnable     = false; // ML External Enable
 input int              InpML_ExternalMode       = 1; // ML External Mode: 1=file, 2=socket
@@ -1126,11 +1130,25 @@ void EvaluateOneSymbol(const string sym)
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
-      Policies::NotifyTradePlaced();
+   {
+    Policies::NotifyTradePlaced();
 
-    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-               ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
-               ex.last_error, ex.last_error_text);
+    // Record executed decisions for ML training (label computed later on new bars)
+    if(g_ml_on && ML::IsActive())
+      {
+       ML::ObserveWinnerSample(sym, S.tf_entry, pick.dir, trade_cfg, pick.bd, ss);
+
+       // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
+       #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
+       if(ex.ticket > 0)
+          ML::TradeOpenIntent(ex.ticket, sym, pick.dir, (StrategyID)pick.id, plan, trade_cfg, pick.bd, ss);
+       #endif
+      }
+   }
+   
+   LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
+              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
+              ex.last_error, ex.last_error_text);
 #ifdef TELEMETRY_HAS_TRADEPLAN
    string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
    Telemetry::TradePlan(sym, side, plan.lots, plan.price, plan.sl, plan.tp, ss.score);
@@ -1921,19 +1939,6 @@ bool RouteManualRegimePick(const Settings &cfg, StratReg::RoutedPick &pick)
 //+------------------------------------------------------------------+
 void ApplyMetaLayers(Direction dir, StratScore &ss, ConfluenceBreakdown &bd)
   {
-   if(g_ml_on)
-     {
-      double blended=bd.score_final, p=0.0;
-      bool acc=false;
-      if(ML::BlendFull(dir, S, bd, ss, bd.score_final, p, acc, blended))
-        {
-         ML::HookScore(bd, p);
-         bd.score_final = blended;
-         ss.score       = blended;
-         if(acc)
-            ML::ObserveWinnerSample(_Symbol, S.tf_entry, dir, S, bd, ss);
-        }
-     }
    if(g_calm_mode)
       ss.risk_mult *= 0.60;
   }
@@ -2760,6 +2765,13 @@ int OnInit()
    if(!warm_ok)
       LogX::Warn("[Warmup] Some series are thin. Indicators may be unstable until history fully loads.");
 
+   // ML: tester-only historic backfill (fast dataset generation)
+   if(g_ml_on && MQLInfoInteger(MQL_TESTER) && InpML_BackfillBars > 0)
+   {
+      for(int i=0;i<g_symCount; ++i)
+         ML::BackfillDataset(g_symbols[i], S.tf_entry, S, InpML_BackfillBars, InpML_BackfillStep);
+   }
+    
    // Timer (seconds; EventSetTimer is seconds granularity)
    int sec = (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000);
    EventSetTimer(MathMax(1, sec));
@@ -2868,7 +2880,12 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   ML::Maintain(_Symbol, S.tf_entry);
+    if(g_ml_on)
+    {
+       for(int i=0;i<g_symCount; ++i)
+          ML::Maintain(g_symbols[i], S.tf_entry);
+    }
+    
    // Unified warmup gate (tester-safe; avoids permanent stall)
    if(!WarmupGateOK())
    {
@@ -3062,7 +3079,11 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    MarketData::OnTimerRefresh();
-   ML::Maintain(_Symbol, S.tf_entry);
+   if(g_ml_on)
+    {
+       for(int i=0;i<g_symCount; ++i)
+          ML::Maintain(g_symbols[i], S.tf_entry);
+    }
    datetime now_srv = TimeUtils::NowServer();
    Risk::Heartbeat(now_srv);
    PM::ManageAll(S);
@@ -3744,11 +3765,25 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    _LogExecReject("exec_reject", sym, sid, pick.dir, SS, plan, ex);
    if(ex.ok)
-      Policies::NotifyTradePlaced();
+   {
+    Policies::NotifyTradePlaced();
+
+    // Record executed decisions for ML training (label computed later on new bars)
+    if(g_ml_on && ML::IsActive())
+      {
+       ML::ObserveWinnerSample(sym, S.tf_entry, pick.dir, trade_cfg, pick.bd, SS);
+
+       // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
+       #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
+          if(ex.ticket > 0)
+             ML::TradeOpenIntent(ex.ticket, sym, pick.dir, sid, plan, trade_cfg, pick.bd, SS);
+       #endif
+      }
+   }
    
-    LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
-               ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
-               ex.last_error, ex.last_error_text);
+   LogX::Exec(sym, pick.dir, plan.lots, plan.price, plan.sl, plan.tp,
+              ex.ok, ex.retcode, ex.ticket, trade_cfg.slippage_points,
+              ex.last_error, ex.last_error_text);
 
    #ifdef TELEMETRY_HAS_TRADEPLAN
       string side = (pick.dir==DIR_BUY ? "BUY" : "SELL");
@@ -3821,6 +3856,38 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
             g_consec_losses++;
             g_consec_wins=0;
          }
+         
+         #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
+          if(g_ml_on && ML::IsActive())
+          {
+             long pos_id2 = 0;
+             HistoryDealGetInteger(tx.deal, DEAL_POSITION_ID, pos_id2);
+
+             long t_close_i = 0;
+             HistoryDealGetInteger(tx.deal, DEAL_TIME, t_close_i);
+
+             double close_price = 0.0;
+             HistoryDealGetDouble(tx.deal, DEAL_PRICE, close_price);
+
+             long reason_i = 0;
+             HistoryDealGetInteger(tx.deal, DEAL_REASON, reason_i);
+
+             if(pos_id2 > 0)
+                ML::TradeCloseOutcome(pos_id2, tx.symbol, (datetime)t_close_i, close_price, profit, (int)reason_i);
+          }
+         #endif
+      }
+      
+      if(entry == DEAL_ENTRY_IN)
+      {
+         long order_ticket=0, pos_id=0;
+         HistoryDealGetInteger(tx.deal, DEAL_ORDER, order_ticket);
+         HistoryDealGetInteger(tx.deal, DEAL_POSITION_ID, pos_id);
+         
+         #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
+            if(order_ticket > 0 && pos_id > 0 && g_ml_on && ML::IsActive())
+               ML::TradeBindOrderToPosition(order_ticket, pos_id, tx.symbol, tx.deal);
+         #endif
       }
       #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
          if(Policies::SizingResetActive())
@@ -4263,6 +4330,10 @@ double OnTester()
 
    if(InpTesterSnapshot)
       TesterX::SnapshotParams(S, InpTesterNote);
+   
+   // ML: train + validate at end of Strategy Tester run
+   if(g_ml_on && InpML_TrainOnTesterEnd)
+       ML::CalibrateWalkForward();
    return score;
   }
 //+------------------------------------------------------------------+
