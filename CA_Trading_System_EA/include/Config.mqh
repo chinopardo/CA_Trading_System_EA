@@ -24,6 +24,15 @@ struct Settings;
 #ifndef CFG_HAS_UMBRELLA
   #define CFG_HAS_UMBRELLA 1
 #endif
+#ifndef CFG_HAS_CONFL_BLEND_TREND
+   #define CFG_HAS_CONFL_BLEND_TREND 1
+#endif
+#ifndef CFG_HAS_CONFL_BLEND_MR
+   #define CFG_HAS_CONFL_BLEND_MR 1
+#endif
+#ifndef CFG_HAS_CONFL_BLEND_OTHERS
+   #define CFG_HAS_CONFL_BLEND_OTHERS 1
+#endif
 
 // --- Feature flag so other files can #ifdef safely
 #ifndef CFG_HAS_STRAT_TOGGLES
@@ -31,6 +40,12 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_STRAT_MODE
   #define CFG_HAS_STRAT_MODE 1
+#endif
+#ifndef CFG_HAS_ML_THRESHOLD
+#define CFG_HAS_ML_THRESHOLD 1
+#endif
+#ifndef CFG_HAS_ML_SETTINGS
+#define CFG_HAS_ML_SETTINGS 1
 #endif
 
 // --- Strategy enable toggles are present in Settings (compile-safe macros used across modules)
@@ -481,6 +496,20 @@ struct Settings;
   #define CFG_HAS_RISK_MULT_MAX 1
 #endif
 
+// --- Position management (PM) fields ---------------------------------------
+#ifndef CFG_HAS_PM_MODE
+ #define CFG_HAS_PM_MODE 1
+#endif
+
+// Optional but recommended (PositionMgmt can use them if present)
+#ifndef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+ #define CFG_HAS_PM_ALLOW_DAILY_FLATTEN 1
+#endif
+
+#ifndef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+ #define CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS 1
+#endif
+
 // --- Trailing AUTO ADX regime fields (compile-safe) ----------------------------
 #ifndef CFG_HAS_TRAIL_AUTO_ADX_TF
   #define CFG_HAS_TRAIL_AUTO_ADX_TF 1
@@ -843,6 +872,36 @@ namespace Config
      bool news_neutral_on_no_data;  // missing data => neutral (no block)
      bool news_allow_cached;
    
+     #ifdef CFG_HAS_ML_SETTINGS
+        // --- MLBlender runtime & lifecycle (meta-layer)
+        bool   ml_enable;
+        double ml_weight;
+        double ml_temperature;
+        double ml_conformal_alpha;
+        double ml_dampen;
+      
+        bool   ml_auto_calibrate;
+        int    ml_model_max_age_hours;
+        double ml_min_oos_auc;
+        double ml_min_oos_acc;
+        int    ml_min_samples_train;
+        int    ml_min_samples_test;
+      
+        int    ml_label_horizon_bars;
+        double ml_label_atr_mult;
+      
+        bool   ml_use_common_files;
+        string ml_model_file;
+        string ml_dataset_file;
+      
+        bool   ml_external_enable;
+        int    ml_external_mode;           // 0=off, 1=file, 2=socket
+        string ml_external_file;
+        int    ml_external_poll_ms;
+        string ml_external_socket_host;
+        int    ml_external_socket_port;
+     #endif
+
      // Silver Bullet timezone window (extra confluence)
      bool   extra_silverbullet_tz;
      double w_silverbullet_tz;
@@ -1659,6 +1718,35 @@ namespace Config
        cfg.tf_trend_htf = x.tf_trend_htf;
      #endif
    
+     #ifdef CFG_HAS_ML_SETTINGS
+        cfg.ml_enable          = x.ml_enable;
+        cfg.ml_weight          = MathMin(1.0, MathMax(0.0, x.ml_weight));
+        cfg.ml_temperature     = MathMax(0.01, x.ml_temperature);
+        cfg.ml_conformal_alpha = MathMin(0.50, MathMax(0.0, x.ml_conformal_alpha));
+        cfg.ml_dampen          = MathMin(1.0,  MathMax(0.0, x.ml_dampen));
+      
+        cfg.ml_auto_calibrate     = x.ml_auto_calibrate;
+        cfg.ml_model_max_age_hours= MathMax(0, x.ml_model_max_age_hours);
+        cfg.ml_min_oos_auc        = MathMin(1.0, MathMax(0.0, x.ml_min_oos_auc));
+        cfg.ml_min_oos_acc        = MathMin(1.0, MathMax(0.0, x.ml_min_oos_acc));
+        cfg.ml_min_samples_train  = MathMax(0, x.ml_min_samples_train);
+        cfg.ml_min_samples_test   = MathMax(0, x.ml_min_samples_test);
+      
+        cfg.ml_label_horizon_bars = MathMax(1, x.ml_label_horizon_bars);
+        cfg.ml_label_atr_mult     = MathMax(0.0, x.ml_label_atr_mult);
+      
+        cfg.ml_use_common_files   = x.ml_use_common_files;
+        cfg.ml_model_file         = x.ml_model_file;
+        cfg.ml_dataset_file       = x.ml_dataset_file;
+      
+        cfg.ml_external_enable      = x.ml_external_enable;
+        cfg.ml_external_mode        = MathMax(0, x.ml_external_mode);
+        cfg.ml_external_file        = x.ml_external_file;
+        cfg.ml_external_poll_ms     = MathMax(250, x.ml_external_poll_ms);
+        cfg.ml_external_socket_host = x.ml_external_socket_host;
+        cfg.ml_external_socket_port = MathMax(0, x.ml_external_socket_port);
+     #endif
+
      // Volume footprint
      #ifdef CFG_HAS_EXTRA_VOLUME_FP
        cfg.extra_volume_footprint = x.extra_volume_footprint;
@@ -1961,6 +2049,13 @@ namespace Config
      x.main_require_checklist = true;
      x.main_confirm_any_of_3  = true;
      
+     #ifdef CFG_HAS_ML_SETTINGS
+        x.ml_model_file = "";
+        x.ml_dataset_file = "";
+        x.ml_external_file = "";
+        x.ml_external_socket_host = "";
+     #endif
+
      // Pack strategies off by default (confluence-only unless explicitly enabled)
      x.enable_pack_strats = false;
      x.disable_packs      = false;
@@ -1972,6 +2067,35 @@ namespace Config
      x.conf_min_count         = 5;
      x.conf_min_score         = 0.55;
     
+     #ifdef CFG_HAS_ML_SETTINGS
+        x.ml_enable           = false;  // default OFF: preserves current behaviour
+        x.ml_weight           = 0.0;    // neutral
+        x.ml_temperature      = 1.0;
+        x.ml_conformal_alpha  = 0.0;
+        x.ml_dampen           = 0.0;
+      
+        x.ml_auto_calibrate     = false;
+        x.ml_model_max_age_hours= 168;  // 7d
+        x.ml_min_oos_auc        = 0.55;
+        x.ml_min_oos_acc        = 0.52;
+        x.ml_min_samples_train  = 200;
+        x.ml_min_samples_test   = 100;
+      
+        x.ml_label_horizon_bars = 10;
+        x.ml_label_atr_mult     = 0.50;
+      
+        x.ml_use_common_files   = true;
+        x.ml_model_file         = "CAEA_MLModel.ini";
+        x.ml_dataset_file       = "CAEA_MLDataset.csv";
+      
+        x.ml_external_enable      = false;
+        x.ml_external_mode        = 1;
+        x.ml_external_file        = "CAEA_MLExternal.csv";
+        x.ml_external_poll_ms     = 5000;
+        x.ml_external_socket_host = "127.0.0.1";
+        x.ml_external_socket_port = 5050;
+     #endif
+
      #ifdef CFG_HAS_MAIN_REQUIRE_CLASSICAL
        x.main_require_classical = false; // default OFF (more trades; avoids “over-filtering”)
      #endif
@@ -2237,6 +2361,54 @@ namespace Config
     ConfigCore::Normalize(cfg);
     // Ensure Main confluence toggles/weights are not left uninitialized
     SeedMainConfluenceDefaults(cfg);
+    #ifdef CFG_HAS_ML_THRESHOLD
+      if(cfg.ml_threshold <= 0.0) cfg.ml_threshold = 0.55;  // keep existing fallback behavior
+      if(cfg.ml_threshold < 0.0)  cfg.ml_threshold = 0.0;
+      if(cfg.ml_threshold > 1.0)  cfg.ml_threshold = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_ML_SETTINGS
+        // --- ML lifecycle normalization (safe even when loaded from CSV)
+        if(cfg.ml_weight < 0.0) cfg.ml_weight = 0.0;
+        if(cfg.ml_weight > 1.0) cfg.ml_weight = 1.0;
+      
+        if(cfg.ml_temperature < 0.01) cfg.ml_temperature = 1.0;
+      
+        if(cfg.ml_conformal_alpha < 0.0) cfg.ml_conformal_alpha = 0.0;
+        if(cfg.ml_conformal_alpha > 0.50) cfg.ml_conformal_alpha = 0.50;
+      
+        if(cfg.ml_dampen < 0.0) cfg.ml_dampen = 0.0;
+        if(cfg.ml_dampen > 1.0) cfg.ml_dampen = 1.0;
+      
+        if(cfg.ml_model_max_age_hours < 0) cfg.ml_model_max_age_hours = 0;
+      
+        if(cfg.ml_min_oos_auc < 0.0) cfg.ml_min_oos_auc = 0.0;
+        if(cfg.ml_min_oos_auc > 1.0) cfg.ml_min_oos_auc = 1.0;
+      
+        if(cfg.ml_min_oos_acc < 0.0) cfg.ml_min_oos_acc = 0.0;
+        if(cfg.ml_min_oos_acc > 1.0) cfg.ml_min_oos_acc = 1.0;
+      
+        if(cfg.ml_min_samples_train < 0) cfg.ml_min_samples_train = 0;
+        if(cfg.ml_min_samples_test  < 0) cfg.ml_min_samples_test  = 0;
+      
+        if(cfg.ml_label_horizon_bars < 1) cfg.ml_label_horizon_bars = 1;
+        if(cfg.ml_label_atr_mult < 0.0)   cfg.ml_label_atr_mult = 0.0;
+      
+        // File defaults (only if empty) — keeps behavior stable
+        if(cfg.ml_model_file == "")   cfg.ml_model_file   = "CAEA_MLModel.ini";
+        if(cfg.ml_dataset_file == "") cfg.ml_dataset_file = "CAEA_MLDataset.csv";
+      
+        // External integration normalization
+        if(cfg.ml_external_mode < 0) cfg.ml_external_mode = 0;
+        if(cfg.ml_external_mode > 2) cfg.ml_external_mode = 2;
+      
+        if(cfg.ml_external_poll_ms < 250) cfg.ml_external_poll_ms = 250;
+      
+        if(cfg.ml_external_file == "") cfg.ml_external_file = "CAEA_MLExternal.csv";
+        if(cfg.ml_external_socket_host == "") cfg.ml_external_socket_host = "127.0.0.1";
+        if(cfg.ml_external_socket_port < 0) cfg.ml_external_socket_port = 0;
+        if(cfg.ml_external_socket_port == 0) cfg.ml_external_socket_port = 5050;
+    #endif
 
     // Assets & TFs
     if(ArraySize(cfg.asset_list)<=0){ ArrayResize(cfg.asset_list,1); cfg.asset_list[0]=_Symbol; }
@@ -2536,6 +2708,11 @@ namespace Config
     #endif
 
     // Position mgmt
+    #ifdef CFG_HAS_PM_MODE
+      if(cfg.pm_mode < 0) cfg.pm_mode = 0;
+      else if(cfg.pm_mode > 2) cfg.pm_mode = 2;
+    #endif
+
     if(cfg.be_at_R<0.0) cfg.be_at_R=0.0;
     if(cfg.be_lock_pips<0.0) cfg.be_lock_pips=0.0;
     if((int)cfg.trail_type < 0) cfg.trail_type = (TrailType)0;
@@ -3226,6 +3403,16 @@ namespace Config
      cfg.fibRRHardReject       = true;   // default: hard gate
    
      // Position mgmt
+     #ifdef CFG_HAS_PM_MODE
+        cfg.pm_mode = 0; // preserve current behavior; EA/CSV can override
+     #endif
+     #ifdef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+        cfg.pm_allow_daily_flatten = false;
+     #endif
+     #ifdef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+        cfg.pm_post_dd_cooldown_seconds = 0;
+     #endif
+
      cfg.be_enable      = be_enable;
      cfg.be_at_R        = be_at_R;
      cfg.be_lock_pips   = be_lock_pips;
@@ -3471,6 +3658,13 @@ namespace Config
       s+=",monthTarget="+DoubleToString(c.monthly_target_pct,3);
     #endif
     
+    #ifdef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
+      s+=",monthCycle="+IntegerToString(c.monthly_target_cycle_mode);
+    #endif
+    #ifdef CFG_HAS_MONTHLY_TARGET_BASE_MODE
+      s+=",monthBase="+IntegerToString(c.monthly_target_base_mode);
+    #endif
+
     // Account-wide DD & challenge baseline
     #ifdef CFG_HAS_MAX_ACCOUNT_DD_PCT
       s+=",acctDD="+DoubleToString(c.max_account_dd_pct,3);
@@ -3545,6 +3739,16 @@ namespace Config
     s+=",tpq="+DoubleToString(c.tp_quantile,3);
     s+=",tpr="+DoubleToString(c.tp_minr_floor,3);
     s+=",slm="+DoubleToString(c.atr_sl_mult,3);
+
+    #ifdef CFG_HAS_PM_MODE
+       s+=",pm="+IntegerToString(c.pm_mode);
+    #endif
+    #ifdef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+       s+=",pmFlat="+BoolStr(c.pm_allow_daily_flatten);
+    #endif
+    #ifdef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+       s+=",pmCd="+IntegerToString(c.pm_post_dd_cooldown_seconds);
+    #endif
 
     s+=",be="+BoolStr(c.be_enable);
     s+=",beat="+DoubleToString(c.be_at_R,3);
@@ -3722,6 +3926,37 @@ namespace Config
     #endif
     #ifdef CFG_HAS_CONFL_BLEND_OTHERS
       s+=",cbOther="+DoubleToString(c.confl_blend_others,3);
+    #endif
+    #ifdef CFG_HAS_ML_THRESHOLD
+      s+=",mlTh="+DoubleToString(c.ml_threshold,3);
+    #endif
+    #ifdef CFG_HAS_ML_SETTINGS
+      s+=",mlOn="+BoolStr(c.ml_enable);
+      s+=",mlW="+DoubleToString(c.ml_weight,3);
+      s+=",mlT="+DoubleToString(c.ml_temperature,3);
+      s+=",mlCA="+DoubleToString(c.ml_conformal_alpha,3);
+      s+=",mlD="+DoubleToString(c.ml_dampen,3);
+   
+      s+=",mlAuto="+BoolStr(c.ml_auto_calibrate);
+      s+=",mlAgeH="+IntegerToString(c.ml_model_max_age_hours);
+      s+=",mlAUC="+DoubleToString(c.ml_min_oos_auc,3);
+      s+=",mlACC="+DoubleToString(c.ml_min_oos_acc,3);
+      s+=",mlTrN="+IntegerToString(c.ml_min_samples_train);
+      s+=",mlTeN="+IntegerToString(c.ml_min_samples_test);
+   
+      s+=",mlHor="+IntegerToString(c.ml_label_horizon_bars);
+      s+=",mlATR="+DoubleToString(c.ml_label_atr_mult,3);
+   
+      s+=",mlCom="+BoolStr(c.ml_use_common_files);
+      s+=",mlFile="+c.ml_model_file;
+      s+=",mlData="+c.ml_dataset_file;
+   
+      s+=",mlExt="+BoolStr(c.ml_external_enable);
+      s+=",mlExtM="+IntegerToString(c.ml_external_mode);
+      s+=",mlExtF="+c.ml_external_file;
+      s+=",mlExtMs="+IntegerToString(c.ml_external_poll_ms);
+      s+=",mlHost="+c.ml_external_socket_host;
+      s+=",mlPort="+IntegerToString(c.ml_external_socket_port);
     #endif
 
     // Optional router hints (if Settings declares them)
@@ -4558,6 +4793,15 @@ namespace Config
           cfg.monthly_target_pct = ToDouble(v);
       #endif
 
+      #ifdef CFG_HAS_MONTHLY_TARGET_CYCLE_MODE
+        else if(k=="monthCycle")
+          cfg.monthly_target_cycle_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_MONTHLY_TARGET_BASE_MODE
+        else if(k=="monthBase")
+          cfg.monthly_target_base_mode = ToInt(v);
+      #endif
+
       else if(k=="loss") cfg.max_losses_day=ToInt(v);
       else if(k=="trades") cfg.max_trades_day=ToInt(v);
       else if(k=="spr") cfg.max_spread_points=ToInt(v);
@@ -4619,6 +4863,16 @@ namespace Config
       else if(k=="tpq") cfg.tp_quantile=ToDouble(v);
       else if(k=="tpr") cfg.tp_minr_floor=ToDouble(v);
       else if(k=="slm") cfg.atr_sl_mult=ToDouble(v);
+
+      #ifdef CFG_HAS_PM_MODE
+         else if(k=="pm") cfg.pm_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+         else if(k=="pmFlat") cfg.pm_allow_daily_flatten = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+         else if(k=="pmCd") cfg.pm_post_dd_cooldown_seconds = ToInt(v);
+      #endif
 
       else if(k=="be") cfg.be_enable=ToBool(v);
       else if(k=="beat") cfg.be_at_R=ToDouble(v);
@@ -4762,6 +5016,38 @@ namespace Config
       #endif
       #ifdef CFG_HAS_CONFL_BLEND_OTHERS
         else if(k=="cbOther") cfg.confl_blend_others = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_ML_THRESHOLD
+        else if(k=="mlTh") cfg.ml_threshold = ToDouble(v);
+      #endif
+
+      #ifdef CFG_HAS_ML_SETTINGS
+        else if(k=="mlOn")   cfg.ml_enable = ToBool(v);
+        else if(k=="mlW")    cfg.ml_weight = ToDouble(v);
+        else if(k=="mlT")    cfg.ml_temperature = ToDouble(v);
+        else if(k=="mlCA")   cfg.ml_conformal_alpha = ToDouble(v);
+        else if(k=="mlD")    cfg.ml_dampen = ToDouble(v);
+      
+        else if(k=="mlAuto") cfg.ml_auto_calibrate = ToBool(v);
+        else if(k=="mlAgeH") cfg.ml_model_max_age_hours = ToInt(v);
+        else if(k=="mlAUC")  cfg.ml_min_oos_auc = ToDouble(v);
+        else if(k=="mlACC")  cfg.ml_min_oos_acc = ToDouble(v);
+        else if(k=="mlTrN")  cfg.ml_min_samples_train = ToInt(v);
+        else if(k=="mlTeN")  cfg.ml_min_samples_test  = ToInt(v);
+      
+        else if(k=="mlHor")  cfg.ml_label_horizon_bars = ToInt(v);
+        else if(k=="mlATR")  cfg.ml_label_atr_mult = ToDouble(v);
+      
+        else if(k=="mlCom")  cfg.ml_use_common_files = ToBool(v);
+        else if(k=="mlFile") cfg.ml_model_file = v;
+        else if(k=="mlData") cfg.ml_dataset_file = v;
+      
+        else if(k=="mlExt")  cfg.ml_external_enable = ToBool(v);
+        else if(k=="mlExtM") cfg.ml_external_mode = ToInt(v);
+        else if(k=="mlExtF") cfg.ml_external_file = v;
+        else if(k=="mlExtMs")cfg.ml_external_poll_ms = ToInt(v);
+        else if(k=="mlHost") cfg.ml_external_socket_host = v;
+        else if(k=="mlPort") cfg.ml_external_socket_port = ToInt(v);
       #endif
 
       // Carry knobs
@@ -5332,6 +5618,18 @@ struct Settings
   #endif
   
   // --- Position management (PM) ---------------------------------------------
+  #ifdef CFG_HAS_PM_MODE
+    int               pm_mode;                   // 0=off, 1=basic, 2=full
+  #endif
+
+  #ifdef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+    bool              pm_allow_daily_flatten;    // optional
+  #endif
+
+  #ifdef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+    int               pm_post_dd_cooldown_seconds; // optional
+  #endif
+
   bool              be_enable;
   double            be_at_R;
   double            be_lock_pips;
@@ -5401,6 +5699,39 @@ struct Settings
   double            confl_blend_trend;
   double            confl_blend_mr;
   double            confl_blend_others;
+  
+  #ifdef CFG_HAS_ML_THRESHOLD
+     double ml_threshold;   // 0..1 ML probability threshold (debug + gating consistency)
+  #endif
+  
+  #ifdef CFG_HAS_ML_SETTINGS
+     bool   ml_enable;
+     double ml_weight;
+     double ml_temperature;
+     double ml_conformal_alpha;
+     double ml_dampen;
+   
+     bool   ml_auto_calibrate;
+     int    ml_model_max_age_hours;
+     double ml_min_oos_auc;
+     double ml_min_oos_acc;
+     int    ml_min_samples_train;
+     int    ml_min_samples_test;
+   
+     int    ml_label_horizon_bars;
+     double ml_label_atr_mult;
+   
+     bool   ml_use_common_files;
+     string ml_model_file;
+     string ml_dataset_file;
+   
+     bool   ml_external_enable;
+     int    ml_external_mode;
+     string ml_external_file;
+     int    ml_external_poll_ms;
+     string ml_external_socket_host;
+     int    ml_external_socket_port;
+  #endif
   
   StrategyMode      strat_mode;
   #ifdef CFG_HAS_ENABLE_PACK_STRATS

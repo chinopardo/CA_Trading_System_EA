@@ -50,6 +50,7 @@
 #include "include/Confluence.mqh"
 
 // Optional meta-layers
+#define ENABLE_ML_BLENDER
 #include "include/MLBlender.mqh"
 
 // Core trading stack
@@ -301,6 +302,11 @@ input double           InpRouterMinScore        = 0.22; // Registry Router & Str
 input int              InpRouterMaxStrats       = 4;   // Registry Router & Strategy: Max Strat
 
 // Position management
+input int              InpPMMode                = 2;     // Position Mgnt: PM Mode - 0=Off 1=Basic 2=Full
+// Optional:
+input bool             InpPMAllowDailyFlatten   = false; // Position Mgnt: Allow daily flatten (optional)
+input int              InpPM_PostDDCooldownSec  = 0;     // Position Mgnt: Post-DD cooldown seconds (optional)
+
 input bool             InpBE_Enable             = true;  // Position Mgnt: BE Enable
 input double           InpBE_At_R               = 0.80;  // Position Mgnt: BE ATR
 input double           InpBE_Lock_Pips          = 2.0;   // Position Mgnt: BE Lock pips
@@ -625,6 +631,26 @@ input double           InpML_Threshold          = 0.55; // ML Threshold
 input double           InpML_Weight             = 0.25; // ML Weight
 input bool             InpML_Conformal          = true; // ML Conformal
 input bool             InpML_Dampen             = true; // ML Dampen
+input string           InpML_ModelFile          = "CAEA_MLModel.ini"; // ML Model File
+input string           InpML_DatasetFile        = "CAEA_MLDataset.csv"; // ML Dataset File
+input bool             InpML_UseCommonFiles     = true; // ML Use Common Files
+
+input bool             InpML_AutoCalibrate      = true; // ML Auto Calibrate
+input int              InpML_ModelMaxAgeHours   = 168; // ML Max Age Hours (e.g., 7 days)
+input int              InpML_MinSamplesTrain    = 300; // ML Min Samples Train
+input int              InpML_MinSamplesTest     = 120; // ML Min Sample Test
+input double           InpML_MinOOS_AUC         = 0.55; // ML Min OOS AUX
+input double           InpML_MinOOS_Acc         = 0.52; // ML Min OOS Acc
+
+input int              InpML_LabelHorizonBars   = 6; // ML Label Horizon Bars
+input double           InpML_LabelATRMult       = 0.25; // ML Label ATR Mult (or points threshold if you prefer)
+
+input bool             InpML_ExternalEnable     = false; // ML External Enable
+input int              InpML_ExternalMode       = 1; // ML External Mode: 1=file, 2=socket
+input string           InpML_ExternalFile       = "CAEA_ext_signal.csv"; // ML External File
+input int              InpML_ExternalPollMs     = 500; // ML External Poll Ms
+input string           InpML_ExternalSocketHost = "127.0.0.1"; // ML External Socket Host
+input int              InpML_ExternalSocketPort = 5555; // ML External Socket Port
 
 // --------- Review/Screenshots ----------
 input bool             InpReviewScreenshots     = false; // Review/Screenshots: Enable
@@ -1151,6 +1177,10 @@ void MirrorInputsToSettings(Settings &cfg)
      cfg.router_force_one_normal_vol = InpRouterForceOneNormalVol;
    #endif
    cfg.profile = InpProfile;
+   
+   #ifdef CFG_HAS_ML_THRESHOLD
+      cfg.ml_threshold = InpML_Threshold;
+   #endif
 
    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
      int mm_open=-1, mm_close=-1;
@@ -1282,6 +1312,18 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.tp_minr_floor = InpTP_MinR_Floor;
 
   // ---- Position mgmt ----
+  #ifdef CFG_HAS_PM_MODE
+     cfg.pm_mode = InpPMMode;
+  #endif
+   
+  #ifdef CFG_HAS_PM_ALLOW_DAILY_FLATTEN
+     cfg.pm_allow_daily_flatten = InpPMAllowDailyFlatten;
+  #endif
+   
+  #ifdef CFG_HAS_PM_POST_DD_COOLDOWN_SECONDS
+     cfg.pm_post_dd_cooldown_seconds = InpPM_PostDDCooldownSec;
+  #endif
+   
   cfg.be_enable = InpBE_Enable; cfg.be_at_R = InpBE_At_R; cfg.be_lock_pips = InpBE_Lock_Pips;
   cfg.trail_type = InpTrailType; cfg.trail_pips = InpTrailPips; cfg.trail_atr_mult = InpTrailATR_Mult;
   
@@ -1888,6 +1930,7 @@ void ApplyMetaLayers(Direction dir, StratScore &ss, ConfluenceBreakdown &bd)
          ML::HookScore(bd, p);
          bd.score_final = blended;
          ss.score       = blended;
+         ML::ObserveWinnerSample(_Symbol, S.tf_entry, dir, bd, ss, p, acc);
         }
      }
    if(g_calm_mode)
@@ -2650,6 +2693,26 @@ int OnInit()
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
    ML::Configure(S, InpML_Temperature, InpML_Threshold, InpML_Weight, InpML_Conformal, InpML_Dampen);
+   ML::InitModel(
+      InpML_ModelFile,
+      InpML_DatasetFile,
+      InpML_UseCommonFiles,
+      InpML_AutoCalibrate,
+      InpML_ModelMaxAgeHours,
+      InpML_MinSamplesTrain,
+      InpML_MinSamplesTest,
+      InpML_MinOOS_AUC,
+      InpML_MinOOS_Acc,
+      InpML_LabelHorizonBars,
+      InpML_LabelATRMult,
+      InpML_ExternalEnable,
+      InpML_ExternalMode,
+      InpML_ExternalFile,
+      InpML_ExternalPollMs,
+      InpML_ExternalSocketHost,
+      InpML_ExternalSocketPort
+   );
+   LogX::Info(StringFormat("[ML] %s", ML::StateString()));
 
    // Watchlist parse
    ParseAssetList(InpAssetList, g_symbols);
@@ -2792,6 +2855,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
+   ML::Maintain(_Symbol, S.tf_entry);
    // Unified warmup gate (tester-safe; avoids permanent stall)
    if(!WarmupGateOK())
    {
@@ -2985,6 +3049,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    MarketData::OnTimerRefresh();
+   ML::Maintain(_Symbol, S.tf_entry);
    datetime now_srv = TimeUtils::NowServer();
    Risk::Heartbeat(now_srv);
    PM::ManageAll(S);
