@@ -1930,7 +1930,8 @@ void ApplyMetaLayers(Direction dir, StratScore &ss, ConfluenceBreakdown &bd)
          ML::HookScore(bd, p);
          bd.score_final = blended;
          ss.score       = blended;
-         ML::ObserveWinnerSample(_Symbol, S.tf_entry, dir, bd, ss, p, acc);
+         if(acc)
+            ML::ObserveWinnerSample(_Symbol, S.tf_entry, dir, S, bd, ss);
         }
      }
    if(g_calm_mode)
@@ -2693,25 +2694,37 @@ int OnInit()
    // Trade policy cooldown
    Policies::SetTradeCooldownSeconds(MathMax(0, InpTradeCooldown_Sec));
    ML::Configure(S, InpML_Temperature, InpML_Threshold, InpML_Weight, InpML_Conformal, InpML_Dampen);
-   ML::InitModel(
-      InpML_ModelFile,
-      InpML_DatasetFile,
-      InpML_UseCommonFiles,
-      InpML_AutoCalibrate,
-      InpML_ModelMaxAgeHours,
-      InpML_MinSamplesTrain,
-      InpML_MinSamplesTest,
-      InpML_MinOOS_AUC,
-      InpML_MinOOS_Acc,
-      InpML_LabelHorizonBars,
-      InpML_LabelATRMult,
-      InpML_ExternalEnable,
-      InpML_ExternalMode,
-      InpML_ExternalFile,
-      InpML_ExternalPollMs,
-      InpML_ExternalSocketHost,
-      InpML_ExternalSocketPort
-   );
+   
+   // Build lifecycle config (no ZeroMemory here because struct contains strings)
+   ML::LifecycleCfg lc;
+   
+   lc.runtime_on          = g_ml_on;                 // or InpML_Enable (same value)
+   lc.model_file          = InpML_ModelFile;
+   lc.dataset_file        = InpML_DatasetFile;
+   lc.use_common_files    = InpML_UseCommonFiles;
+   lc.auto_calibrate      = InpML_AutoCalibrate;
+   lc.model_max_age_hours = InpML_ModelMaxAgeHours;
+   
+   lc.min_train           = InpML_MinSamplesTrain;
+   lc.min_test            = InpML_MinSamplesTest;
+   lc.min_oos_auc         = InpML_MinOOS_AUC;
+   lc.min_oos_acc         = InpML_MinOOS_Acc;
+   
+   lc.label_horizon_bars  = InpML_LabelHorizonBars;
+   lc.atr_period          = S.atr_period;            // ✅ use your global EA ATR period (Config.mqh Settings)
+   lc.label_atr_mult      = InpML_LabelATRMult;
+   lc.label_min_points    = 0.0;                     // keep default behavior unless you add an input
+   
+   lc.external_enable     = InpML_ExternalEnable;
+   lc.external_mode       = InpML_ExternalMode;
+   lc.external_file       = InpML_ExternalFile;
+   lc.external_host       = InpML_ExternalSocketHost;
+   lc.external_port       = InpML_ExternalSocketPort;
+   lc.external_poll_ms    = InpML_ExternalPollMs;
+   lc.external_max_age_sec= 10;                      // keep MLBlender default unless you add an input
+   
+   ML::InitModel(lc);
+
    LogX::Info(StringFormat("[ML] %s", ML::StateString()));
 
    // Watchlist parse
