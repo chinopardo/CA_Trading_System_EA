@@ -51,7 +51,11 @@
 
 // Optional meta-layers
 #define ENABLE_ML_BLENDER
-//#define ML_HAS_TRADE_OUTCOME_HOOKS
+#ifdef ENABLE_ML_BLENDER
+   #ifndef ML_HAS_TRADE_OUTCOME_HOOKS
+      #define ML_HAS_TRADE_OUTCOME_HOOKS
+   #endif
+#endif
 #include "include/MLBlender.mqh"
 
 // Core trading stack
@@ -655,6 +659,15 @@ input string           InpML_ExternalFile       = "CAEA_ext_signal.csv"; // ML E
 input int              InpML_ExternalPollMs     = 500; // ML External Poll Ms
 input string           InpML_ExternalSocketHost = "127.0.0.1"; // ML External Socket Host
 input int              InpML_ExternalSocketPort = 5555; // ML External Socket Port
+input int              InpML_ExternalMaxAgeSec  = 10;   // ML External Max Age Sec
+input double           InpML_LabelMinPoints     = 0.0;  // ML Label Min Points (0 = off)
+
+input bool             InpML_OutcomeCapture     = true;
+input string           InpML_OutcomeFile        = "";
+input bool             InpML_PeriodicRetrain    = false;
+input int              InpML_RetrainMinIntervalMin = 0;
+input int              InpML_RetrainMinNewRows  = 0;
+input bool             InpML_RetrainOnlyTester  = true;
 
 // --------- Review/Screenshots ----------
 input bool             InpReviewScreenshots     = false; // Review/Screenshots: Enable
@@ -1141,7 +1154,7 @@ void EvaluateOneSymbol(const string sym)
        // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
        #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
        if(ex.ticket > 0)
-          ML::TradeOpenIntent(ex.ticket, sym, pick.dir, (StrategyID)pick.id, plan, trade_cfg, pick.bd, ss);
+          ML::TradeOpenIntent(ex.ticket, sym, trade_cfg.tf_entry, pick.dir, (StrategyID)pick.id, trade_cfg, pick.bd, ss, plan.price, plan.sl, plan.tp);
        #endif
       }
    }
@@ -2718,18 +2731,25 @@ int OnInit()
    lc.label_horizon_bars  = InpML_LabelHorizonBars;
    lc.atr_period          = S.atr_period;            // ✅ use your global EA ATR period (Config.mqh Settings)
    lc.label_atr_mult      = InpML_LabelATRMult;
-   lc.label_min_points    = 0.0;                     // keep default behavior unless you add an input
+   lc.label_min_points    = InpML_LabelMinPoints;     // keep default behavior unless you add an input
    
-   lc.external_enable     = InpML_ExternalEnable;
+   lc.external_enable     = (g_ml_on && InpML_ExternalEnable);
    lc.external_mode       = InpML_ExternalMode;
    lc.external_file       = InpML_ExternalFile;
    lc.external_host       = InpML_ExternalSocketHost;
    lc.external_port       = InpML_ExternalSocketPort;
    lc.external_poll_ms    = InpML_ExternalPollMs;
-   lc.external_max_age_sec= 10;                      // keep MLBlender default unless you add an input
+   lc.external_max_age_sec = InpML_ExternalMaxAgeSec; // keep MLBlender default unless you add an input
+   
+   lc.outcome_capture       = true;
+   lc.outcome_file          = "";     // let MLBlender derive default stem if it supports it
+   
+   lc.periodic_retrain      = false;  // safe default: OFF in live
+   lc.retrain_min_interval_min = 0;
+   lc.retrain_min_new_rows     = 0;
+   lc.retrain_only_tester      = true;
    
    ML::InitModel(lc);
-
    LogX::Info(StringFormat("[ML] %s", ML::StateString()));
 
    // Watchlist parse
@@ -2880,6 +2900,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
+    ML::SetRuntimeOn(g_ml_on);
     if(g_ml_on)
     {
        for(int i=0;i<g_symCount; ++i)
@@ -3079,6 +3100,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    MarketData::OnTimerRefresh();
+   ML::SetRuntimeOn(g_ml_on);
    if(g_ml_on)
     {
        for(int i=0;i<g_symCount; ++i)
@@ -3776,7 +3798,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
        // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
        #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
           if(ex.ticket > 0)
-             ML::TradeOpenIntent(ex.ticket, sym, pick.dir, sid, plan, trade_cfg, pick.bd, SS);
+             ML::TradeOpenIntent(ex.ticket, sym, trade_cfg.tf_entry, pick.dir, sid, trade_cfg, pick.bd, SS, plan.price, plan.sl, plan.tp);
        #endif
       }
    }
@@ -3843,15 +3865,21 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
       double profit    = 0.0;
       HistoryDealGetDouble(tx.deal, DEAL_PROFIT, profit);
       
+      double swap = 0.0;
+      double comm = 0.0;
+      HistoryDealGetDouble(tx.deal, DEAL_SWAP,       swap);
+      HistoryDealGetDouble(tx.deal, DEAL_COMMISSION, comm);
+      double net_profit = profit + swap + comm;
+      
       // Only count exits (and in/out if you want partial close behavior included)
       if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_INOUT)
       {
-         if(profit > 0.0)
+         if(net_profit > 0.0)
          {
             g_consec_wins++;
             g_consec_losses=0;
          }
-         else if(profit < 0.0)
+         else if(net_profit < 0.0)
          {
             g_consec_losses++;
             g_consec_wins=0;
@@ -3873,7 +3901,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
              HistoryDealGetInteger(tx.deal, DEAL_REASON, reason_i);
 
              if(pos_id2 > 0)
-                ML::TradeCloseOutcome(pos_id2, tx.symbol, (datetime)t_close_i, close_price, profit, (int)reason_i);
+                ML::TradeCloseOutcome(pos_id2, tx.symbol, (datetime)t_close_i, close_price, net_profit, (int)reason_i);
           }
          #endif
       }
@@ -3970,6 +3998,7 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
          if(K=='M')
            {
             g_ml_on=!g_ml_on;
+            ML::SetRuntimeOn(g_ml_on);
             PrintFormat("[UI] ML blender %s  %s",(g_ml_on?"ON":"OFF"), ML::StateString());
            }
          else

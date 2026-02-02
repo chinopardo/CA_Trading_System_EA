@@ -880,6 +880,15 @@ namespace Config
         double ml_conformal_alpha;
         double ml_dampen;
       
+        #ifdef CFG_HAS_ML_SLTP_MULT
+         // ML-suggested SL/TP multipliers (bounds only; actual values come from StrategyRegistry)
+         bool   ml_sltp_enable;
+         double ml_sltp_sl_min;
+         double ml_sltp_sl_max;
+         double ml_sltp_tp_min;
+         double ml_sltp_tp_max;
+       #endif
+
         bool   ml_auto_calibrate;
         int    ml_model_max_age_hours;
         double ml_min_oos_auc;
@@ -1725,6 +1734,14 @@ namespace Config
         cfg.ml_conformal_alpha = MathMin(0.50, MathMax(0.0, x.ml_conformal_alpha));
         cfg.ml_dampen          = MathMin(1.0,  MathMax(0.0, x.ml_dampen));
       
+        #ifdef CFG_HAS_ML_SLTP_MULT
+         cfg.ml_sltp_enable = x.ml_sltp_enable;
+         cfg.ml_sltp_sl_min = x.ml_sltp_sl_min;
+         cfg.ml_sltp_sl_max = x.ml_sltp_sl_max;
+         cfg.ml_sltp_tp_min = x.ml_sltp_tp_min;
+         cfg.ml_sltp_tp_max = x.ml_sltp_tp_max;
+        #endif
+
         cfg.ml_auto_calibrate     = x.ml_auto_calibrate;
         cfg.ml_model_max_age_hours= MathMax(0, x.ml_model_max_age_hours);
         cfg.ml_min_oos_auc        = MathMin(1.0, MathMax(0.0, x.ml_min_oos_auc));
@@ -2074,6 +2091,14 @@ namespace Config
         x.ml_conformal_alpha  = 0.0;
         x.ml_dampen           = 0.0;
       
+        #ifdef CFG_HAS_ML_SLTP_MULT
+            x.ml_sltp_enable = false;   // default OFF: preserves current behaviour
+            x.ml_sltp_sl_min = 0.85;
+            x.ml_sltp_sl_max = 1.20;
+            x.ml_sltp_tp_min = 0.90;
+            x.ml_sltp_tp_max = 1.60;
+        #endif
+
         x.ml_auto_calibrate     = false;
         x.ml_model_max_age_hours= 168;  // 7d
         x.ml_min_oos_auc        = 0.55;
@@ -2380,6 +2405,33 @@ namespace Config
         if(cfg.ml_dampen < 0.0) cfg.ml_dampen = 0.0;
         if(cfg.ml_dampen > 1.0) cfg.ml_dampen = 1.0;
       
+        #ifdef CFG_HAS_ML_SLTP_MULT
+            // Bounds sanity for ML SL/TP multipliers
+            if(cfg.ml_sltp_sl_min < 0.50) cfg.ml_sltp_sl_min = 0.50;
+            if(cfg.ml_sltp_sl_max < 0.50) cfg.ml_sltp_sl_max = 0.50;
+            if(cfg.ml_sltp_sl_min > 2.50) cfg.ml_sltp_sl_min = 2.50;
+            if(cfg.ml_sltp_sl_max > 2.50) cfg.ml_sltp_sl_max = 2.50;
+         
+            if(cfg.ml_sltp_tp_min < 0.50) cfg.ml_sltp_tp_min = 0.50;
+            if(cfg.ml_sltp_tp_max < 0.50) cfg.ml_sltp_tp_max = 0.50;
+            if(cfg.ml_sltp_tp_min > 5.00) cfg.ml_sltp_tp_min = 5.00;
+            if(cfg.ml_sltp_tp_max > 5.00) cfg.ml_sltp_tp_max = 5.00;
+         
+            // Ensure min <= max
+            if(cfg.ml_sltp_sl_min > cfg.ml_sltp_sl_max)
+            {
+               const double tmp = cfg.ml_sltp_sl_min;
+               cfg.ml_sltp_sl_min = cfg.ml_sltp_sl_max;
+               cfg.ml_sltp_sl_max = tmp;
+            }
+            if(cfg.ml_sltp_tp_min > cfg.ml_sltp_tp_max)
+            {
+               const double tmp = cfg.ml_sltp_tp_min;
+               cfg.ml_sltp_tp_min = cfg.ml_sltp_tp_max;
+               cfg.ml_sltp_tp_max = tmp;
+            }
+        #endif
+
         if(cfg.ml_model_max_age_hours < 0) cfg.ml_model_max_age_hours = 0;
       
         if(cfg.ml_min_oos_auc < 0.0) cfg.ml_min_oos_auc = 0.0;
@@ -3937,6 +3989,14 @@ namespace Config
       s+=",mlCA="+DoubleToString(c.ml_conformal_alpha,3);
       s+=",mlD="+DoubleToString(c.ml_dampen,3);
    
+      #ifdef CFG_HAS_ML_SLTP_MULT
+         s+=",mlSltpOn="+BoolStr(c.ml_sltp_enable);
+         s+=",mlSltpSLmin="+DoubleToString(c.ml_sltp_sl_min,3);
+         s+=",mlSltpSLmax="+DoubleToString(c.ml_sltp_sl_max,3);
+         s+=",mlSltpTPmin="+DoubleToString(c.ml_sltp_tp_min,3);
+         s+=",mlSltpTPmax="+DoubleToString(c.ml_sltp_tp_max,3);
+      #endif
+
       s+=",mlAuto="+BoolStr(c.ml_auto_calibrate);
       s+=",mlAgeH="+IntegerToString(c.ml_model_max_age_hours);
       s+=",mlAUC="+DoubleToString(c.ml_min_oos_auc,3);
@@ -5028,6 +5088,14 @@ namespace Config
         else if(k=="mlCA")   cfg.ml_conformal_alpha = ToDouble(v);
         else if(k=="mlD")    cfg.ml_dampen = ToDouble(v);
       
+        #ifdef CFG_HAS_ML_SLTP_MULT
+         else if(k=="mlSltpOn")    cfg.ml_sltp_enable = ToBool(v);
+         else if(k=="mlSltpSLmin") cfg.ml_sltp_sl_min = ToDouble(v);
+         else if(k=="mlSltpSLmax") cfg.ml_sltp_sl_max = ToDouble(v);
+         else if(k=="mlSltpTPmin") cfg.ml_sltp_tp_min = ToDouble(v);
+         else if(k=="mlSltpTPmax") cfg.ml_sltp_tp_max = ToDouble(v);
+        #endif
+
         else if(k=="mlAuto") cfg.ml_auto_calibrate = ToBool(v);
         else if(k=="mlAgeH") cfg.ml_model_max_age_hours = ToInt(v);
         else if(k=="mlAUC")  cfg.ml_min_oos_auc = ToDouble(v);
@@ -5711,6 +5779,15 @@ struct Settings
      double ml_conformal_alpha;
      double ml_dampen;
    
+     #ifdef CFG_HAS_ML_SLTP_MULT
+         // ML-suggested SL/TP multipliers (bounds only; actual values come from StrategyRegistry)
+         bool   ml_sltp_enable;
+         double ml_sltp_sl_min;
+         double ml_sltp_sl_max;
+         double ml_sltp_tp_min;
+         double ml_sltp_tp_max;
+     #endif
+
      bool   ml_auto_calibrate;
      int    ml_model_max_age_hours;
      double ml_min_oos_auc;
