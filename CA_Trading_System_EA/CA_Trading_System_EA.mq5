@@ -669,6 +669,13 @@ input int              InpML_RetrainMinIntervalMin = 0;
 input int              InpML_RetrainMinNewRows  = 0;
 input bool             InpML_RetrainOnlyTester  = true;
 
+// ---- ML SL/TP multipliers (explicit; off by default) ----
+input bool             InpML_SLTP_Enable = false;  // ML SL/TP multiplier enable
+input double           InpML_SLMult_Min  = 0.80;   // ML min SL multiplier
+input double           InpML_SLMult_Max  = 1.20;   // ML max SL multiplier
+input double           InpML_TPMult_Min  = 0.80;   // ML min TP multiplier
+input double           InpML_TPMult_Max  = 1.30;   // ML max TP multiplier
+
 // --------- Review/Screenshots ----------
 input bool             InpReviewScreenshots     = false; // Review/Screenshots: Enable
 input int              InpReviewSS_W            = 1280; // Review/Screenshots: SS_W
@@ -1211,6 +1218,17 @@ void MirrorInputsToSettings(Settings &cfg)
    
    #ifdef CFG_HAS_ML_THRESHOLD
       cfg.ml_threshold = InpML_Threshold;
+   #endif
+
+   #ifdef CFG_HAS_ML_SLTP_MULT
+      cfg.ml_sltp_enable = InpML_SLTP_Enable;
+   
+      // Clamp + order-correct bounds (prevents inverted ranges)
+      cfg.ml_sltp_sl_min = MathMax(0.10, InpML_SLMult_Min);
+      cfg.ml_sltp_sl_max = MathMax(cfg.ml_sltp_sl_min, InpML_SLMult_Max);
+      
+      cfg.ml_sltp_tp_min = MathMax(0.10, InpML_TPMult_Min);
+      cfg.ml_sltp_tp_max = MathMax(cfg.ml_sltp_tp_min, InpML_TPMult_Max);
    #endif
 
    #ifdef CFG_HAS_LONDON_LOCAL_MINUTES
@@ -2190,6 +2208,17 @@ void BuildSettingsFromInputs(Settings &cfg)
       cfg.disable_packs      = InpDisable_PackStrategies;
    #endif
 
+   // --- ML SL/TP multiplier control (input-driven, applied LAST so profiles don't override) ---
+   #ifdef CFG_HAS_ML_SETTINGS
+     #ifdef CFG_HAS_ML_SLTP_MULT
+        cfg.ml_sltp_enable   = InpML_SLTP_Enable;
+        cfg.ml_sltp_sl_min   = InpML_SLMult_Min;
+        cfg.ml_sltp_sl_max   = InpML_SLMult_Max;
+        cfg.ml_sltp_tp_min   = InpML_TPMult_Min;
+        cfg.ml_sltp_tp_max   = InpML_TPMult_Max;
+     #endif
+   #endif
+    
    // --- Magic bases (per-strategy ranges) ---
    cfg.magic_main_base        = InpMagic_MainBase;
    cfg.magic_sb_base          = InpMagic_SilverBulletBase;
@@ -2741,14 +2770,19 @@ int OnInit()
    lc.external_poll_ms    = InpML_ExternalPollMs;
    lc.external_max_age_sec = InpML_ExternalMaxAgeSec; // keep MLBlender default unless you add an input
    
-   lc.outcome_capture       = true;
-   lc.outcome_file          = "";     // let MLBlender derive default stem if it supports it
+   // ---- ML lifecycle: wire EA inputs (single source of truth) ----
+   lc.outcome_capture     = (g_ml_on && InpML_OutcomeCapture);
+   lc.outcome_file        = InpML_OutcomeFile;   // empty is OK: MLBlender may derive default
    
-   lc.periodic_retrain      = false;  // safe default: OFF in live
-   lc.retrain_min_interval_min = 0;
-   lc.retrain_min_new_rows     = 0;
-   lc.retrain_only_tester      = true;
+   lc.periodic_retrain         = (g_ml_on && InpML_PeriodicRetrain);
+   lc.retrain_min_interval_min = MathMax(0, InpML_RetrainMinIntervalMin);
+   lc.retrain_min_new_rows     = MathMax(0, InpML_RetrainMinNewRows);
+   lc.retrain_only_tester      = InpML_RetrainOnlyTester;
    
+   // Optional breadcrumb (does not change logic)
+   if(lc.periodic_retrain && lc.retrain_only_tester && !g_is_tester)
+      LogX::Warn("[ML] periodic_retrain=ON but retrain_only_tester=true; live retrain will not run.");
+
    ML::InitModel(lc);
    LogX::Info(StringFormat("[ML] %s", ML::StateString()));
 
