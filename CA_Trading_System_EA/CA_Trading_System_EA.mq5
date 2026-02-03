@@ -1146,7 +1146,7 @@ void EvaluateOneSymbol(const string sym)
      }
 
 // 4) Execute
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, false, (StrategyID)pick.id);
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, (StrategyID)pick.id, false);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    if(ex.ok)
@@ -2138,7 +2138,7 @@ void MaybeEvaluate()
    RefreshICTContext(g_state);
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
-   RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+   RouterEvaluateAll(g_router, g_cfg, ictCtx);
   }
 
 //--------------------------------------------------------------------
@@ -3067,7 +3067,7 @@ void OnTick()
       {
          if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, router_gate_reason))
          {
-            RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+            RouterEvaluateAll(g_router, g_cfg, ictCtx);
          }
          else
          {
@@ -3204,7 +3204,7 @@ void OnTimer()
       StateOnTickUpdate(g_state);
       RefreshICTContext(g_state);
       ICT_Context ictCtx = StateGetICTContext(g_state);
-      RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
+      RouterEvaluateAll(g_router, g_cfg, ictCtx);
    }
    else
    {
@@ -3902,7 +3902,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       return;
    }
    
-   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, /*skip_gates=*/false, sid);
+   Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, sid, /*skip_gates=*/false);
    HintTradeDisabledOnce(ex);
    LogExecFailThrottled(sym, pick.dir, plan, ex, trade_cfg.slippage_points);
    _LogExecReject("exec_reject", sym, sid, pick.dir, SS, plan, ex);
