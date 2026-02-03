@@ -1145,6 +1145,14 @@ void EvaluateOneSymbol(const string sym)
       return;
      }
 
+// 3.5) Enforce strat_mode gate (match ProcessSymbol behavior)
+   const StrategyID sid = (StrategyID)pick.id;
+   if(!Router_GateWinnerByMode(S, sid))
+   {
+      Panel::Render(S);
+      return;
+   }
+
 // 4) Execute
    Exec::Outcome ex = Exec::SendAsyncSymEx(sym, plan, trade_cfg, (StrategyID)pick.id, false);
    HintTradeDisabledOnce(ex);
