@@ -1541,6 +1541,10 @@ namespace Config
          return false;
 
       const StrategyMode mode = CfgStrategyMode(cfg);
+      
+      if(cfg.debug)
+         PrintFormat("[Config] IsStrategyAllowedInMode: mode=%d sid=%d",
+                     (int)mode, (int)id);
       return Strat_AllowedToTrade(mode, id);
    }
 
@@ -1550,8 +1554,18 @@ namespace Config
 #else
    inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
    {
-      return true; // no mode system compiled in
+      // Keep behavior consistent even if CFG_HAS_STRAT_MODE is not defined:
+      // This wrapper must always delegate to the single source of truth.
+      if(((int)sid) <= 0)
+         return false;
+   
+      const StrategyMode mode = (StrategyMode)cfg.strat_mode;
+      return Strat_AllowedToTrade(mode, sid);
    }
+   
+   #ifndef CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE
+      #define CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE 1
+   #endif
 #endif
 
    // ProfileSpec includes router hints + weights/throttles for known archetypes

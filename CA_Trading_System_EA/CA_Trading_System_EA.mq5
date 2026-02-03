@@ -1156,7 +1156,7 @@ void EvaluateOneSymbol(const string sym)
     // Record executed decisions for ML training (label computed later on new bars)
     if(g_ml_on && ML::IsActive())
       {
-       ML::ObserveWinnerSample(sym, S.tf_entry, pick.dir, trade_cfg, pick.bd, ss);
+       ML::ObserveWinnerSample(sym, trade_cfg.tf_entry, pick.dir, trade_cfg, pick.bd, ss);
 
        // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
        #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
@@ -2116,6 +2116,10 @@ void MaybeEvaluate()
     // --- Hardening: Do not use alternate routing pipelines here ---
     const datetime now_srv = TimeUtils::NowServer();
 
+    // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
+    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+       g_use_registry = false;
+
     if(g_use_registry)
     {
        if(!GateViaPolicies(g_cfg, _Symbol))
@@ -2126,7 +2130,7 @@ void MaybeEvaluate()
     }
 
    int gate_reason = 0;
-   if(!RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
+   if(!RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
       return;
    
    // Ensure State + ICT context are current before router evaluation
@@ -2822,8 +2826,10 @@ int OnInit()
    // ML: tester-only historic backfill (fast dataset generation)
    if(g_ml_on && MQLInfoInteger(MQL_TESTER) && InpML_BackfillBars > 0)
    {
+      const Settings ml_cfg = (g_use_registry ? S : g_cfg);
+      const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
       for(int i=0;i<g_symCount; ++i)
-         ML::BackfillDataset(g_symbols[i], S.tf_entry, S, InpML_BackfillBars, InpML_BackfillStep);
+         ML::BackfillDataset(g_symbols[i], ml_tf, ml_cfg, InpML_BackfillBars, InpML_BackfillStep);
    }
     
    // Timer (seconds; EventSetTimer is seconds granularity)
@@ -2881,6 +2887,7 @@ int OnInit()
 
    // 3. Initialize Router strategies registry (ICT-aware)
    RouterInit(g_router, g_cfg);
+   RouterSetWatchlist(g_router, g_symbols, g_symCount);
 
    // 4. Initial ICT/Wyckoff context so panel not blank
    RefreshICTContext(g_state);
@@ -2937,8 +2944,10 @@ void OnTick()
     ML::SetRuntimeOn(g_ml_on);
     if(g_ml_on)
     {
+       const Settings ml_cfg = (g_use_registry ? S : g_cfg);
+       const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
        for(int i=0;i<g_symCount; ++i)
-          ML::Maintain(g_symbols[i], S.tf_entry);
+          ML::Maintain(g_symbols[i], ml_tf);
     }
     
    // Unified warmup gate (tester-safe; avoids permanent stall)
@@ -2949,16 +2958,24 @@ void OnTick()
       return;
    }
 
+   // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
+   if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+       g_use_registry = false;
+       
    if(InpOnlyNewBar)
-   {
-      const Settings gate_cfg = (g_use_registry ? S : g_cfg);
-      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
-      if(!IsNewBarRouter(_Symbol, tf))
-      {
-         Panel::Render(S);
-         return;
-      }
-   }
+    {
+       const Settings gate_cfg = (g_use_registry ? S : g_cfg);
+       const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
+
+       // Router mode must not depend on chart symbol; use a stable watchlist reference.
+       const string gate_sym = (g_use_registry ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
+
+       if(!IsNewBarRouter(gate_sym, tf))
+       {
+          Panel::Render(S);
+          return;
+       }
+    }
      
    static datetime _hb_last_bar = 0;
    const datetime _bar_time = iTime(_Symbol, g_cfg.tf_entry, 0);
@@ -3048,7 +3065,7 @@ void OnTick()
       }
       else
       {
-         if(RouterGateOK(_Symbol, g_cfg, now_srv, router_gate_reason))
+         if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, router_gate_reason))
          {
             RouterEvaluateAll(g_router, g_state, g_cfg, ictCtx);
          }
@@ -3135,10 +3152,13 @@ void OnTimer()
   {
    MarketData::OnTimerRefresh();
    ML::SetRuntimeOn(g_ml_on);
+   const Settings ml_cfg = (g_use_registry ? S : g_cfg);
+   const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
+   
    if(g_ml_on)
     {
        for(int i=0;i<g_symCount; ++i)
-          ML::Maintain(g_symbols[i], S.tf_entry);
+          ML::Maintain(g_symbols[i], ml_tf);
     }
    datetime now_srv = TimeUtils::NowServer();
    Risk::Heartbeat(now_srv);
@@ -3150,6 +3170,10 @@ void OnTimer()
    // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
       return;
+
+   // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
+   if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+      g_use_registry = false;
 
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
    if(g_use_registry)
@@ -3165,7 +3189,7 @@ void OnTimer()
    // if(!g_use_registry)
    //    MaybeEvaluate();
    
-   // If ticks are sparse, allow timer-driven router eval (chart symbol only)
+   // If ticks are sparse, allow timer-driven router eval (watchlist-safe)
    int gate_reason = 0;
    
    // Router mode path (ICT RouterEvaluateAll)
@@ -3175,15 +3199,7 @@ void OnTimer()
       return;
    }
    
-   // Optional new-bar throttle (keeps timer from re-evaluating same bar)
-   if(InpOnlyNewBar)
-   {
-      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
-      if(!IsNewBarRouter(_Symbol, tf))
-         return;
-   }
-   
-   if(RouterGateOK(_Symbol, g_cfg, now_srv, gate_reason))
+   if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
    {
       StateOnTickUpdate(g_state);
       RefreshICTContext(g_state);
@@ -3548,6 +3564,76 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
    return true;
 }
 
+// -------- Router GLOBAL gate (watchlist-safe): no session/news/exec-lock --------
+bool RouterGateOK_Global(const string log_sym,
+                         const Settings &cfg,
+                         const datetime now_srv,
+                         int &gate_reason_out)
+{
+   gate_reason_out = 0;
+
+   if(g_inhibit_trading)
+   {
+      gate_reason_out = GATE_INHIBIT;
+      Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "Trading inhibited (drift alarm)");
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "Trading inhibited (drift alarm)");
+      return false;
+   }
+
+   // 1) Global policy/risk guard (DD, cooldown, etc.)
+   int pol_reason = 0;
+   if(!Policies::Check(cfg, pol_reason))
+   {
+      gate_reason_out = GATE_POLICIES;
+      Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
+                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out,
+                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+      return false;
+   }
+
+   // 2) Hard time window (start/expiry)
+   if(!TimeGateOK(now_srv))
+   {
+      gate_reason_out = GATE_TIMEWINDOW;
+      Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "TimeGateOK blocked");
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "TimeGateOK=false (start/expiry window)");
+      return false;
+   }
+
+   // 3) Price gates (arm + stop) are truly global
+   if(!PriceArmOK())
+   {
+      gate_reason_out = GATE_PRICE_ARM;
+      Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "PriceArmOK not armed");
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "PriceArmOK=false (InpTradeAtPrice not armed?)");
+      return false;
+   }
+
+   if(g_stopped_by_price)
+   {
+      gate_reason_out = GATE_PRICE_STOP;
+      Panel::SetGate(gate_reason_out);
+
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "Stopped by price stop gate");
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "Stopped by price gate (InpStopAtPrice hit)");
+      return false;
+   }
+
+   // NOTE: No session/news/Exec::IsLocked here.
+   // Those MUST be checked per-symbol inside Router.mqh / Execution.mqh.
+
+   return true;
+}
+
 // -------- Router-friendly gate wrapper (no duplication of exec logic) --------
 bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv, int &gate_reason_out)
 {
@@ -3827,7 +3913,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
     // Record executed decisions for ML training (label computed later on new bars)
     if(g_ml_on && ML::IsActive())
       {
-       ML::ObserveWinnerSample(sym, S.tf_entry, pick.dir, trade_cfg, pick.bd, SS);
+       ML::ObserveWinnerSample(sym, trade_cfg.tf_entry, pick.dir, trade_cfg, pick.bd, SS);
 
        // Outcome-aware snapshot (ticket→position bind occurs in OnTradeTransaction)
        #ifdef ML_HAS_TRADE_OUTCOME_HOOKS
