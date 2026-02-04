@@ -2402,7 +2402,7 @@ void FinalizeRuntimeSettings()
 
    // 2) Mode + key overrides (ONE time)
    Config::ApplyStrategyMode(cfg, InpStrat_Mode);
-   Config::LoadInputs(cfg);
+   Config::LoadInputs(cfg, InpMonthlyTargetPct);
    Config::ApplyKVOverrides(cfg);
    Config::FinalizeThresholds(cfg);
 

@@ -3041,14 +3041,14 @@ namespace Config
   //──────────────────────────────────────────────────────────────────
   // Validation (auto-fix warn; engine clamps at runtime where needed)
   //──────────────────────────────────────────────────────────────────
-  inline bool LoadInputs(Settings &cfg)
-  {
-    #ifdef CFG_HAS_MONTHLY_TARGET
-      // Store raw in PERCENT units; CfgMonthlyTargetPct will convert to fraction.
-      cfg.monthly_target_pct = InpMonthlyTargetPct;
-    #endif
-    return true;
-  }
+  inline bool LoadInputs(Settings &cfg, const double monthly_target_pct)
+   {
+     #ifdef CFG_HAS_MONTHLY_TARGET
+       // Store raw in PERCENT units; CfgMonthlyTargetPct will convert to fraction.
+       cfg.monthly_target_pct = monthly_target_pct;
+     #endif
+     return true;
+   }
 
   // Apply lightweight runtime overrides (e.g., from KV/GVs). Call ONCE in OnInit,
   // or periodically if you want dynamic behavior.
