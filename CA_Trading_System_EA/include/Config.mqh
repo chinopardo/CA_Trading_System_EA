@@ -48,6 +48,17 @@ struct Settings;
 #define CFG_HAS_ML_SETTINGS 1
 #endif
 
+// --- Entry gating taps (PositionMgmt / Router)
+#ifndef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+  #define CFG_HAS_MAX_POSITIONS_PER_SYMBOL 1
+#endif
+#ifndef CFG_HAS_MAX_POSITIONS_TOTAL
+  #define CFG_HAS_MAX_POSITIONS_TOTAL 1
+#endif
+#ifndef CFG_HAS_MAX_TRADES_DAY
+  #define CFG_HAS_MAX_TRADES_DAY 1
+#endif
+
 // --- Strategy enable toggles are present in Settings (compile-safe macros used across modules)
 #ifndef CFG_HAS_ENABLE_STRAT_MAIN
   #define CFG_HAS_ENABLE_STRAT_MAIN 1
@@ -446,6 +457,9 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_ROUTER_FB_MIN
   #define CFG_HAS_ROUTER_FB_MIN 1
+#endif
+#ifndef CFG_HAS_ROUTER_EVAL_ALL_MODE
+  #define CFG_HAS_ROUTER_EVAL_ALL_MODE 1
 #endif
 
 #ifndef ROUTER_GUESS_CORE_ID_WHEN_MISSING
@@ -2645,6 +2659,16 @@ namespace Config
     if(cfg.max_losses_day<0) cfg.max_losses_day=0;
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
+    
+    #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+      if(cfg.max_positions_per_symbol < 1)
+        cfg.max_positions_per_symbol = 1;
+    #endif
+   
+    #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+      if(cfg.max_positions_total < 0)
+        cfg.max_positions_total = 0; // 0 = unlimited
+    #endif
     // Slippage: give the first attempt a generous budget.
     //  - rc=0 rejections are common when slippage is too tight.
     //  - 300–500 points on 5-digit FX is prop-friendly (30–50 pips),
@@ -2987,6 +3011,10 @@ namespace Config
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       if(cfg.router_max_strats<=0)  cfg.router_max_strats = 12;
     #endif
+    #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+      if(cfg.router_eval_all_mode < 0) cfg.router_eval_all_mode = 0;
+      if(cfg.router_eval_all_mode > 1) cfg.router_eval_all_mode = 1;
+    #endif
    
     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
        if(cfg.router_fallback_min_score < 0.0) cfg.router_fallback_min_score = 0.0;
@@ -3137,6 +3165,28 @@ namespace Config
       }
     #endif
     
+    #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+      if(cfg.max_positions_per_symbol < 1)
+        warns += "max_positions_per_symbol < 1; Normalize() will clamp to 1.\n";
+    #endif
+    #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+      if(cfg.max_positions_total < 0)
+        warns += "max_positions_total < 0; Normalize() will clamp to 0 (unlimited).\n";
+    #endif
+    #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+      if(cfg.router_eval_all_mode < 0 || cfg.router_eval_all_mode > 1)
+        warns += "router_eval_all_mode out of range; Normalize() will clamp to 0..1.\n";
+    #endif
+    #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+      if(cfg.router_eval_all_mode == 1)
+      {
+        #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+          if(cfg.max_positions_total == 0)
+            warns += "router_eval_all_mode=1 (per-symbol) with max_positions_total=0 (unlimited). Consider setting caps to avoid runaway entries.\n";
+        #endif
+      }
+    #endif
+
     // Risk sanity
     if(cfg.risk_pct > cfg.risk_cap_pct && cfg.risk_cap_pct>0.0)
       warns += "risk_pct>risk_cap_pct; capped by engine.\n";
@@ -3344,6 +3394,9 @@ namespace Config
      #ifdef CFG_HAS_ROUTER_FB_MIN
        cfg.router_fb_min = 0.0;
      #endif
+     #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+      cfg.router_eval_all_mode = 0; // default: current behavior (best-of-all-symbols)
+     #endif
      // Router profile hint fields: start clean (extras may override)
      #ifdef CFG_HAS_ROUTER_HINTS
        cfg.router_profile_alias          = "";
@@ -3413,6 +3466,12 @@ namespace Config
      cfg.max_losses_day      = max_losses_day;
      cfg.max_trades_day      = max_trades_day;
      cfg.max_spread_points   = max_spread_points;
+     #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+        cfg.max_positions_per_symbol = 1; // safe default (preserves old "one entry per symbol" expectations)
+     #endif
+     #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+        cfg.max_positions_total = 0; // 0 = unlimited (use with care; Router/PositionMgmt should still gate)
+     #endif
      cfg.slippage_points     = slippage_points;
      // Guard against dangerously small slippage coming from EA inputs
      if(cfg.slippage_points <= 0)
@@ -3746,6 +3805,16 @@ namespace Config
 
     s+=",loss="+IntegerToString(c.max_losses_day);
     s+=",trades="+IntegerToString(c.max_trades_day);
+    
+    #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+      s+=",posSym="+IntegerToString(c.max_positions_per_symbol);
+    #endif
+    #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+      s+=",posTot="+IntegerToString(c.max_positions_total);
+    #endif
+    #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+      s += ",rEvalAll=" + IntegerToString(c.router_eval_all_mode);
+    #endif
     s+=",spr="+IntegerToString(c.max_spread_points);
     s+=",slip="+IntegerToString(c.slippage_points);
 
@@ -4883,6 +4952,17 @@ namespace Config
 
       else if(k=="loss") cfg.max_losses_day=ToInt(v);
       else if(k=="trades") cfg.max_trades_day=ToInt(v);
+      
+      #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+        else if(k=="posSym") cfg.max_positions_per_symbol = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+        else if(k=="posTot") cfg.max_positions_total = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+        else if(k=="rEvalAll") cfg.router_eval_all_mode = ToInt(v);
+      #endif
+      
       else if(k=="spr") cfg.max_spread_points=ToInt(v);
       else if(k=="slip") cfg.slippage_points=ToInt(v);
 
@@ -5394,6 +5474,9 @@ struct Settings
   
   int               max_losses_day;      // legacy (count)
   int               max_trades_day;      // trades/day cap (RiskEngine)
+  
+  int               max_positions_per_symbol; // <=0 treated as 1 (safe default)
+  int               max_positions_total;      // <=0 treated as 0 (0 = unlimited)
 
   double            day_loss_cap_pct;    // realized P/L cap (% of start eq)
   double            day_loss_cap_money;  // realized P/L cap (money)
@@ -5897,6 +5980,9 @@ struct Settings
   // Non-overlap & router sanity ----------------------------------------------
   bool              nonoverlap_enable;   // allow strategies to politely yield
 
+  #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+    int               router_eval_all_mode; // 0=best-of-all-symbols, 1=per-symbol execution
+  #endif
   #ifdef CFG_HAS_ROUTER_MIN_SCORE
     double          router_min_score;            // default ~0.55
   #endif

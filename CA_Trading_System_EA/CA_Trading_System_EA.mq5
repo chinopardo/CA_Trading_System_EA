@@ -335,10 +335,21 @@ input double           InpP2_ClosePct           = 25.0;          // Position Mgn
 // ================= Strategy family selector =================
 // Strategy Mode:
 // STRAT_MAIN_ONLY  => ONLY MainTradingLogic + ICT/Wyckoff strategies may send orders.
-//                     All other indicator modules remain available for confluence (no order sending).
+//                     ICT/Wyckoff band is StrategyID [10010..19999] (see Types.mqh Strat_AllowedToTrade()).
+//                     All other modules/pack strategies remain confluence-only (no order sending).
 // STRAT_PACK_ONLY  => Only non-core pack strategies may send orders.
 // STRAT_COMBINED   => All strategies may send orders.
 input StrategyMode InpStrat_Mode                = STRAT_MAIN_ONLY; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
+
+// ---- RouterEvaluateAll execution + caps ----
+// 0 = best-of-all-symbols (current behavior)
+// 1 = per-symbol execution (evaluate each symbol and send eligible entries per symbol)
+input int InpRouterExecMode          = 0;  // Router exec mode: 0=best-of-all, 1=per-symbol
+
+// Position caps used by PositionMgmt/Router when "execute more than one" is enabled.
+// Per-symbol: >=1 (1 preserves old behavior). Total: 0 = unlimited.
+input int InpMaxPositionsPerSymbol   = 1;  // Max open/pending positions per symbol
+input int InpMaxPositionsTotal       = 0;  // Max open/pending positions total (0=unlimited)
 
 // Pack strategies runtime registration/trading (Option 2)
 // Default OFF (confluence-only) unless explicitly enabled.
@@ -1227,6 +1238,12 @@ void MirrorInputsToSettings(Settings &cfg)
    #ifdef CFG_HAS_ROUTER_FORCE_ONE
      cfg.router_force_one_normal_vol = InpRouterForceOneNormalVol;
    #endif
+   #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+     int rem = InpRouterExecMode;
+     if(rem < 0) rem = 0;
+     if(rem > 1) rem = 1;
+     cfg.router_eval_all_mode = rem;
+   #endif
    cfg.profile = InpProfile;
    
    #ifdef CFG_HAS_ML_THRESHOLD
@@ -1315,6 +1332,12 @@ void MirrorInputsToSettings(Settings &cfg)
   #endif
   
   cfg.max_losses_day = InpMaxLossesDay; cfg.max_trades_day = InpMaxTradesDay;
+  #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+     cfg.max_positions_per_symbol = MathMax(1, InpMaxPositionsPerSymbol);
+  #endif
+  #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+     cfg.max_positions_total = MathMax(0, InpMaxPositionsTotal);
+  #endif
   cfg.max_spread_points = InpMaxSpreadPoints; cfg.slippage_points = InpSlippagePoints;
 
   // ---- Monthly profit target gate ----
@@ -2355,6 +2378,16 @@ void FinalizeRuntimeSettings()
    #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
       if(cfg.news_on && cfg.news_mvp_no_block)
          LogX::Warn("News is ON but MVP_NoBlock is true -> NewsFilter will NOT hard-block trades.");
+   #endif
+
+   // ---- Router multi-entry safety hint (warn only) ----
+   #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+     #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+       #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+         if(cfg.router_eval_all_mode == 1 && cfg.max_positions_per_symbol > 1 && cfg.max_positions_total == 0)
+           LogX::Warn("Router exec mode=1 with max_positions_per_symbol>1 and max_positions_total=0 (unlimited). Consider setting a total cap to avoid runaway entries.");
+       #endif
+     #endif
    #endif
 
    // 1) Extras (ONE time)
