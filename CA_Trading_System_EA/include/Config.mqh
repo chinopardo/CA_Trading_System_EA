@@ -1534,6 +1534,11 @@ namespace Config
      }
    
 #ifdef CFG_HAS_STRAT_MODE
+   // StrategyMode trade eligibility:
+   // - STRAT_MAIN_ONLY allows ONLY MainTradingLogic + ICT/Wyckoff (see Types.mqh Strat_AllowedToTrade).
+   // - STRAT_PACK_ONLY allows only non-core strategies.
+   // - STRAT_COMBINED allows all.
+   // IMPORTANT: Do not re-implement allow-lists elsewhere. Change policy ONLY in Types.mqh.
    inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID id)
    {
       // Always reject missing/invalid strategy IDs (prevents ghost paths)

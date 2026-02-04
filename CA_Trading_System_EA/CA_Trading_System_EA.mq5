@@ -333,6 +333,11 @@ input double           InpP2_At_R               = 3.00;           // Position Mg
 input double           InpP2_ClosePct           = 25.0;          // Position Mgnt: Partial 2 Close Pct
 
 // ================= Strategy family selector =================
+// Strategy Mode:
+// STRAT_MAIN_ONLY  => ONLY MainTradingLogic + ICT/Wyckoff strategies may send orders.
+//                     All other indicator modules remain available for confluence (no order sending).
+// STRAT_PACK_ONLY  => Only non-core pack strategies may send orders.
+// STRAT_COMBINED   => All strategies may send orders.
 input StrategyMode InpStrat_Mode                = STRAT_MAIN_ONLY; // Strategy Mode: 0=Main, 1=Pack, 2=Combined
 
 // Pack strategies runtime registration/trading (Option 2)
