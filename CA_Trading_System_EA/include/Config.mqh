@@ -1,4 +1,4 @@
-﻿// Config.mqh  (full, consolidated & compile-safe)
+// Config.mqh  (full, consolidated & compile-safe)
 // - Settings builder (signature unchanged)
 // - Strong Normalize() + Validate() with clear warnings
 // - CanonicalCSV + FNV-1a 64-bit hash
@@ -2672,12 +2672,12 @@ namespace Config
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
     
     #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
-      if(cfg.max_positions_per_symbol < 1)
+      if(cfg.max_positions_per_symbol < 1 || cfg.max_positions_per_symbol > 50) // Fail-safe: if garbage/unset, revert to legacy behavior (1)
         cfg.max_positions_per_symbol = 1;
     #endif
    
     #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
-      if(cfg.max_positions_total < 0)
+      if(cfg.max_positions_total < 0 || cfg.max_positions_total > 500) // 0 = unlimited. If garbage/unset, disable total cap (0).
         cfg.max_positions_total = 0; // 0 = unlimited
     #endif
     // Slippage: give the first attempt a generous budget.
