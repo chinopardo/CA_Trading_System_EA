@@ -49,6 +49,9 @@ struct Settings;
 #endif
 
 // --- Entry gating taps (PositionMgmt / Router)
+#ifndef CFG_HAS_ROUTER_EVAL_ALL_MODE
+  #define CFG_HAS_ROUTER_EVAL_ALL_MODE 1
+#endif
 #ifndef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
   #define CFG_HAS_MAX_POSITIONS_PER_SYMBOL 1
 #endif
@@ -458,10 +461,6 @@ struct Settings;
 #ifndef CFG_HAS_ROUTER_FB_MIN
   #define CFG_HAS_ROUTER_FB_MIN 1
 #endif
-#ifndef CFG_HAS_ROUTER_EVAL_ALL_MODE
-  #define CFG_HAS_ROUTER_EVAL_ALL_MODE 1
-#endif
-
 #ifndef ROUTER_GUESS_CORE_ID_WHEN_MISSING
   #define ROUTER_GUESS_CORE_ID_WHEN_MISSING 1
 #endif 
@@ -1308,6 +1307,18 @@ namespace Config
      #endif
    }
    
+   inline int CfgRouterEvalAllMode(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+       int v = cfg.router_eval_all_mode;
+       if(v < 0) v = 0;
+       if(v > 1) v = 1;
+       return v;
+     #else
+       return 0;
+     #endif
+   }
+
    inline double CfgRouterFallbackMinScore(const Settings &cfg){
      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
        double v = (cfg.router_fallback_min_score>0.0? cfg.router_fallback_min_score : 0.0);
@@ -3010,6 +3021,12 @@ namespace Config
     #endif
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       if(cfg.router_max_strats<=0)  cfg.router_max_strats = 12;
+    #endif
+    #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+      if(cfg.max_positions_per_symbol < 0) cfg.max_positions_per_symbol = 0;
+    #endif
+    #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+      if(cfg.max_positions_total < 0) cfg.max_positions_total = 0;
     #endif
     #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
       if(cfg.router_eval_all_mode < 0) cfg.router_eval_all_mode = 0;
