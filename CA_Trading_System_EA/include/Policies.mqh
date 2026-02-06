@@ -14,12 +14,17 @@
 #ifndef POLICIES_HAS_RECORD_EXECUTION_ATTEMPT_SID
 #define POLICIES_HAS_RECORD_EXECUTION_ATTEMPT_SID 1
 #endif
-
 #ifndef POLICIES_HAS_RECORD_EXECUTION_RESULT_SID
 #define POLICIES_HAS_RECORD_EXECUTION_RESULT_SID 1
 #endif
 #ifndef POLICIES_HAS_SIZING_RESET_ACTIVE
 #define POLICIES_HAS_SIZING_RESET_ACTIVE 1
+#endif
+#ifndef POLICIES_HAS_POOL_TELEMETRY_FRAME
+#define POLICIES_HAS_POOL_TELEMETRY_FRAME 1
+#endif
+#ifndef POLICIES_HAS_POOL_TELEMETRY_FRAME_EX
+#define POLICIES_HAS_POOL_TELEMETRY_FRAME_EX 1
 #endif
 //=============================================================================
 // Policies.mqh - Core gates, filters & orchestration (Persistent)
@@ -1082,6 +1087,80 @@ namespace Policies
   static long     s_login           = 0;
   static long     s_magic_cached    = 0;
 
+  // ----------------------------------------------------------------------------
+  // Router confluence-pool telemetry frame (non-persistent; set by Router)
+  // ----------------------------------------------------------------------------
+  static bool     s_pool_valid      = false;
+  static double   s_pool_score_buy  = 0.0;
+  static double   s_pool_score_sell = 0.0;
+  static string   s_pool_sym        = "";
+  static datetime s_pool_ts         = 0;
+  
+  static int      s_pool_feat_buy   = 0;
+  static int      s_pool_feat_sell  = 0;
+  static ulong    s_pool_veto_buy   = 0;
+  static ulong    s_pool_veto_sell  = 0;
+    
+  inline void ClearPoolTelemetryFrame()
+  {
+    s_pool_valid=false;
+    s_pool_score_buy=0.0;
+    s_pool_score_sell=0.0;
+    s_pool_sym="";
+    s_pool_ts=0;
+    
+    s_pool_feat_buy=0;
+    s_pool_feat_sell=0;
+    s_pool_veto_buy=0;
+    s_pool_veto_sell=0;
+  }
+
+  inline void SetPoolTelemetryFrameEx(const string sym,
+                                      const double score_buy,
+                                      const double score_sell,
+                                      const int feat_buy,
+                                      const int feat_sell,
+                                      const ulong veto_buy,
+                                      const ulong veto_sell)
+  {
+    s_pool_valid      = true;
+    s_pool_score_buy  = Clamp01(score_buy);
+    s_pool_score_sell = Clamp01(score_sell);
+    s_pool_feat_buy   = (feat_buy  > 0 ? feat_buy  : 0);
+    s_pool_feat_sell  = (feat_sell > 0 ? feat_sell : 0);
+    s_pool_veto_buy   = veto_buy;
+    s_pool_veto_sell  = veto_sell;
+    s_pool_sym        = sym;
+    s_pool_ts         = TimeCurrent();
+  }
+
+  inline void SetPoolTelemetryFrame(const string sym,
+                                    const double score_buy,
+                                    const double score_sell)
+  {
+    SetPoolTelemetryFrameEx(sym, score_buy, score_sell, 0, 0, 0, 0);
+  }
+
+  inline bool GetPoolTelemetryFrame(double &buy_out, double &sell_out)
+  {
+    buy_out  = s_pool_score_buy;
+    sell_out = s_pool_score_sell;
+    return s_pool_valid;
+  }
+
+  inline bool GetPoolTelemetryFrameEx(double &buy_out, double &sell_out,
+                                      int &feat_buy_out, int &feat_sell_out,
+                                      ulong &veto_buy_out, ulong &veto_sell_out)
+  {
+    buy_out       = s_pool_score_buy;
+    sell_out      = s_pool_score_sell;
+    feat_buy_out  = s_pool_feat_buy;
+    feat_sell_out = s_pool_feat_sell;
+    veto_buy_out  = s_pool_veto_buy;
+    veto_sell_out = s_pool_veto_sell;
+    return s_pool_valid;
+  }
+
   static int      s_dayKey          = -1;    // epoch-day
   static double   s_dayEqStart      =  0.0;
   static double   s_dayEqPeak       =  0.0;  // intraday peak equity (persisted)
@@ -1998,6 +2077,7 @@ inline void NotifyTradeResult(const double r_multiple)
   }
   inline int  TradeCooldownSecondsLeft(){ return _SecondsLeft(s_trade_cd_until); }
   inline int  LossCooldownSecondsLeft(){  return _SecondsLeft(s_cooldown_until); }
+  inline string _FmtPoolTag(const string sym);
 
   // ----------------------------------------------------------------------------
   // Gate debug logger (throttled): prints only when CfgDebugGates(cfg) is true
@@ -2019,8 +2099,8 @@ inline void NotifyTradeResult(const double r_multiple)
                           const string msg)
   {
     if(!_ShouldGateLog(cfg, reason)) return;
-    PrintFormat("[GateDetail] %s reason=%d (%s) %s",
-                sym, reason, GateReasonToString(reason), msg);
+    PrintFormat("[GateDetail] %s reason=%d (%s) %s%s",
+            sym, reason, GateReasonToString(reason), msg, _FmtPoolTag(sym));
   }
   
   // ----------------------------------------------------------------------------
@@ -2078,38 +2158,108 @@ inline void NotifyTradeResult(const double r_multiple)
      return StringFormat("session_block (%s)", session_reason);
    }
    
-   inline string _FmtCooldownVeto(const int left_sec, const int total_sec)
+  inline string _FmtCooldownVeto(const int left_sec, const int total_sec)
    {
      return StringFormat("cooldown_left=%ds total=%ds", left_sec, total_sec);
    }
 
+  inline string _FmtPoolTag(const string sym)
+   {
+     if(!s_pool_valid)
+       return " pool=na";
+   
+     int age = -1;
+     if(s_pool_ts > 0)
+       age = (int)(TimeCurrent() - s_pool_ts);
+   
+     string sym_note = "";
+     if(s_pool_sym != "" && s_pool_sym != sym)
+       sym_note = StringFormat(" poolSym=%s", s_pool_sym);
+   
+     string feat_note = "";
+     if(s_pool_feat_buy > 0 || s_pool_feat_sell > 0)
+       feat_note = StringFormat(" fbB=%d fbS=%d", s_pool_feat_buy, s_pool_feat_sell);
+   
+     string veto_note = "";
+     if(s_pool_veto_buy != 0 || s_pool_veto_sell != 0)
+       veto_note = StringFormat(" vmB=%s vmS=%s", (string)s_pool_veto_buy, (string)s_pool_veto_sell);
+   
+     if(age >= 0)
+       return StringFormat("%s poolB=%.3f poolS=%.3f poolAge=%ds%s%s",
+                           sym_note, s_pool_score_buy, s_pool_score_sell, age, feat_note, veto_note);
+   
+     return StringFormat("%s poolB=%.3f poolS=%.3f%s%s",
+                         sym_note, s_pool_score_buy, s_pool_score_sell, feat_note, veto_note);
+   }
+
   inline string FormatPrimaryVetoDetail(const PolicyResult &r)
    {
+     const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
+     const string pool_tag = _FmtPoolTag(sym);
      switch(r.primary_reason)
      {
        case GATE_SPREAD:
        case GATE_MOD_SPREAD:
-         return _FmtSpreadVeto(r.spread_pts, (double)r.spread_cap_pts);
+         return _FmtSpreadVeto(r.spread_pts, (double)r.spread_cap_pts) + pool_tag;;
    
        case GATE_SESSION:
-         return _FmtSessionVeto(SessionReasonFromFlags(r.session_filter_on, r.in_session_window));
+         return _FmtSessionVeto(SessionReasonFromFlags(r.session_filter_on, r.in_session_window)) + pool_tag;;
    
        case GATE_COOLDOWN:
        {
          const int left_sec = (r.cd_trade_left_sec > r.cd_loss_left_sec ? r.cd_trade_left_sec : r.cd_loss_left_sec);
          const int total_sec = (int)(r.loss_cd_min * 60);
-         return _FmtCooldownVeto(left_sec, total_sec);
+         return _FmtCooldownVeto(left_sec, total_sec) + pool_tag;;
        }
    
+       case GATE_DAILYDD:
+         return StringFormat("DailyDD dd=%.3f%% limit=%.3f%%",
+                             r.day_dd_pct, r.day_dd_limit_pct) + pool_tag;
+   
+       case GATE_DAYLOSS:
+         return StringFormat("DayLoss loss=%.2f (%.3f%%) cap=%.2f (%.3f%%)",
+                             r.day_loss_money, r.day_loss_pct,
+                             r.day_loss_cap_money, r.day_loss_cap_pct) + pool_tag;
+   
+       case GATE_ACCOUNT_DD:
+         return StringFormat("AccountDD dd=%.3f%% limit=%.3f%% latched=%d",
+                             r.acct_dd_pct, r.acct_dd_limit_pct,
+                             (r.acct_stop_latched?1:0)) + pool_tag;
+   
+       case GATE_MONTH_TARGET:
+         return StringFormat("MonthTarget hit=%d profit=%.3f%% target=%.3f%%",
+                             (r.month_target_hit?1:0),
+                             r.month_profit_pct, r.month_target_pct) + pool_tag;
+   
+       case GATE_VOLATILITY:
+         return StringFormat("VolBreaker ratio=%.3f limit=%.3f atrS=%.1f atrL=%.1f",
+                             r.vol_ratio, r.vol_limit, r.atr_short_pts, r.atr_long_pts) + pool_tag;
+   
+       case GATE_ADR:
+         return StringFormat("ADRCap today=%.1f cap=%.1f adr=%.1f",
+                             r.adr_today_range_pts, r.adr_cap_limit_pts, r.adr_pts) + pool_tag;
+   
+       case GATE_CALM:
+         return StringFormat("Calm atrS=%.1f spread=%.1f atr/spread=%.3f minRatio=%.3f",
+                             r.atr_short_pts, r.spread_pts, r.calm_atr_to_spread, r.calm_min_ratio) + pool_tag;
+   
+       case GATE_LIQUIDITY:
+         return StringFormat("Liquidity ratio=%.3f floor=%.3f atrS=%.1f spread=%.1f",
+                             r.liq_ratio, r.liq_floor, r.atr_short_pts, r.spread_pts) + pool_tag;
+   
+       case GATE_REGIME:
+         return StringFormat("Regime tq=%.3f sg=%.3f minTQ=%.3f minSG=%.3f",
+                             r.regime_tq, r.regime_sg, r.regime_tq_min, r.regime_sg_min) + pool_tag;
+
        case GATE_NEWS:
          #ifdef NEWSFILTER_AVAILABLE
-           return _FmtNewsVeto(r.news_mins_left, r.news_impact_mask, r.news_pre_mins, r.news_post_mins);
+           return _FmtNewsVeto(r.news_mins_left, r.news_impact_mask, r.news_pre_mins, r.news_post_mins) + _FmtPoolTag(sym);
          #else
-           return StringFormat("news_block mins_left=%d", r.news_mins_left);
+           return StringFormat("news_block mins_left=%d", r.news_mins_left) + _FmtPoolTag(sym);
          #endif
    
        default:
-         return "";
+         return _FmtPoolTag(sym); // or "" + _FmtPoolTag(sym) if you want consistent presence
      }
    }
 
@@ -2117,6 +2267,7 @@ inline void NotifyTradeResult(const double r_multiple)
    {
      const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
      string gate_log = "";
+     const string pool_tag = _FmtPoolTag(sym);
    
      if(_ShouldVetoLogOncePerSec(sym, r.primary_reason, r.veto_mask) == false)
        return;
@@ -2136,7 +2287,7 @@ inline void NotifyTradeResult(const double r_multiple)
               " modCap=", (string)r.mod_spread_cap_pts,
               " inSession=", (r.in_session_window?"1":"0"),
               " weeklyRamp=", (r.weekly_ramp_on?"1":"0"),
-              " mask=", (string)r.veto_mask, gate_log);
+              " mask=", (string)r.veto_mask, gate_log, pool_tag);
         break;
 
       case GATE_NEWS:
@@ -2152,7 +2303,7 @@ inline void NotifyTradeResult(const double r_multiple)
               " impactMask=", (string)r.news_impact_mask,
               " pre=", (string)r.news_pre_mins,
               " post=", (string)r.news_post_mins,
-              " mask=", (string)r.veto_mask, gate_log);
+              " mask=", (string)r.veto_mask, gate_log, pool_tag);
         break;
 
       case GATE_SESSION:
@@ -2161,7 +2312,7 @@ inline void NotifyTradeResult(const double r_multiple)
               " sessionFilter=", (r.session_filter_on?"1":"0"),
               " inWindow=", (r.in_session_window?"1":"0"),
               " server=", TimeToString(TimeCurrent(), TIME_SECONDS),
-              " mask=", (string)r.veto_mask, gate_log);
+              " mask=", (string)r.veto_mask, gate_log, pool_tag);
         break;
 
       case GATE_COOLDOWN:
@@ -2171,7 +2322,7 @@ inline void NotifyTradeResult(const double r_multiple)
               " loss_left_sec=", (string)r.cd_loss_left_sec,
               " trade_cd_sec=", (string)r.trade_cd_sec,
               " loss_cd_min=", (string)r.loss_cd_min,
-              " mask=", (string)r.veto_mask, gate_log);
+              " mask=", (string)r.veto_mask, gate_log, pool_tag);
         break;
 
       case GATE_DAILYDD:
@@ -2958,7 +3109,12 @@ inline void NotifyTradeResult(const double r_multiple)
    {
      PolicyResult r; ZeroMemory(r);
      if(!EvaluateFull(cfg, sym, r))
-     { reason = r.primary_reason; minutes_left_news = r.news_mins_left; return false; }
+     {
+       PolicyVetoLog(r); // ✅ guaranteed veto log (throttled)
+       reason = r.primary_reason;
+       minutes_left_news = r.news_mins_left;
+       return false;
+     }
    
      // keep your existing debug block, but replace any EffSessionFilter(cfg,_Symbol)
      // with EffSessionFilter(cfg, sym), and NewsBlockedNow(cfg, mins_left) with NewsBlockedNow(cfg, sym, mins_left)

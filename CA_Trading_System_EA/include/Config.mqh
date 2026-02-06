@@ -1,4 +1,4 @@
-// Config.mqh  (full, consolidated & compile-safe)
+﻿// Config.mqh  (full, consolidated & compile-safe)
 // - Settings builder (signature unchanged)
 // - Strong Normalize() + Validate() with clear warnings
 // - CanonicalCSV + FNV-1a 64-bit hash
@@ -460,6 +460,13 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_ROUTER_FB_MIN
   #define CFG_HAS_ROUTER_FB_MIN 1
+#endif
+// Router confluence-only pool toggles (optional)
+#ifndef CFG_HAS_ROUTER_USE_CONFL_POOL
+  #define CFG_HAS_ROUTER_USE_CONFL_POOL 1
+#endif
+#ifndef CFG_HAS_ROUTER_POOL_BLEND_W
+  #define CFG_HAS_ROUTER_POOL_BLEND_W 1
 #endif
 #ifndef ROUTER_GUESS_CORE_ID_WHEN_MISSING
   #define ROUTER_GUESS_CORE_ID_WHEN_MISSING 1
@@ -1355,6 +1362,27 @@ namespace Config
      #endif
    }
    
+   inline bool CfgRouterUseConflPool(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+       return (bool)cfg.router_use_confl_pool;
+     #else
+       return false;
+     #endif
+   }
+   
+   inline double CfgRouterPoolBlendW(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+       double w = cfg.router_pool_blend_w;
+       if(w < 0.0) w = 0.0;
+       if(w > 1.0) w = 1.0;
+       return w;
+     #else
+       return 0.0;
+     #endif
+   }
+
    inline int NewsPreMins(const Settings &c)
    {
      #ifdef CFG_HAS_NEWS_PRE_MINS
@@ -2231,6 +2259,13 @@ namespace Config
    
      x.router_min_score=0.55; x.router_fb_min=0.50;
    
+     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+       x.router_use_confl_pool = false;   // default OFF (no behavior change)
+     #endif
+     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+       x.router_pool_blend_w   = 0.0;     // default 0 (no influence)
+     #endif
+
      x.london_start_local="08:00";
      x.london_end_local  ="17:00";
    
@@ -3042,6 +3077,34 @@ namespace Config
        if(cfg.router_fb_min < 0.0) cfg.router_fb_min = 0.0;
        if(cfg.router_fb_min > 1.0) cfg.router_fb_min = 1.0;
     #endif
+    #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+      if(cfg.router_pool_blend_w < 0.0) cfg.router_pool_blend_w = 0.0;
+      if(cfg.router_pool_blend_w > 1.0) cfg.router_pool_blend_w = 1.0;
+    #endif
+   
+    #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+      int pu = 0;
+      if(KV::GetInt("router.pool_use", pu))
+        cfg.router_use_confl_pool = (pu != 0);
+    #endif
+      
+    #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+      double pw = 0.0;
+      if(KV::GetDouble("router.pool_blend_w", pw))
+      {
+        if(pw < 0.0) pw = 0.0;
+        if(pw > 1.0) pw = 1.0;
+        cfg.router_pool_blend_w = pw;
+      }
+    #endif
+    #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+      // If pool use is OFF, force blend weight to 0 to avoid hidden effects
+      #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+        if(!cfg.router_use_confl_pool && cfg.router_pool_blend_w > 0.0)
+          cfg.router_pool_blend_w = 0.0;
+      #endif
+    #endif
+
     // Keep router fallback threshold and legacy alias in sync
     _SyncRouterFallbackAlias(cfg);
     // Strategy toggles & ICT-specific thresholds
@@ -3084,6 +3147,29 @@ namespace Config
         if(k > 0) cfg.router_max_strats = k;
       }
     #endif
+    #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+      int b = 0;
+      if(KV::GetInt("router.pool_use", b))
+        cfg.router_use_confl_pool = (b != 0);
+    #endif
+   
+    #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+      double w = 0.0;
+      if(KV::GetDouble("router.pool_blend_w", w))
+      {
+        if(w < 0.0) w = 0.0;
+        if(w > 1.0) w = 1.0;
+        cfg.router_pool_blend_w = w;
+      }
+    #endif
+   
+    #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+      #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+        if(!cfg.router_use_confl_pool && cfg.router_pool_blend_w > 0.0)
+          cfg.router_pool_blend_w = 0.0;
+      #endif
+    #endif
+
     #ifdef CFG_HAS_STRAT_MODE
       const StrategyMode sm = CfgStrategyMode(cfg);
       if(sm == STRAT_PACK_ONLY || sm == STRAT_COMBINED)
@@ -4131,13 +4217,19 @@ namespace Config
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       s+=",routerCap="+IntegerToString(c.router_max_strats);
     #endif
+    #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+      s+=",routerPool="+BoolStr(c.router_use_confl_pool);
+    #endif
+    #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+      s+=",routerPoolW="+DoubleToString(c.router_pool_blend_w,3);
+    #endif
     
     #ifdef CFG_HAS_ENABLE_HARD_GATE
-     s+=",hardGate="+BoolStr(c.enable_hard_gate);
-   #endif
-   #ifdef CFG_HAS_MIN_FEATURES_MET
-     s+=",minFeat="+IntegerToString(c.min_features_met);
-   #endif
+      s+=",hardGate="+BoolStr(c.enable_hard_gate);
+    #endif
+    #ifdef CFG_HAS_MIN_FEATURES_MET
+      s+=",minFeat="+IntegerToString(c.min_features_met);
+    #endif
    #ifdef CFG_HAS_REQUIRE_TREND_FILTER
      s+=",reqTrend="+BoolStr(c.require_trend_filter);
    #endif
@@ -5259,6 +5351,13 @@ namespace Config
         else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
       #endif
 
+      #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+        else if(k=="routerPool") cfg.router_use_confl_pool = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+        else if(k=="routerPoolW") cfg.router_pool_blend_w = ToDouble(v);
+      #endif
+
       // hard gate + required features
       #ifdef CFG_HAS_ENABLE_HARD_GATE
         else if(k=="hardGate") cfg.enable_hard_gate = ToBool(v);
@@ -6017,6 +6116,12 @@ struct Settings
   #endif
   #ifdef CFG_HAS_ROUTER_FORCE_ONE
     bool            router_force_one_normal_vol; // default true
+  #endif
+  #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+    bool            router_use_confl_pool;      // enable Router use of confluence-only pool
+  #endif
+  #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+    double          router_pool_blend_w;        // 0..1 blend weight for pool score into candidate ranking
   #endif
   #ifdef CFG_HAS_ROUTER_FB_MIN
     double           router_fb_min; // alias for older writers; same meaning as router_fallback_min_score
