@@ -2077,7 +2077,6 @@ inline void NotifyTradeResult(const double r_multiple)
   }
   inline int  TradeCooldownSecondsLeft(){ return _SecondsLeft(s_trade_cd_until); }
   inline int  LossCooldownSecondsLeft(){  return _SecondsLeft(s_cooldown_until); }
-  inline string _FmtPoolTag(const string sym);
 
   // ----------------------------------------------------------------------------
   // Gate debug logger (throttled): prints only when CfgDebugGates(cfg) is true

@@ -838,6 +838,7 @@ string _GateReasonStr(const int c)
       case GATE_WARMUP:     return "WARMUP";
       case GATE_INHIBIT:    return "INHIBIT";
       case GATE_NONE:       return "NONE";
+      case GATE_STRATMODE_PATH_BUG: return "STRATMODE_PATH_BUG";
       default:              return "UNKNOWN";
    }
 }
@@ -3617,6 +3618,28 @@ bool RouterGateOK_Global(const string log_sym,
                          int &gate_reason_out)
 {
    gate_reason_out = 0;
+
+   // Tripwire: MAIN_ONLY must never use registry/candidate routing path.
+   if(cfg.strat_mode == STRAT_MAIN_ONLY && g_use_registry)
+   {
+      gate_reason_out = GATE_STRATMODE_PATH_BUG;
+      Panel::SetGate(gate_reason_out);
+   
+      // Throttle the warning to max 1 per second to avoid log spam.
+      static datetime last_emit = 0;
+      const datetime now = TimeCurrent();
+      if(now != last_emit)
+      {
+         last_emit = now;
+         LogX::Warn(StringFormat("[Routing][BUG] MAIN_ONLY attempted registry routing (g_use_registry=true). Blocking. sym=%s", log_sym));
+      }
+   
+      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
+                      "BUG: STRAT_MAIN_ONLY cannot use registry/candidate routing path");
+      TraceNoTrade(log_sym, TS_GATE, gate_reason_out,
+                   "BUG: STRAT_MAIN_ONLY attempted registry/candidate routing path");
+      return false;
+   }
 
    if(g_inhibit_trading)
    {

@@ -960,6 +960,12 @@ namespace Config
 
      // Router / gates / require toggles
      bool enable_hard_gate; double router_min_score; double router_fb_min; int min_features_met;
+     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+       bool router_use_confl_pool;
+     #endif
+     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+       double router_pool_blend_w;
+     #endif
      bool require_trend; bool require_adx; bool require_struct_or_pattern_ob;
      
      // Silver Bullet hard requirements (optional)
@@ -2035,6 +2041,12 @@ namespace Config
      #endif
      #ifdef CFG_HAS_ROUTER_FB_MIN
        cfg.router_fb_min = x.router_fb_min;
+     #endif
+     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+       cfg.router_use_confl_pool = x.router_use_confl_pool;
+     #endif
+     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+       cfg.router_pool_blend_w = MathMin(1.0, MathMax(0.0, x.router_pool_blend_w));
      #endif
      #ifdef CFG_HAS_MIN_FEATURES_MET
        cfg.min_features_met = MathMax(0, x.min_features_met);
