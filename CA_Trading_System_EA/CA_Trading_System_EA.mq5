@@ -3114,7 +3114,7 @@ void OnTick()
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
-   AutoC::OnTick(S, _Symbol, (ENUM_TIMEFRAMES)S.tf_entry);
+   AutoC::PumpTick(S, _Symbol, (ENUM_TIMEFRAMES)S.tf_entry);
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
    // When registry routing is ON, keep using ProcessSymbol() path.
@@ -3271,7 +3271,7 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    MarketData::OnTimerRefresh();
-   AutoC::OnTimer(S, now_srv, g_symbols, g_symCount);
+   AutoC::PumpTimer(S, now_srv, g_symbols, g_symCount);
    ML::SetRuntimeOn(g_ml_on);
    const Settings ml_cfg = (g_use_registry ? S : g_cfg);
    const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
