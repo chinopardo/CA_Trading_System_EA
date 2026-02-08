@@ -47,6 +47,13 @@ struct Settings;
 #ifndef CFG_HAS_ML_SETTINGS
 #define CFG_HAS_ML_SETTINGS 1
 #endif
+// --- Autochartist-style internal scanner ---
+#ifndef CFG_HAS_AUTOCHARTIST
+  #define CFG_HAS_AUTOCHARTIST 1
+#endif
+#ifndef CFG_HAS_AUTOCHARTIST_SETTINGS
+  #define CFG_HAS_AUTOCHARTIST_SETTINGS 1
+#endif
 
 // --- Entry gating taps (PositionMgmt / Router)
 #ifndef CFG_HAS_ROUTER_EVAL_ALL_MODE
@@ -2408,12 +2415,16 @@ namespace Config
     // If ANY toggle is on or ANY weight is positive, assume user/profile already configured it.
     if(cfg.cf_market_structure || cfg.cf_inst_zones || cfg.cf_orderflow_delta ||
        cfg.cf_liquidity || cfg.cf_orderblock_near || cfg.cf_vsa_increase ||
-       cfg.cf_candle_pattern || cfg.cf_chart_pattern || cfg.cf_trend_regime)
+       cfg.cf_candle_pattern || cfg.cf_chart_pattern || cfg.cf_trend_regime ||
+       cfg.cf_autochartist_chart || cfg.cf_autochartist_fib ||
+       cfg.cf_autochartist_keylevels || cfg.cf_autochartist_volatility)
       return true;
 
     if(cfg.w_market_structure > 0.0 || cfg.w_inst_zones > 0.0 || cfg.w_orderflow_delta > 0.0 ||
        cfg.w_liquidity > 0.0 || cfg.w_orderblock_near > 0.0 || cfg.w_vsa_increase > 0.0 ||
-       cfg.w_candle_pattern > 0.0 || cfg.w_chart_pattern > 0.0 || cfg.w_trend_regime > 0.0)
+       cfg.w_candle_pattern > 0.0 || cfg.w_chart_pattern > 0.0 || cfg.w_trend_regime > 0.0 ||
+       cfg.w_autochartist_chart > 0.0 || cfg.w_autochartist_fib > 0.0 ||
+       cfg.w_autochartist_keylevels > 0.0 || cfg.w_autochartist_volatility > 0.0)
       return true;
 
     return false;
@@ -2446,9 +2457,49 @@ namespace Config
     cfg.w_chart_pattern     = 0.10;
     cfg.w_trend_regime      = 0.05;
 
-    // If user left thresholds unset/zero, apply sane baselines
-    if(cfg.cf_min_needed <= 0) cfg.cf_min_needed = 5;
-    if(cfg.cf_min_score  <= 0) cfg.cf_min_score  = 0.55;
+    // --- Autochartist-style confluence (defaults OFF to avoid unexpected double-ups) ---
+    cfg.cf_autochartist_chart      = false;
+    cfg.cf_autochartist_fib        = false;
+    cfg.cf_autochartist_keylevels  = false;
+    cfg.cf_autochartist_volatility = false;
+   
+    // Weights (kept non-zero so enabling later doesn’t require hunting defaults)
+    cfg.w_autochartist_chart      = 0.70;
+    cfg.w_autochartist_fib        = 0.65;
+    cfg.w_autochartist_keylevels  = 0.55;
+    cfg.w_autochartist_volatility = 0.40;
+   
+    // Scanner core
+    cfg.auto_enable             = false;
+    cfg.auto_scan_interval_sec  = 60;
+    cfg.auto_scan_lookback_bars = 320;
+   
+    // Chart patterns (local)
+    cfg.auto_chart_min_quality  = 0.60;
+    cfg.auto_chart_pivot_L      = 3;
+    cfg.auto_chart_pivot_R      = 3;
+   
+    // Fibonacci/harmonic (local)
+    cfg.auto_fib_min_quality    = 0.60;
+   
+    // Key levels (local)
+    cfg.auto_keylevel_min_touches  = 3;
+    cfg.auto_keylevel_cluster_atr  = 0.18;
+    cfg.auto_keylevel_approach_atr = 0.25;
+   
+    // Volatility / movement (local)
+    cfg.auto_vol_lookback_days     = 180;
+    cfg.auto_vol_horizon_minutes   = 60;
+    cfg.auto_vol_min_range_atr     = 0.90;
+   
+    // Risk scaling (optional)
+    cfg.auto_risk_scale_enable = false;
+    cfg.auto_risk_scale_floor  = 0.70;
+    cfg.auto_risk_scale_cap    = 1.20;
+
+     // If user left thresholds unset/zero, apply sane baselines
+     if(cfg.cf_min_needed <= 0) cfg.cf_min_needed = 5;
+     if(cfg.cf_min_score  <= 0) cfg.cf_min_score  = 0.55;
   }
 
   // Bridge legacy ICT toggles -> new strat toggles (one-way; non-destructive)
@@ -2932,7 +2983,66 @@ namespace Config
       cfg.w_macd             = MathMax(0.0, cfg.w_macd);
       cfg.w_correlation      = MathMax(0.0, cfg.w_correlation);
       cfg.w_news             = MathMax(0.0, cfg.w_news);
+      // --- Autochartist-style weights ---
+      cfg.w_autochartist_chart      = MathMin(MathMax(cfg.w_autochartist_chart,      0.0), 2.0);
+      cfg.w_autochartist_fib        = MathMin(MathMax(cfg.w_autochartist_fib,        0.0), 2.0);
+      cfg.w_autochartist_keylevels  = MathMin(MathMax(cfg.w_autochartist_keylevels,  0.0), 2.0);
+      cfg.w_autochartist_volatility = MathMin(MathMax(cfg.w_autochartist_volatility, 0.0), 2.0);
+      
+      // Avoid double-ups: Autochartist chart patterns replace legacy chart-pattern confluence
+      if(cfg.cf_autochartist_chart)
+      {
+        cfg.cf_chart_pattern = false;
+        cfg.w_chart_pattern  = 0.0;
+      }
     #endif
+
+    // ---- Autochartist-style scanner clamps ----
+      // Scan cadence / lookback
+      if(cfg.auto_scan_interval_sec < 5)   cfg.auto_scan_interval_sec = 5;
+      if(cfg.auto_scan_interval_sec > 900) cfg.auto_scan_interval_sec = 900;
+      
+      if(cfg.auto_scan_lookback_bars < 120)  cfg.auto_scan_lookback_bars = 120;
+      if(cfg.auto_scan_lookback_bars > 2000) cfg.auto_scan_lookback_bars = 2000;
+      
+      // Chart pattern params
+      cfg.auto_chart_min_quality = MathMin(MathMax(cfg.auto_chart_min_quality, 0.0), 1.0);
+      
+      if(cfg.auto_chart_pivot_L < 2)  cfg.auto_chart_pivot_L = 2;
+      if(cfg.auto_chart_pivot_L > 10) cfg.auto_chart_pivot_L = 10;
+      
+      if(cfg.auto_chart_pivot_R < 2)  cfg.auto_chart_pivot_R = 2;
+      if(cfg.auto_chart_pivot_R > 10) cfg.auto_chart_pivot_R = 10;
+      
+      // Fib params
+      cfg.auto_fib_min_quality = MathMin(MathMax(cfg.auto_fib_min_quality, 0.0), 1.0);
+      
+      // Key levels params
+      if(cfg.auto_keylevel_min_touches < 3) cfg.auto_keylevel_min_touches = 3;
+      if(cfg.auto_keylevel_min_touches > 8) cfg.auto_keylevel_min_touches = 8;
+      
+      cfg.auto_keylevel_cluster_atr  = MathMin(MathMax(cfg.auto_keylevel_cluster_atr,  0.05), 0.80);
+      cfg.auto_keylevel_approach_atr = MathMin(MathMax(cfg.auto_keylevel_approach_atr, 0.05), 1.20);
+      
+      // Volatility params
+      if(cfg.auto_vol_lookback_days < 30)  cfg.auto_vol_lookback_days = 30;
+      if(cfg.auto_vol_lookback_days > 365) cfg.auto_vol_lookback_days = 365;
+      
+      if(cfg.auto_vol_horizon_minutes < 15)  cfg.auto_vol_horizon_minutes = 15;
+      if(cfg.auto_vol_horizon_minutes > 240) cfg.auto_vol_horizon_minutes = 240;
+      
+      cfg.auto_vol_min_range_atr = MathMin(MathMax(cfg.auto_vol_min_range_atr, 0.25), 3.00);
+      
+      // Risk scaling params
+      cfg.auto_risk_scale_floor = MathMin(MathMax(cfg.auto_risk_scale_floor, 0.10), 2.00);
+      cfg.auto_risk_scale_cap   = MathMin(MathMax(cfg.auto_risk_scale_cap,   0.10), 3.00);
+      
+      if(cfg.auto_risk_scale_cap < cfg.auto_risk_scale_floor)
+      {
+        double t = cfg.auto_risk_scale_floor;
+        cfg.auto_risk_scale_floor = cfg.auto_risk_scale_cap;
+        cfg.auto_risk_scale_cap = t;
+      }
 
     // (Toggles are bools—no clamp needed)
     #ifdef CFG_HAS_EXTRA_CONFL
@@ -5733,6 +5843,46 @@ struct Settings
    double w_correlation;
    double w_news;
    
+   // --- Autochartist-style internal scanner (local computation) ---
+   bool   auto_enable;
+   int    auto_scan_interval_sec;
+   int    auto_scan_lookback_bars;
+   
+   // Main confluence toggles
+   bool   cf_autochartist_chart;
+   bool   cf_autochartist_fib;
+   bool   cf_autochartist_keylevels;
+   bool   cf_autochartist_volatility;
+   
+   // Main confluence weights
+   double w_autochartist_chart;
+   double w_autochartist_fib;
+   double w_autochartist_keylevels;
+   double w_autochartist_volatility;
+   
+   // Chart patterns (local)
+   double auto_chart_min_quality;
+   int    auto_chart_pivot_L;
+   int    auto_chart_pivot_R;
+   
+   // Fibonacci/harmonic (local)
+   double auto_fib_min_quality;
+   
+   // Key levels (local)
+   int    auto_keylevel_min_touches;
+   double auto_keylevel_cluster_atr;
+   double auto_keylevel_approach_atr;
+   
+   // Volatility / movement (local)
+   int    auto_vol_lookback_days;
+   int    auto_vol_horizon_minutes;
+   double auto_vol_min_range_atr;
+   
+   // Optional risk scaling
+   bool   auto_risk_scale_enable;
+   double auto_risk_scale_floor;
+   double auto_risk_scale_cap;
+
    // ===== Extra Confluences (gated, after main) =====
    bool   extra_enable;      // enable the extra stage
    int    extra_min_needed;  // how many extras must pass

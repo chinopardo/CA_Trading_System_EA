@@ -41,6 +41,7 @@
 #include "include/StructureSDOB.mqh"
 #include "include/PivotsLevels.mqh"
 #include "include/Patterns.mqh"
+#include "include/AutochartistEngine.mqh"
 #include "include/LiquidityCues.mqh"
 #include "include/RegimeCorr.mqh"
 #include "include/NewsFilter.mqh"
@@ -512,6 +513,39 @@ input bool InpCF_StochRSI              = true; // Stoch RSI OB/OS confirmation
 input bool InpCF_MACD                  = true; // MACD crosses/confirmation
 input bool InpCF_Correlation           = false; // Cross-pair confirmation
 input bool InpCF_News                  = true; // News calendar filter (soft/pass as confluence)
+
+// ===== Autochartist-style internal scanner =====
+input bool   InpAuto_Enable             = false; // Auto: master enable
+input int    InpAuto_ScanIntervalSec    = 60;    // Auto: rescan cadence (sec)
+input int    InpAuto_ScanLookbackBars   = 320;   // Auto: lookback bars
+
+input bool   InpCF_AutoChart            = false; // Auto: chart patterns confluence
+input bool   InpCF_AutoFib              = false; // Auto: harmonic/fib confluence
+input bool   InpCF_AutoKeyLevels        = false; // Auto: key levels confluence
+input bool   InpCF_AutoVolatility       = false; // Auto: volatility/range confluence
+
+input double InpW_AutoChart             = 0.70;
+input double InpW_AutoFib               = 0.65;
+input double InpW_AutoKeyLevels         = 0.55;
+input double InpW_AutoVolatility        = 0.40;
+
+input double InpAuto_Chart_MinQuality   = 0.60;
+input int    InpAuto_Chart_PivotL       = 3;
+input int    InpAuto_Chart_PivotR       = 3;
+
+input double InpAuto_Fib_MinQuality     = 0.60;
+
+input int    InpAuto_Key_MinTouches     = 3;
+input double InpAuto_Key_ClusterATR     = 0.18;
+input double InpAuto_Key_ApproachATR    = 0.25;
+
+input int    InpAuto_Vol_LookbackDays   = 180;
+input int    InpAuto_Vol_HorizonMin     = 60;
+input double InpAuto_Vol_MinRangeATR    = 0.90;
+
+input bool   InpAuto_RiskScale_Enable   = false;
+input double InpAuto_RiskScale_Floor    = 0.70;
+input double InpAuto_RiskScale_Cap      = 1.20;
 
 // Optional per-confluence weights (1.0 default)
 input double InpW_InstZones            = 1.25;
@@ -1442,6 +1476,39 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.cf_macd             = InpCF_MACD;
   cfg.cf_correlation      = InpCF_Correlation;
   cfg.cf_news_ok          = InpCF_News;
+
+  // --- Autochartist-style confluence ---
+  cfg.auto_enable             = InpAuto_Enable;
+  cfg.auto_scan_interval_sec  = InpAuto_ScanIntervalSec;
+  cfg.auto_scan_lookback_bars = InpAuto_ScanLookbackBars;
+
+  cfg.cf_autochartist_chart      = InpCF_AutoChart;
+  cfg.cf_autochartist_fib        = InpCF_AutoFib;
+  cfg.cf_autochartist_keylevels  = InpCF_AutoKeyLevels;
+  cfg.cf_autochartist_volatility = InpCF_AutoVolatility;
+
+  cfg.w_autochartist_chart      = InpW_AutoChart;
+  cfg.w_autochartist_fib        = InpW_AutoFib;
+  cfg.w_autochartist_keylevels  = InpW_AutoKeyLevels;
+  cfg.w_autochartist_volatility = InpW_AutoVolatility;
+
+  cfg.auto_chart_min_quality = InpAuto_Chart_MinQuality;
+  cfg.auto_chart_pivot_L     = InpAuto_Chart_PivotL;
+  cfg.auto_chart_pivot_R     = InpAuto_Chart_PivotR;
+
+  cfg.auto_fib_min_quality = InpAuto_Fib_MinQuality;
+
+  cfg.auto_keylevel_min_touches  = InpAuto_Key_MinTouches;
+  cfg.auto_keylevel_cluster_atr  = InpAuto_Key_ClusterATR;
+  cfg.auto_keylevel_approach_atr = InpAuto_Key_ApproachATR;
+
+  cfg.auto_vol_lookback_days   = InpAuto_Vol_LookbackDays;
+  cfg.auto_vol_horizon_minutes = InpAuto_Vol_HorizonMin;
+  cfg.auto_vol_min_range_atr   = InpAuto_Vol_MinRangeATR;
+
+  cfg.auto_risk_scale_enable = InpAuto_RiskScale_Enable;
+  cfg.auto_risk_scale_floor  = InpAuto_RiskScale_Floor;
+  cfg.auto_risk_scale_cap    = InpAuto_RiskScale_Cap;
 
   // ---- Base weights (single source) ----
   cfg.w_inst_zones = InpW_InstZones;
@@ -2879,6 +2946,9 @@ int OnInit()
          ML::BackfillDataset(g_symbols[i], ml_tf, ml_cfg, InpML_BackfillBars, InpML_BackfillStep);
    }
     
+   // Autochartist-style engine init (after warmup so rates/ATR are usable)
+   AutoC::Init(S, g_symbols, g_symCount);
+   
    // Timer (seconds; EventSetTimer is seconds granularity)
    int sec = (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000);
    EventSetTimer(MathMax(1, sec));
@@ -3044,6 +3114,7 @@ void OnTick()
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
+   AutoC::OnTick(S, _Symbol, (ENUM_TIMEFRAMES)S.tf_entry);
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
    // When registry routing is ON, keep using ProcessSymbol() path.
@@ -3155,6 +3226,7 @@ void OnDeinit(const int reason)
    EventKillTimer();
    Exec::Deinit();
    MarketData::Deinit();
+   AutoC::Deinit();
    Panel::Deinit();
    OBI::Settings obi; // same settings not required for release
    OBI::ReleaseAll(obi);
@@ -3197,7 +3269,9 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+   datetime now_srv = TimeUtils::NowServer();
    MarketData::OnTimerRefresh();
+   AutoC::OnTimer(S, now_srv, g_symbols, g_symCount);
    ML::SetRuntimeOn(g_ml_on);
    const Settings ml_cfg = (g_use_registry ? S : g_cfg);
    const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
@@ -3207,7 +3281,6 @@ void OnTimer()
        for(int i=0;i<g_symCount; ++i)
           ML::Maintain(g_symbols[i], ml_tf);
     }
-   datetime now_srv = TimeUtils::NowServer();
    Risk::Heartbeat(now_srv);
    PM::ManageAll(S);
    Panel::Render(S);
