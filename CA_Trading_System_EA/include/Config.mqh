@@ -47,12 +47,32 @@ struct Settings;
 #ifndef CFG_HAS_ML_SETTINGS
 #define CFG_HAS_ML_SETTINGS 1
 #endif
+
 // --- Autochartist-style internal scanner ---
 #ifndef CFG_HAS_AUTOCHARTIST
   #define CFG_HAS_AUTOCHARTIST 1
 #endif
 #ifndef CFG_HAS_AUTOCHARTIST_SETTINGS
   #define CFG_HAS_AUTOCHARTIST_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_MAIN_CHART_RETEST_MAX_ATR
+  #define CFG_HAS_MAIN_CHART_RETEST_MAX_ATR 1
+#endif
+#ifndef CFG_HAS_MAIN_MIN_RR_FROM_CHART_TARGET
+  #define CFG_HAS_MAIN_MIN_RR_FROM_CHART_TARGET 1
+#endif
+#ifndef CFG_HAS_MAIN_AUTOC_COMPLETED_DIR_VETO
+  #define CFG_HAS_MAIN_AUTOC_COMPLETED_DIR_VETO 1
+#endif
+#ifndef CFG_HAS_MAIN_AUTOC_TIGHTEN_INVAL
+  #define CFG_HAS_MAIN_AUTOC_TIGHTEN_INVAL 1
+#endif
+#ifndef CFG_HAS_AUTOCHART_RR_NORM
+  #define CFG_HAS_AUTOCHART_RR_NORM 1
+#endif
+#ifndef CFG_HAS_AUTO_KEY_MIN_SIG
+  #define CFG_HAS_AUTO_KEY_MIN_SIG 1
 #endif
 
 // --- Entry gating taps (PositionMgmt / Router)
@@ -2470,7 +2490,21 @@ namespace Config
     cfg.w_autochartist_volatility = 0.40;
    
     // Scanner core
-    cfg.auto_enable             = false;
+    cfg.auto_enable       = false;
+    cfg.auto_provider     = 0;
+    cfg.auto_api_base_url = "";
+    cfg.auto_api_user     = "";
+    cfg.auto_api_pass     = "";
+
+    cfg.auto_tf_mask      = 0;    // 0 => tf_entry only
+    cfg.auto_min_quality  = 0.0;  // 0 => use per-type mins
+
+    // alias weights default to the canonical weights
+    cfg.auto_weight_chart = cfg.w_autochartist_chart;
+    cfg.auto_weight_fib   = cfg.w_autochartist_fib;
+    cfg.auto_weight_key   = cfg.w_autochartist_keylevels;
+    cfg.auto_weight_vol   = cfg.w_autochartist_volatility;
+
     cfg.auto_scan_interval_sec  = 60;
     cfg.auto_scan_lookback_bars = 320;
    
@@ -2479,6 +2513,12 @@ namespace Config
     cfg.auto_chart_pivot_L      = 3;
     cfg.auto_chart_pivot_R      = 3;
    
+    cfg.auto_chart_rr_norm                     = 2.0;
+    cfg.main_chart_retest_max_atr              = 1.0;
+    cfg.main_min_rr_from_chart_target          = 1.2;
+    cfg.main_autoc_completed_dir_mismatch_veto = false;
+    cfg.main_autoc_tighten_invalidation        = false;
+
     // Fibonacci/harmonic (local)
     cfg.auto_fib_min_quality    = 0.60;
    
@@ -2487,6 +2527,10 @@ namespace Config
     cfg.auto_keylevel_cluster_atr  = 0.18;
     cfg.auto_keylevel_approach_atr = 0.25;
    
+    #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
+       cfg.auto_key_min_sig = 0.55; // sane baseline; tune later
+    #endif
+    
     // Volatility / movement (local)
     cfg.auto_vol_lookback_days     = 180;
     cfg.auto_vol_horizon_minutes   = 60;
@@ -2500,6 +2544,37 @@ namespace Config
      // If user left thresholds unset/zero, apply sane baselines
      if(cfg.cf_min_needed <= 0) cfg.cf_min_needed = 5;
      if(cfg.cf_min_score  <= 0) cfg.cf_min_score  = 0.55;
+  }
+
+  // -----------------------------
+  // Autochartist direction gating (DRY)
+  // -----------------------------
+  inline double AutoChartDirGateConf01(const double auto_chart_min_quality01)
+  {
+    double q = auto_chart_min_quality01;
+    if(q < 0.0) q = 0.0;
+    if(q > 1.0) q = 1.0;
+
+    double c = q * 0.25; // keep the exact aligned formula
+    if(c < 0.0) c = 0.0;
+    if(c > 1.0) c = 1.0;
+    return c;
+  }
+
+  inline double AutoChartDirGateDelta01(const double auto_chart_min_quality01)
+  {
+    const double c = AutoChartDirGateConf01(auto_chart_min_quality01);
+    return (c / 3.0);
+  }
+
+  inline double AutoChartDirGateConf(const Settings &cfg)
+  {
+    return AutoChartDirGateConf01(cfg.auto_chart_min_quality);
+  }
+
+  inline double AutoChartDirGateDelta(const Settings &cfg)
+  {
+    return AutoChartDirGateDelta01(cfg.auto_chart_min_quality);
   }
 
   // Bridge legacy ICT toggles -> new strat toggles (one-way; non-destructive)
@@ -2769,6 +2844,19 @@ namespace Config
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
     
+    // AutoVol cache (MarketData 5.6) clamps
+    if(cfg.auto_vol_cache_hours < 1) cfg.auto_vol_cache_hours = 1;
+   
+    // Preserve "daily aligned" meaning at exactly 24.
+    // Any other value is treated as N-hour cadence by MarketData.
+    if(cfg.auto_vol_cache_hours > 168) cfg.auto_vol_cache_hours = 168; // 7 days cap (sane upper bound)
+   
+    if(cfg.auto_vol_adr_lookback_days < 5) cfg.auto_vol_adr_lookback_days = 5;
+    if(cfg.auto_vol_adr_lookback_days > 200) cfg.auto_vol_adr_lookback_days = 200;
+   
+    if(cfg.auto_vol_ret_lookback_d1 < 20) cfg.auto_vol_ret_lookback_d1 = 20;
+    if(cfg.auto_vol_ret_lookback_d1 > 400) cfg.auto_vol_ret_lookback_d1 = 400;
+    
     #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
       if(cfg.max_positions_per_symbol < 1 || cfg.max_positions_per_symbol > 50) // Fail-safe: if garbage/unset, revert to legacy behavior (1)
         cfg.max_positions_per_symbol = 1;
@@ -3005,6 +3093,38 @@ namespace Config
       if(cfg.auto_scan_lookback_bars < 120)  cfg.auto_scan_lookback_bars = 120;
       if(cfg.auto_scan_lookback_bars > 2000) cfg.auto_scan_lookback_bars = 2000;
       
+      // Provider / API (fail-safe to local)
+      if(cfg.auto_provider < 0 || cfg.auto_provider > 2) cfg.auto_provider = 0;
+      if(cfg.auto_provider != 0 && cfg.auto_api_base_url == "") cfg.auto_provider = 0;
+
+      // TF mask (keep bits 0..6 only => M1..D1)
+      if(cfg.auto_tf_mask < 0) cfg.auto_tf_mask = 0;
+      cfg.auto_tf_mask = (cfg.auto_tf_mask & 0x7F);
+
+      // Master min quality: fallback only (does not override explicit per-type mins)
+      cfg.auto_min_quality = MathMin(MathMax(cfg.auto_min_quality, 0.0), 1.0);
+      if(cfg.auto_min_quality > 0.0)
+      {
+         if(cfg.auto_chart_min_quality <= 0.0) cfg.auto_chart_min_quality = cfg.auto_min_quality;
+         if(cfg.auto_fib_min_quality   <= 0.0) cfg.auto_fib_min_quality   = cfg.auto_min_quality;
+      }
+
+     #ifdef CFG_HAS_CF_WEIGHTS
+      // Alias weight mirroring (avoid “two sources of truth” drift)
+      cfg.auto_weight_chart = MathMin(MathMax(cfg.auto_weight_chart, 0.0), 2.0);
+      cfg.auto_weight_fib   = MathMin(MathMax(cfg.auto_weight_fib,   0.0), 2.0);
+      cfg.auto_weight_key   = MathMin(MathMax(cfg.auto_weight_key,   0.0), 2.0);
+      cfg.auto_weight_vol   = MathMin(MathMax(cfg.auto_weight_vol,   0.0), 2.0);
+
+      // Precedence rule:
+      // - if alias > 0 => push into canonical
+      // - else pull canonical into alias
+      if(cfg.auto_weight_chart > 0.0) cfg.w_autochartist_chart = cfg.auto_weight_chart; else cfg.auto_weight_chart = cfg.w_autochartist_chart;
+      if(cfg.auto_weight_fib   > 0.0) cfg.w_autochartist_fib   = cfg.auto_weight_fib;   else cfg.auto_weight_fib   = cfg.w_autochartist_fib;
+      if(cfg.auto_weight_key   > 0.0) cfg.w_autochartist_keylevels  = cfg.auto_weight_key; else cfg.auto_weight_key = cfg.w_autochartist_keylevels;
+      if(cfg.auto_weight_vol   > 0.0) cfg.w_autochartist_volatility = cfg.auto_weight_vol; else cfg.auto_weight_vol = cfg.w_autochartist_volatility;
+     #endif
+
       // Chart pattern params
       cfg.auto_chart_min_quality = MathMin(MathMax(cfg.auto_chart_min_quality, 0.0), 1.0);
       
@@ -3023,6 +3143,10 @@ namespace Config
       
       cfg.auto_keylevel_cluster_atr  = MathMin(MathMax(cfg.auto_keylevel_cluster_atr,  0.05), 0.80);
       cfg.auto_keylevel_approach_atr = MathMin(MathMax(cfg.auto_keylevel_approach_atr, 0.05), 1.20);
+      
+      #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
+         cfg.auto_key_min_sig = MathMin(MathMax(cfg.auto_key_min_sig, 0.0), 1.0);
+      #endif
       
       // Volatility params
       if(cfg.auto_vol_lookback_days < 30)  cfg.auto_vol_lookback_days = 30;
@@ -3805,6 +3929,11 @@ namespace Config
      cfg.vwap_lookback     = vwap_lookback;
      cfg.vwap_sigma        = vwap_sigma;
    
+     // AutoVol cache (MarketData 5.6)
+     cfg.auto_vol_cache_hours       = CFG_AUTOVOL_CACHE_HOURS;
+     cfg.auto_vol_adr_lookback_days = CFG_AUTOVOL_ADR_LOOKBACK_DAYS;
+     cfg.auto_vol_ret_lookback_d1   = CFG_AUTOVOL_RET_LOOKBACK_D1;
+  
      // Feature toggles
      cfg.vsa_enable           = vsa_enable;
      cfg.vsa_penalty_max      = vsa_penalty_max;
@@ -5790,6 +5919,11 @@ struct Settings
   int               max_spread_points;
   int               slippage_points;
   long              magic_number;
+  
+  // --- AutoVol cache (MarketData 5.6) ---
+  int               auto_vol_cache_hours;        // 24 = daily (aligned to closed D1); otherwise N-hour cadence
+  int               auto_vol_adr_lookback_days;  // ADR range distribution lookback (days)
+  int               auto_vol_ret_lookback_d1;    // D1 return sigma lookback (bars)
 
   // --- Loop / timing --------------------------------------------------------
   bool              only_new_bar;
@@ -5845,6 +5979,20 @@ struct Settings
    
    // --- Autochartist-style internal scanner (local computation) ---
    bool   auto_enable;
+   int    auto_provider;       // 0=local, 1=API, 2=hybrid (API+local fallback)
+   string auto_api_base_url;   // API base URL (empty => local-only)
+   string auto_api_user;
+   string auto_api_pass;
+
+   int    auto_tf_mask;        // bitmask (0 => use tf_entry)
+   double auto_min_quality;    // master fallback [0..1] (0 => disabled)
+
+   // compat aliases (keep w_autochartist_* as canonical)
+   double auto_weight_chart;
+   double auto_weight_fib;
+   double auto_weight_key;
+   double auto_weight_vol;
+
    int    auto_scan_interval_sec;
    int    auto_scan_lookback_bars;
    
@@ -5865,6 +6013,22 @@ struct Settings
    int    auto_chart_pivot_L;
    int    auto_chart_pivot_R;
    
+   #ifdef CFG_HAS_AUTOCHART_RR_NORM
+       double auto_chart_rr_norm; // RR normalization for target scoring (ATR multiples)
+   #endif
+   #ifdef CFG_HAS_MAIN_CHART_RETEST_MAX_ATR
+       double main_chart_retest_max_atr; // entry must be within X*ATR of breakout level (completed)
+   #endif
+   #ifdef CFG_HAS_MAIN_MIN_RR_FROM_CHART_TARGET
+       double main_min_rr_from_chart_target; // require >= X R:R to use chart target as target1
+   #endif
+   #ifdef CFG_HAS_MAIN_AUTOC_COMPLETED_DIR_VETO
+       bool   main_autoc_completed_dir_mismatch_veto; // veto if completed chart opposes trade dir
+   #endif
+   #ifdef CFG_HAS_MAIN_AUTOC_TIGHTEN_INVAL
+       bool   main_autoc_tighten_invalidation; // optional invalidation tightening using break_level
+   #endif
+
    // Fibonacci/harmonic (local)
    double auto_fib_min_quality;
    
@@ -5873,6 +6037,10 @@ struct Settings
    double auto_keylevel_cluster_atr;
    double auto_keylevel_approach_atr;
    
+   #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
+      double auto_key_min_sig; // min significance (0..1) for keylevel confluence
+   #endif
+
    // Volatility / movement (local)
    int    auto_vol_lookback_days;
    int    auto_vol_horizon_minutes;

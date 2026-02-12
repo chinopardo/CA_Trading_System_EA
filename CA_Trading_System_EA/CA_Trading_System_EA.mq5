@@ -543,6 +543,12 @@ input int    InpAuto_Vol_LookbackDays   = 180;
 input int    InpAuto_Vol_HorizonMin     = 60;
 input double InpAuto_Vol_MinRangeATR    = 0.90;
 
+// --- AutoVol cache (MarketData 5.6) ---
+// Cached volatility analytics built once per day (24) or per N hours (any other value).
+input int InpAutoVol_CacheHours       = 24; // 24 = daily aligned to closed D1; otherwise N-hour cadence
+input int InpAutoVol_ADRLookbackDays  = 20; // ADR range distribution lookback (days)
+input int InpAutoVol_RetLookbackD1    = 60; // D1 return sigma lookback (bars)
+
 input bool   InpAuto_RiskScale_Enable   = false;
 input double InpAuto_RiskScale_Floor    = 0.70;
 input double InpAuto_RiskScale_Cap      = 1.20;
@@ -1505,6 +1511,12 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.auto_vol_lookback_days   = InpAuto_Vol_LookbackDays;
   cfg.auto_vol_horizon_minutes = InpAuto_Vol_HorizonMin;
   cfg.auto_vol_min_range_atr   = InpAuto_Vol_MinRangeATR;
+  
+   #ifdef CFG_HAS_AUTOVOL_SETTINGS
+    cfg.auto_vol_cache_hours       = InpAutoVol_CacheHours;
+    cfg.auto_vol_adr_lookback_days = InpAutoVol_ADRLookbackDays;
+    cfg.auto_vol_ret_lookback_d1   = InpAutoVol_RetLookbackD1;
+  #endif
 
   cfg.auto_risk_scale_enable = InpAuto_RiskScale_Enable;
   cfg.auto_risk_scale_floor  = InpAuto_RiskScale_Floor;
@@ -2947,7 +2959,7 @@ int OnInit()
    }
     
    // Autochartist-style engine init (after warmup so rates/ATR are usable)
-   AutoC::Init(S, g_symbols, g_symCount);
+   // AutoC::Init(S, g_symbols, g_symCount);
    
    // Timer (seconds; EventSetTimer is seconds granularity)
    int sec = (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000);
@@ -3005,6 +3017,10 @@ int OnInit()
    // 3. Initialize Router strategies registry (ICT-aware)
    RouterInit(g_router, g_cfg);
    RouterSetWatchlist(g_router, g_symbols, g_symCount);
+   // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
+   MarketData::OnTimerRefresh();
+   // Autochartist engine init: align symbol-indexed caches with EA watchlist
+   AutoC::Init(S, g_symbols, g_symCount);
 
    // 4. Initial ICT/Wyckoff context so panel not blank
    RefreshICTContext(g_state);
@@ -3114,7 +3130,7 @@ void OnTick()
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
-   AutoC::PumpTick(S, _Symbol, (ENUM_TIMEFRAMES)S.tf_entry);
+   // Autochartist scanning is timer-driven (OnTimer). Do not scan here to avoid double-ups.
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
    // When registry routing is ON, keep using ProcessSymbol() path.
@@ -3224,9 +3240,9 @@ void OnTick()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   AutoC::Deinit();
    Exec::Deinit();
    MarketData::Deinit();
-   AutoC::Deinit();
    Panel::Deinit();
    OBI::Settings obi; // same settings not required for release
    OBI::ReleaseAll(obi);
@@ -3271,7 +3287,7 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    MarketData::OnTimerRefresh();
-   AutoC::PumpTimer(S, now_srv, g_symbols, g_symCount);
+   AutoC::OnTimerScan(S, now_srv);
    ML::SetRuntimeOn(g_ml_on);
    const Settings ml_cfg = (g_use_registry ? S : g_cfg);
    const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
