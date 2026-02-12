@@ -3930,9 +3930,9 @@ namespace Config
      cfg.vwap_sigma        = vwap_sigma;
    
      // AutoVol cache (MarketData 5.6)
-     cfg.auto_vol_cache_hours       = CFG_AUTOVOL_CACHE_HOURS;
-     cfg.auto_vol_adr_lookback_days = CFG_AUTOVOL_ADR_LOOKBACK_DAYS;
-     cfg.auto_vol_ret_lookback_d1   = CFG_AUTOVOL_RET_LOOKBACK_D1;
+     cfg.auto_vol_cache_hours       = 24;
+     cfg.auto_vol_adr_lookback_days = 20;
+     cfg.auto_vol_ret_lookback_d1   = 60;
   
      // Feature toggles
      cfg.vsa_enable           = vsa_enable;
