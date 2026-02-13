@@ -3267,6 +3267,8 @@ namespace Config
     // Feature toggle bounds
     if(cfg.vsa_penalty_max<0.0)  cfg.vsa_penalty_max=0.0;
     if(cfg.vsa_penalty_max>0.80) cfg.vsa_penalty_max=0.80;
+    if(cfg.vsa_lookback < 10)  cfg.vsa_lookback = 60;   // default lookback
+    if(cfg.vsa_lookback > 500) cfg.vsa_lookback = 500;  // safety ceiling
 
     // Carry knobs (compile-safe)
     #ifdef CFG_HAS_CARRY_ENABLE
@@ -6371,6 +6373,7 @@ struct Settings
   // --- Feature toggles / vetoes used by strategies --------------------------
   bool              vsa_enable;
   double            vsa_penalty_max;
+  int               vsa_lookback;     // VSA scan lookback bars (0/<=0 => fall back to internal default)
   #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
     bool              vsa_allow_tick_volume; // allow tick volume in VSA when real volume unavailable
   #endif
