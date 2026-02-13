@@ -2497,6 +2497,7 @@ namespace Config
     cfg.auto_api_pass     = "";
 
     cfg.auto_tf_mask      = 0;    // 0 => tf_entry only
+    cfg.scan_tf_mask      = 0;
     cfg.auto_min_quality  = 0.0;  // 0 => use per-type mins
 
     // alias weights default to the canonical weights
@@ -5985,6 +5986,7 @@ struct Settings
    string auto_api_pass;
 
    int    auto_tf_mask;        // bitmask (0 => use tf_entry)
+   int    scan_tf_mask;
    double auto_min_quality;    // master fallback [0..1] (0 => disabled)
 
    // compat aliases (keep w_autochartist_* as canonical)
