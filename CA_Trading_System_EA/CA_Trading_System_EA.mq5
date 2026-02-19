@@ -46,6 +46,7 @@
 #include "include/RegimeCorr.mqh"
 #include "include/NewsFilter.mqh"
 #include "include/OrderBookImbalance.mqh"
+#include "include/VolumeProfile.mqh"
 #define CONFLUENCE_API_BYNAME
 //#define UNIT_TEST_ROUTER_GATE
 #include "include/Confluence.mqh"

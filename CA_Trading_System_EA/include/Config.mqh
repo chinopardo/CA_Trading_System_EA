@@ -55,6 +55,78 @@ struct Settings;
 #ifndef CFG_HAS_AUTOCHARTIST_SETTINGS
   #define CFG_HAS_AUTOCHARTIST_SETTINGS 1
 #endif
+// --- Support/Resistance detector (SRDet) ---
+#ifndef CFG_HAS_SR_DETECTOR_SETTINGS
+  #define CFG_HAS_SR_DETECTOR_SETTINGS 1
+#endif
+// --- FVG settings (cfg-wired) ---
+#ifndef CFG_HAS_FVG_MIN_SCORE
+  #define CFG_HAS_FVG_MIN_SCORE 1
+#endif
+#ifndef CFG_HAS_FVG_MODE
+  #define CFG_HAS_FVG_MODE 1
+#endif
+#ifndef CFG_HAS_FVG_LOOKBACK_BARS
+  #define CFG_HAS_FVG_LOOKBACK_BARS 1
+#endif
+#ifndef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+  #define CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS 1
+#endif
+#ifndef CFG_HAS_FVG_MIN_GAP_ATR
+  #define CFG_HAS_FVG_MIN_GAP_ATR 1
+#endif
+
+// --- Scanner toggles / thresholds (non-Autochartist scanners) ---
+#ifndef CFG_HAS_SCAN_FVG_SETTINGS
+  #define CFG_HAS_SCAN_FVG_SETTINGS 1
+#endif
+#ifndef CFG_HAS_SCAN_EXTRA_SETTINGS
+  #define CFG_HAS_SCAN_EXTRA_SETTINGS 1
+#endif
+#ifndef CFG_HAS_SCAN_TL_SETTINGS
+  #define CFG_HAS_SCAN_TL_SETTINGS 1
+#endif
+
+// --- StructureSDOB / Supply-Demand (SDOB) / OB knobs -------------------------
+#ifndef CFG_HAS_PATTERN_LOOKBACK
+  #define CFG_HAS_PATTERN_LOOKBACK 1
+#endif
+
+// ZigZag depth: Config uses CFG_HAS_ZZ_DEPTH, StructureSDOB can also check CFG_HAS_STRUCT_ZIGZAG_DEPTH
+#ifndef CFG_HAS_ZZ_DEPTH
+  #define CFG_HAS_ZZ_DEPTH 1
+#endif
+#ifndef CFG_HAS_STRUCT_ZIGZAG_DEPTH
+  #define CFG_HAS_STRUCT_ZIGZAG_DEPTH 1
+#endif
+
+#ifndef CFG_HAS_STRUCT_HTF_MULT
+  #define CFG_HAS_STRUCT_HTF_MULT 1
+#endif
+
+#ifndef CFG_HAS_OB_PROX_MAX_PIPS
+  #define CFG_HAS_OB_PROX_MAX_PIPS 1
+#endif
+
+#ifndef CFG_HAS_STRUCT_VETO
+  #define CFG_HAS_STRUCT_VETO 1
+#endif
+
+// Optional SDOB quality gates (used once StructureSDOB selection/filter is wired)
+#ifndef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+  #define CFG_HAS_STRUCT_ZONE_MARGIN_PIPS 1
+#endif
+#ifndef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+  #define CFG_HAS_STRUCT_MIN_TOUCH_COUNT 1
+#endif
+#ifndef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+  #define CFG_HAS_STRUCT_ZONE_MIN_SCORE 1
+#endif
+
+// --- WyckoffCycle core knobs (range/BOS/manip/volume) ---
+#ifndef CFG_HAS_WYCK_CYCLE_SETTINGS
+  #define CFG_HAS_WYCK_CYCLE_SETTINGS 1
+#endif
 
 #ifndef CFG_HAS_MAIN_CHART_RETEST_MAX_ATR
   #define CFG_HAS_MAIN_CHART_RETEST_MAX_ATR 1
@@ -1014,7 +1086,12 @@ namespace Config
      bool use_atr_as_delta; int atr_period_2; double atr_vol_regime_floor;
    
      // Structure / OB
-     int struct_zz_depth; int struct_htf_mult; double ob_prox_max_pips;
+     int    struct_zz_depth, struct_htf_mult;
+     double ob_prox_max_pips;
+      
+     double struct_zone_margin_pips;
+     int    struct_min_touch_count;
+     double struct_zone_min_score;
    
      // ATR ST/TP & risk
      bool use_atr_stops_targets; double atr_sl_mult2; double atr_tp_mult2; double risk_per_trade_pct;
@@ -2139,6 +2216,15 @@ namespace Config
      #ifdef CFG_HAS_OB_PROX_MAX_PIPS
        cfg.ob_prox_max_pips = MathMax(0.0, x.ob_prox_max_pips);
      #endif
+     #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+       cfg.struct_zone_margin_pips = MathMax(0.0, x.struct_zone_margin_pips);
+     #endif
+     #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+       cfg.struct_min_touch_count = MathMax(0, x.struct_min_touch_count);
+     #endif
+     #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+       cfg.struct_zone_min_score = MathMax(0.0, x.struct_zone_min_score);
+     #endif
    
      // ATR stops/targets + risk-per-trade
      #ifdef CFG_HAS_USE_ATR_STOPS
@@ -2312,6 +2398,18 @@ namespace Config
    
      x.struct_zz_depth=12; x.struct_htf_mult=3;
    
+     x.ob_prox_max_pips = 15.0;
+
+     #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+       x.struct_zone_margin_pips = 0.0;
+     #endif
+     #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+       x.struct_min_touch_count = 0;
+     #endif
+     #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+       x.struct_zone_min_score = 0.0;
+     #endif
+
      x.weekly_open_spread_ramp=true;
    }
 
@@ -2509,6 +2607,190 @@ namespace Config
     cfg.auto_scan_interval_sec  = 60;
     cfg.auto_scan_lookback_bars = 320;
    
+    #ifdef CFG_HAS_SCAN_FVG_SETTINGS
+     cfg.scan_fvg_enable           = false;   // keep off by default (avoids scan load surprises)
+     // default ON so FVG scanner respects scan_tf_mask but can be selectively gated later
+     cfg.scan_fvg_tf_5m            = true;
+     cfg.scan_fvg_tf_15m           = true;
+     cfg.scan_fvg_tf_1h            = true;
+     cfg.scan_fvg_approach_atr     = 0.25;    // approach band = 0.25 ATR
+     cfg.scan_fvg_break_margin_atr = 0.05;    // breakout margin = 0.05 ATR
+   
+     cfg.scan_fvg_touch_zvol_min     = 0.75;
+     cfg.scan_fvg_breakout_zvol_min  = 1.50;
+     cfg.scan_fvg_touch_delta_min    = 0.25;
+     cfg.scan_fvg_breakout_delta_min = 0.50;
+     cfg.scan_fvg_use_atr_proxy      = true;
+    #endif
+    
+    // Footprint / Delta fallback (used by Footprint + FVG confirmation)
+    // cfg.scan_fvg_use_atr_proxy = true;
+
+    #ifdef CFG_HAS_SCAN_TL_SETTINGS
+       cfg.scan_tl_enable        = false;
+   
+       // Default: only short bucket inherits the master scan_tf_mask to avoid bucket overlap by default
+       cfg.scan_tl_tf_mask_short = cfg.scan_tf_mask;
+       cfg.scan_tl_tf_mask_mid   = 0;
+       cfg.scan_tl_tf_mask_long  = 0;
+   
+       // Short bucket (tight, responsive)
+       cfg.scan_tl_short_lookback_bars          = 500;
+       cfg.scan_tl_short_pivot_left             = 2;
+       cfg.scan_tl_short_pivot_right            = 2;
+       cfg.scan_tl_short_min_touches            = 3;
+       cfg.scan_tl_short_tol_atr_mult           = 0.25;
+       cfg.scan_tl_short_break_atr_mult         = 0.10;
+       cfg.scan_tl_short_dev_atr_mult           = 0.40;
+       cfg.scan_tl_short_min_pivot_strength_atr = 0.15;
+       cfg.scan_tl_short_pivot_price_src        = 0;  // WICK
+       cfg.scan_tl_short_touch_price_src        = 0;  // WICK
+       cfg.scan_tl_short_break_price_src        = 2;  // CLOSE
+       cfg.scan_tl_short_confirmed_only         = true;
+   
+       // Mid bucket (balanced)
+       cfg.scan_tl_mid_lookback_bars          = 800;
+       cfg.scan_tl_mid_pivot_left             = 3;
+       cfg.scan_tl_mid_pivot_right            = 3;
+       cfg.scan_tl_mid_min_touches            = 3;
+       cfg.scan_tl_mid_tol_atr_mult           = 0.30;
+       cfg.scan_tl_mid_break_atr_mult         = 0.12;
+       cfg.scan_tl_mid_dev_atr_mult           = 0.45;
+       cfg.scan_tl_mid_min_pivot_strength_atr = 0.18;
+       cfg.scan_tl_mid_pivot_price_src        = 0;  // WICK
+       cfg.scan_tl_mid_touch_price_src        = 0;  // WICK
+       cfg.scan_tl_mid_break_price_src        = 2;  // CLOSE
+       cfg.scan_tl_mid_confirmed_only         = true;
+   
+       // Long bucket (slow, structural)
+       cfg.scan_tl_long_lookback_bars          = 1200;
+       cfg.scan_tl_long_pivot_left             = 4;
+       cfg.scan_tl_long_pivot_right            = 4;
+       cfg.scan_tl_long_min_touches            = 3;
+       cfg.scan_tl_long_tol_atr_mult           = 0.35;
+       cfg.scan_tl_long_break_atr_mult         = 0.15;
+       cfg.scan_tl_long_dev_atr_mult           = 0.50;
+       cfg.scan_tl_long_min_pivot_strength_atr = 0.20;
+       cfg.scan_tl_long_pivot_price_src        = 0;  // WICK
+       cfg.scan_tl_long_touch_price_src        = 0;  // WICK
+       cfg.scan_tl_long_break_price_src        = 2;  // CLOSE
+       cfg.scan_tl_long_confirmed_only         = true;
+     #endif
+
+    #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+      // Master toggles (keep OFF by default to avoid unexpected scan load)
+      cfg.scan_liq_enable  = false;
+      cfg.scan_liq_tf_5m       = true;
+      cfg.scan_liq_tf_15m      = true;
+      cfg.scan_liq_tf_1h       = true;
+      cfg.scan_liq_emit_sweeps = true;
+      
+      cfg.scan_wyck_enable = false;
+      // 0 means: Confluence will keep defaults (H4/D1)
+      cfg.scan_wyck_tf_h4 = 0;
+      cfg.scan_wyck_tf_d1 = 0;
+      
+      cfg.scan_obi_enable  = false;
+      cfg.scan_foot_enable = false;
+      cfg.scan_corr_enable = false;
+      cfg.scan_news_enable = false;
+
+      cfg.scan_foot_allow_ticks        = true;
+      cfg.scan_foot_ticks_max_tf_sec   = 900;
+      cfg.scan_foot_min_ticks          = 50;
+   
+      cfg.scan_foot_bin_points         = 2;
+      cfg.scan_foot_max_levels         = 32;
+   
+      cfg.scan_foot_value_area_pct     = 0.70;
+   
+      cfg.scan_foot_imb_ratio          = 3.0;
+      cfg.scan_foot_imb_min_vol        = 3.0;
+      cfg.scan_foot_stacked_levels     = 3;
+   
+      cfg.scan_foot_absorb_depth_levels = 3;
+      cfg.scan_foot_absorb_min_ratio    = 1.8;
+   
+      cfg.scan_foot_poc_approach_atr   = 0.10;
+   
+      cfg.scan_foot_use_atr_proxy      = true;
+
+      // --- Wyckoff tuning (phase + manipulation + VSA confirmation)
+      cfg.scan_wyck_emit_phase     = true;
+      cfg.scan_wyck_phase_zvol_min = 0.50;
+      cfg.scan_wyck_manip_zvol_min = 0.75;
+      cfg.scan_wyck_lb_h4          = 300;
+      cfg.scan_wyck_lb_d1          = 200;
+
+      // --- OBI tuning (preserve prior "hardcode-like" behavior)
+      cfg.scan_obi_depth_points  = 25;
+      cfg.scan_obi_threshold     = 0.30;
+      cfg.scan_obi_vwap_enable   = true;
+      cfg.scan_obi_keylevel_atr  = 0.25;
+      cfg.scan_obi_cache_ms      = 250;
+      cfg.scan_obi_max_levels    = 20;
+      cfg.scan_obi_min_tot_vol   = 0.0;
+      cfg.scan_obi_vwap_dist_atr = 0.0; // disabled by default
+
+      // --- Footprint thresholds (z-score based)
+      cfg.scan_foot_use_atr_proxy = cfg.scan_fvg_use_atr_proxy;
+      cfg.scan_foot_zstrong       = 1.25;
+      cfg.scan_foot_zdiverge      = 0.90;
+      cfg.scan_foot_zabsorb       = 1.25;
+
+      // --- Correlation tuning
+      cfg.scan_corr_threshold = 0.70;
+      cfg.scan_corr_recover   = 0.55;
+      cfg.scan_corr_len       = 90;
+
+      // --- News timing + optional strategy windows (scanner emits only)
+      cfg.scan_news_soon_sec           = 2700; // 45 minutes
+      cfg.scan_news_block_sec          = 5400; // 90 minutes
+      cfg.scan_news_emit_strat_windows = false;
+
+      cfg.scan_news_straddle_sec            = 300;  // 5m
+      cfg.scan_news_fade_sec                = 600;  // 10m
+      cfg.scan_news_breakout_sec            = 1800; // 30m
+      cfg.scan_news_breakout_squeeze_ratio  = 0.80;
+      cfg.scan_news_breakout_lookback_bars  = 20;
+
+      // --- Volume Profile defaults
+      cfg.scan_vp_enable           = false;
+      cfg.scan_vp_lookback_bars    = 200;
+      cfg.scan_vp_bin_points       = 10;
+      cfg.scan_vp_value_area_pct   = 0.70;
+      cfg.scan_vp_touch_atr        = 0.15;
+      cfg.scan_vp_break_margin_atr = 0.05;
+      cfg.scan_vp_poc_shift_atr    = 0.25;
+      cfg.scan_vp_stale_sec        = 900;
+      cfg.scan_vp_distribute_range = false;
+    #endif
+
+    // --- Liquidity pool thresholds (fields exist regardless of CFG_HAS_SCAN_EXTRA_SETTINGS)
+    cfg.scan_liq_pool_approach_atr    = 0.35;
+    cfg.scan_liq_confirm_bars         = 6;
+    cfg.scan_liq_warmup_bars          = 600;
+    cfg.scan_liq_accept_margin_atr    = 0.15;
+    cfg.scan_liq_reject_margin_atr    = 0.10;
+    cfg.scan_liq_struct_break_eps_atr = 0.05;
+    cfg.scan_liq_min_zvol             = 1.00;
+   
+    #ifdef CFG_HAS_FVG_MIN_SCORE
+     cfg.fvg_min_score = 0.55;
+    #endif
+    #ifdef CFG_HAS_FVG_MODE
+     cfg.fvg_mode = FVG_ALL;
+    #endif
+    #ifdef CFG_HAS_FVG_LOOKBACK_BARS
+     cfg.fvg_lookback_bars = 200;
+    #endif
+    #ifdef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+     cfg.fvg_impulse_lookahead_bars = 6;
+    #endif
+    #ifdef CFG_HAS_FVG_MIN_GAP_ATR
+     cfg.fvg_min_gap_atr = 0.25;
+    #endif
+
     // Chart patterns (local)
     cfg.auto_chart_min_quality  = 0.60;
     cfg.auto_chart_pivot_L      = 3;
@@ -2521,22 +2803,72 @@ namespace Config
     cfg.main_autoc_tighten_invalidation        = false;
 
     // Fibonacci/harmonic (local)
-    cfg.auto_fib_min_quality    = 0.60;
+    cfg.auto_fib_min_quality    = 0.60;   
+    cfg.autofib_ratio_tolerance = 0.05;   // 0.03–0.07 typical
+    cfg.auto_fib_pivot_L        = cfg.auto_chart_pivot_L;
+    cfg.auto_fib_pivot_R        = cfg.auto_chart_pivot_R;
    
+    cfg.auto_fib_stop_atr_mult  = 0.35;   // stop beyond PRZ
+    cfg.auto_fib_target_r1      = 0.382;
+    cfg.auto_fib_target_r2      = 0.618;
+    cfg.auto_fib_target_r3      = 1.000;
+
     // Key levels (local)
     cfg.auto_keylevel_min_touches  = 3;
     cfg.auto_keylevel_cluster_atr  = 0.18;
-    cfg.auto_keylevel_approach_atr = 0.25;
+    cfg.auto_keylevel_approach_atr = 0.22;
    
+    cfg.auto_keylevel_min_pips          = 5.0;   // minimum cluster width (pips)
+    cfg.auto_keylevel_break_margin_atr  = 0.15;  // breakout must clear band by this * ATR
+    cfg.auto_keylevel_bounce_window     = 8;     // bars to measure post-touch bounce
+
+    cfg.auto_keylevel_w_touches         = 0.45;
+    cfg.auto_keylevel_w_recency         = 0.25;
+    cfg.auto_keylevel_w_bounce          = 0.30;
+    
     #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
        cfg.auto_key_min_sig = 0.55; // sane baseline; tune later
     #endif
     
+    #ifdef CFG_HAS_SR_DETECTOR_SETTINGS
+      cfg.sr_pivot_left        = 5;
+      cfg.sr_pivot_right       = 5;
+      cfg.sr_use_fractals      = false;
+
+      // Default to static/no-repaint so backtests and “opportunity events” don’t thrash
+      cfg.sr_static_mode       = true;
+
+      cfg.sr_level_expiry_bars = 1000;   // 0 => never expire
+      cfg.sr_max_levels        = 12;
+
+      // Typical institutional-ish zoning: ~0.25 ATR band
+      cfg.sr_zone_width_atr    = 0.25;
+
+      // Volume confirmation ratios (relative to average volume / zVol baseline upstream)
+      cfg.sr_break_vol_ratio   = 1.50;   // ~150%
+      cfg.sr_touch_vol_ratio   = 1.20;   // ~120%
+
+      // 0 => compute only on tf_entry (same semantics as auto_tf_mask / scan_tf_mask)
+      cfg.sr_mtf_mask          = 0;
+    #endif
+
     // Volatility / movement (local)
     cfg.auto_vol_lookback_days     = 180;
     cfg.auto_vol_horizon_minutes   = 60;
     cfg.auto_vol_min_range_atr     = 0.90;
    
+    // PowerStats-like knobs (default conservative)
+    cfg.auto_vol_use_m15              = true;
+    cfg.auto_vol_sd_mult              = 1.0;
+
+    cfg.auto_vol_sltp_sanity_enable   = false; // OFF by default (avoid behavior shift)
+    cfg.auto_vol_sl_max_mult          = 2.5;
+    cfg.auto_vol_sl_min_frac          = 0.15;
+    cfg.auto_vol_tp_cap_mult          = 1.75;
+    cfg.auto_vol_tp_cap_breakout_mult = 2.75;
+    cfg.auto_vol_breakout_adx01       = 0.60;
+    cfg.auto_vol_sanity_clamp         = true;
+
     // Risk scaling (optional)
     cfg.auto_risk_scale_enable = false;
     cfg.auto_risk_scale_floor  = 0.70;
@@ -2604,6 +2936,138 @@ namespace Config
     ConfigCore::Normalize(cfg);
     // Ensure Main confluence toggles/weights are not left uninitialized
     SeedMainConfluenceDefaults(cfg);
+    
+    // WyckoffCycle sanity + defaults
+    #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+      // detect "unset" blocks (common after CSV load into a zeroed struct)
+      bool atrUnset = (cfg.wyck_atr_len<=0 && cfg.wyck_atr_ma_len<=0);
+      bool bbUnset  = (cfg.wyck_bb_len<=0 && cfg.wyck_bb_dev<=0.0);
+
+      if(cfg.wyck_range_lookback<=0) cfg.wyck_range_lookback = 150;
+      if(cfg.wyck_min_range_bars<=0) cfg.wyck_min_range_bars = 20;
+
+      if(cfg.wyck_eq_tol_atr<=0.0)   cfg.wyck_eq_tol_atr     = 0.25;
+      if(cfg.wyck_max_range_atr<=0.0)cfg.wyck_max_range_atr  = 2.5;
+
+      if(atrUnset) cfg.wyck_use_atr_compression = true;
+      if(bbUnset)  cfg.wyck_use_bb_compression  = true;
+
+      if(cfg.wyck_atr_len<=0)        cfg.wyck_atr_len        = 14;
+      if(cfg.wyck_atr_ma_len<=0)     cfg.wyck_atr_ma_len     = 50;
+
+      if(cfg.wyck_bb_len<=0)         cfg.wyck_bb_len         = 20;
+      if(cfg.wyck_bb_dev<=0.0)       cfg.wyck_bb_dev         = 2.0;
+      if(cfg.wyck_bb_width_thr<=0.0) cfg.wyck_bb_width_thr   = 0.015;
+
+      if(cfg.wyck_swingL<=0)         cfg.wyck_swingL         = 5;
+      if(cfg.wyck_swingR<=0)         cfg.wyck_swingR         = 5;
+
+      if(cfg.wyck_bos_confirm_closes<=0) cfg.wyck_bos_confirm_closes = 1;
+
+      if(cfg.wyck_manip_min_quality<=0.0) cfg.wyck_manip_min_quality = 0.55;
+      if(cfg.wyck_wick_min_ratio<=0.0)    cfg.wyck_wick_min_ratio    = 0.60;
+      if(cfg.wyck_close_inside_min<=0.0)  cfg.wyck_close_inside_min  = 0.20;
+
+      if(cfg.wyck_ar_window_bars<=0) cfg.wyck_ar_window_bars = 60;
+      if(cfg.wyck_vol_len<=0)        cfg.wyck_vol_len        = 20;
+      if(cfg.wyck_vol_mult<=0.0)     cfg.wyck_vol_mult       = 1.5;
+
+      // clamps (keep bounded; prevent accidental nonsense)
+      cfg.wyck_range_lookback      = MathMin(MathMax(cfg.wyck_range_lookback,      50), 200);
+      cfg.wyck_min_range_bars      = MathMin(MathMax(cfg.wyck_min_range_bars,      10), 120);
+
+      cfg.wyck_eq_tol_atr          = MathMin(MathMax(cfg.wyck_eq_tol_atr,          0.05), 1.0);
+      cfg.wyck_max_range_atr       = MathMin(MathMax(cfg.wyck_max_range_atr,       0.5), 10.0);
+
+      cfg.wyck_atr_len             = MathMin(MathMax(cfg.wyck_atr_len,             10), 21);
+      cfg.wyck_atr_ma_len          = MathMin(MathMax(cfg.wyck_atr_ma_len,          20), 100);
+
+      cfg.wyck_bb_len              = MathMin(MathMax(cfg.wyck_bb_len,              14), 50);
+      cfg.wyck_bb_dev              = MathMin(MathMax(cfg.wyck_bb_dev,              1.5), 3.0);
+      cfg.wyck_bb_width_thr        = MathMin(MathMax(cfg.wyck_bb_width_thr,        0.005), 0.03);
+
+      cfg.wyck_swingL              = MathMin(MathMax(cfg.wyck_swingL,              2), 5);
+      cfg.wyck_swingR              = MathMin(MathMax(cfg.wyck_swingR,              2), 5);
+
+      cfg.wyck_bos_confirm_closes  = MathMin(MathMax(cfg.wyck_bos_confirm_closes,  1), 3);
+
+      cfg.wyck_manip_min_quality   = MathMin(MathMax(cfg.wyck_manip_min_quality,   0.40), 0.80);
+      cfg.wyck_wick_min_ratio      = MathMin(MathMax(cfg.wyck_wick_min_ratio,      0.55), 0.80);
+      cfg.wyck_close_inside_min    = MathMin(MathMax(cfg.wyck_close_inside_min,    0.10), 0.40);
+
+      cfg.wyck_ar_window_bars      = MathMin(MathMax(cfg.wyck_ar_window_bars,      40), 120);
+      cfg.wyck_vol_len             = MathMin(MathMax(cfg.wyck_vol_len,             10), 50);
+      cfg.wyck_vol_mult            = MathMin(MathMax(cfg.wyck_vol_mult,            1.2), 3.0);
+    #endif
+
+    #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+      // OBI scanner sanity clamps
+      if(cfg.scan_obi_depth_points < 5)   cfg.scan_obi_depth_points = 5;
+      if(cfg.scan_obi_depth_points > 200) cfg.scan_obi_depth_points = 200;
+
+      if(cfg.scan_obi_threshold < 0.05) cfg.scan_obi_threshold = 0.05;
+      if(cfg.scan_obi_threshold > 0.95) cfg.scan_obi_threshold = 0.95;
+
+      if(cfg.scan_obi_keylevel_atr < 0.0) cfg.scan_obi_keylevel_atr = 0.0;
+      if(cfg.scan_obi_keylevel_atr > 3.0) cfg.scan_obi_keylevel_atr = 3.0;
+      
+      // OBI tuning clamps
+      if(cfg.scan_obi_cache_ms < 0)   cfg.scan_obi_cache_ms = 0;
+      if(cfg.scan_obi_cache_ms > 5000) cfg.scan_obi_cache_ms = 5000;
+
+      if(cfg.scan_obi_max_levels < 0)  cfg.scan_obi_max_levels = 0;
+      if(cfg.scan_obi_max_levels > 200) cfg.scan_obi_max_levels = 200;
+
+      if(cfg.scan_obi_min_tot_vol < 0.0) cfg.scan_obi_min_tot_vol = 0.0;
+
+      if(cfg.scan_obi_vwap_dist_atr < 0.0) cfg.scan_obi_vwap_dist_atr = 0.0;
+      if(cfg.scan_obi_vwap_dist_atr > 10.0) cfg.scan_obi_vwap_dist_atr = 10.0;
+
+      // Wyckoff TF selector clamps (0 allowed; invalid -> 0)
+      if(cfg.scan_wyck_tf_h4 < 0) cfg.scan_wyck_tf_h4 = 0;
+      if(cfg.scan_wyck_tf_d1 < 0) cfg.scan_wyck_tf_d1 = 0;
+      
+      // NEWS scanner sanity clamps + defaults (seconds-based)
+      if(cfg.scan_news_soon_sec < 0)  cfg.scan_news_soon_sec = 0;
+      if(cfg.scan_news_block_sec < 0) cfg.scan_news_block_sec = 0;
+
+      // If unset, tie SOON window to the effective pre-news block (Config::NewsPreMins uses block_pre_m/news_pre_mins)
+      if(cfg.scan_news_soon_sec == 0)
+        cfg.scan_news_soon_sec = Config::NewsPreMins(cfg) * 60;
+
+      // Strategy windows (seconds)
+      if(cfg.scan_news_straddle_sec <= 0) cfg.scan_news_straddle_sec = 300;   // 5m
+      if(cfg.scan_news_fade_sec     <= 0) cfg.scan_news_fade_sec     = 600;   // 10m
+      if(cfg.scan_news_breakout_sec <= 0) cfg.scan_news_breakout_sec = 1800;  // 30m
+
+      // Keep values bounded (avoid accidental 10-year windows 😅)
+      if(cfg.scan_news_soon_sec   > 86400) cfg.scan_news_soon_sec   = 86400;
+      if(cfg.scan_news_block_sec  > 86400) cfg.scan_news_block_sec  = 86400;
+      if(cfg.scan_news_straddle_sec > 86400) cfg.scan_news_straddle_sec = 86400;
+      if(cfg.scan_news_fade_sec     > 86400) cfg.scan_news_fade_sec     = 86400;
+      if(cfg.scan_news_breakout_sec > 86400) cfg.scan_news_breakout_sec = 86400;
+
+      if(cfg.scan_news_breakout_squeeze_ratio < 0.10) cfg.scan_news_breakout_squeeze_ratio = 0.10;
+      if(cfg.scan_news_breakout_squeeze_ratio > 2.00) cfg.scan_news_breakout_squeeze_ratio = 2.00;
+
+      if(cfg.scan_news_breakout_lookback_bars < 5)   cfg.scan_news_breakout_lookback_bars = 5;
+      if(cfg.scan_news_breakout_lookback_bars > 500) cfg.scan_news_breakout_lookback_bars = 500;
+    #endif
+
+    // Correlation scanner thresholds
+    if(cfg.scan_corr_threshold <= 0.0) cfg.scan_corr_threshold = 0.75;
+    if(cfg.scan_corr_threshold > 0.99) cfg.scan_corr_threshold = 0.99;
+   
+    if(cfg.scan_corr_recover <= 0.0) cfg.scan_corr_recover = 0.55;
+    if(cfg.scan_corr_recover < 0.0)  cfg.scan_corr_recover = 0.0;
+   
+    // enforce hysteresis: recover must be below threshold
+    if(cfg.scan_corr_recover >= cfg.scan_corr_threshold)
+      cfg.scan_corr_recover = cfg.scan_corr_threshold * 0.80;
+   
+    if(cfg.scan_corr_len < 20)  cfg.scan_corr_len = 20;
+    if(cfg.scan_corr_len > 500) cfg.scan_corr_len = 500;
+   
     #ifdef CFG_HAS_ML_THRESHOLD
       if(cfg.ml_threshold <= 0.0) cfg.ml_threshold = 0.55;  // keep existing fallback behavior
       if(cfg.ml_threshold < 0.0)  cfg.ml_threshold = 0.0;
@@ -3094,6 +3558,172 @@ namespace Config
       if(cfg.auto_scan_lookback_bars < 120)  cfg.auto_scan_lookback_bars = 120;
       if(cfg.auto_scan_lookback_bars > 2000) cfg.auto_scan_lookback_bars = 2000;
       
+      #ifdef CFG_HAS_SCAN_FVG_SETTINGS
+        cfg.scan_fvg_approach_atr     = MathMin(MathMax(cfg.scan_fvg_approach_atr,     0.05), 3.0);
+        cfg.scan_fvg_break_margin_atr = MathMin(MathMax(cfg.scan_fvg_break_margin_atr, 0.00), 1.0);
+      
+        cfg.scan_fvg_touch_zvol_min     = MathMin(MathMax(cfg.scan_fvg_touch_zvol_min,     0.0), 5.0);
+        cfg.scan_fvg_breakout_zvol_min  = MathMin(MathMax(cfg.scan_fvg_breakout_zvol_min,  0.0), 8.0);
+        cfg.scan_fvg_touch_delta_min    = MathMin(MathMax(cfg.scan_fvg_touch_delta_min,    0.0), 5.0);
+        cfg.scan_fvg_breakout_delta_min = MathMin(MathMax(cfg.scan_fvg_breakout_delta_min, 0.0), 8.0);
+      #endif
+      
+      cfg.scan_news_soon_sec  = MathMax(60,  cfg.scan_news_soon_sec);
+      cfg.scan_news_block_sec = MathMax(cfg.scan_news_soon_sec, cfg.scan_news_block_sec);
+      
+      #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+         #ifdef CFG_HAS_SCAN_TL_SETTINGS
+         // Trendlines scan: enforce sane ranges
+         if(cfg.scan_tl_tf_mask_short < 0) cfg.scan_tl_tf_mask_short = 0;
+         if(cfg.scan_tl_tf_mask_mid   < 0) cfg.scan_tl_tf_mask_mid   = 0;
+         if(cfg.scan_tl_tf_mask_long  < 0) cfg.scan_tl_tf_mask_long  = 0;
+         
+         // If enabled but no TFs selected, fall back to master scan_tf_mask
+         if(cfg.scan_tl_enable)
+         {
+           const int m = (cfg.scan_tl_tf_mask_short | cfg.scan_tl_tf_mask_mid | cfg.scan_tl_tf_mask_long);
+           if(m == 0) cfg.scan_tl_tf_mask_short = cfg.scan_tf_mask;
+         }
+         
+         // Helper-style clamping without introducing new helpers
+         if(cfg.scan_tl_short_lookback_bars < 50) cfg.scan_tl_short_lookback_bars = 50;
+         if(cfg.scan_tl_mid_lookback_bars   < 50) cfg.scan_tl_mid_lookback_bars   = 50;
+         if(cfg.scan_tl_long_lookback_bars  < 50) cfg.scan_tl_long_lookback_bars  = 50;
+         
+         if(cfg.scan_tl_short_pivot_left  < 1) cfg.scan_tl_short_pivot_left  = 1;
+         if(cfg.scan_tl_short_pivot_right < 0) cfg.scan_tl_short_pivot_right = 0;
+         if(cfg.scan_tl_mid_pivot_left    < 1) cfg.scan_tl_mid_pivot_left    = 1;
+         if(cfg.scan_tl_mid_pivot_right   < 0) cfg.scan_tl_mid_pivot_right   = 0;
+         if(cfg.scan_tl_long_pivot_left   < 1) cfg.scan_tl_long_pivot_left   = 1;
+         if(cfg.scan_tl_long_pivot_right  < 0) cfg.scan_tl_long_pivot_right  = 0;
+         
+         if(cfg.scan_tl_short_min_touches < 2) cfg.scan_tl_short_min_touches = 2;
+         if(cfg.scan_tl_mid_min_touches   < 2) cfg.scan_tl_mid_min_touches   = 2;
+         if(cfg.scan_tl_long_min_touches  < 2) cfg.scan_tl_long_min_touches  = 2;
+         
+         if(cfg.scan_tl_short_tol_atr_mult < 0.0) cfg.scan_tl_short_tol_atr_mult = 0.0;
+         if(cfg.scan_tl_short_break_atr_mult     < 0.0) cfg.scan_tl_short_break_atr_mult     = 0.0;
+         if(cfg.scan_tl_short_dev_atr_mult       < 0.0) cfg.scan_tl_short_dev_atr_mult       = 0.0;
+         if(cfg.scan_tl_short_min_pivot_strength_atr < 0.0) cfg.scan_tl_short_min_pivot_strength_atr = 0.0;
+         
+         if(cfg.scan_tl_mid_tol_atr_mult < 0.0) cfg.scan_tl_mid_tol_atr_mult = 0.0;
+         if(cfg.scan_tl_mid_break_atr_mult     < 0.0) cfg.scan_tl_mid_break_atr_mult     = 0.0;
+         if(cfg.scan_tl_mid_dev_atr_mult       < 0.0) cfg.scan_tl_mid_dev_atr_mult       = 0.0;
+         if(cfg.scan_tl_mid_min_pivot_strength_atr < 0.0) cfg.scan_tl_mid_min_pivot_strength_atr = 0.0;
+         
+         if(cfg.scan_tl_long_tol_atr_mult < 0.0) cfg.scan_tl_long_tol_atr_mult = 0.0;
+         if(cfg.scan_tl_long_break_atr_mult     < 0.0) cfg.scan_tl_long_break_atr_mult     = 0.0;
+         if(cfg.scan_tl_long_dev_atr_mult       < 0.0) cfg.scan_tl_long_dev_atr_mult       = 0.0;
+         if(cfg.scan_tl_long_min_pivot_strength_atr < 0.0) cfg.scan_tl_long_min_pivot_strength_atr = 0.0;
+         
+         // Price source clamps: 0..2
+         if(cfg.scan_tl_short_pivot_price_src < 0) cfg.scan_tl_short_pivot_price_src = 0;
+         if(cfg.scan_tl_short_pivot_price_src > 2) cfg.scan_tl_short_pivot_price_src = 2;
+         if(cfg.scan_tl_short_touch_price_src < 0) cfg.scan_tl_short_touch_price_src = 0;
+         if(cfg.scan_tl_short_touch_price_src > 2) cfg.scan_tl_short_touch_price_src = 2;
+         if(cfg.scan_tl_short_break_price_src < 0) cfg.scan_tl_short_break_price_src = 0;
+         if(cfg.scan_tl_short_break_price_src > 2) cfg.scan_tl_short_break_price_src = 2;
+         
+         if(cfg.scan_tl_mid_pivot_price_src < 0) cfg.scan_tl_mid_pivot_price_src = 0;
+         if(cfg.scan_tl_mid_pivot_price_src > 2) cfg.scan_tl_mid_pivot_price_src = 2;
+         if(cfg.scan_tl_mid_touch_price_src < 0) cfg.scan_tl_mid_touch_price_src = 0;
+         if(cfg.scan_tl_mid_touch_price_src > 2) cfg.scan_tl_mid_touch_price_src = 2;
+         if(cfg.scan_tl_mid_break_price_src < 0) cfg.scan_tl_mid_break_price_src = 0;
+         if(cfg.scan_tl_mid_break_price_src > 2) cfg.scan_tl_mid_break_price_src = 2;
+         
+         if(cfg.scan_tl_long_pivot_price_src < 0) cfg.scan_tl_long_pivot_price_src = 0;
+         if(cfg.scan_tl_long_pivot_price_src > 2) cfg.scan_tl_long_pivot_price_src = 2;
+         if(cfg.scan_tl_long_touch_price_src < 0) cfg.scan_tl_long_touch_price_src = 0;
+         if(cfg.scan_tl_long_touch_price_src > 2) cfg.scan_tl_long_touch_price_src = 2;
+         if(cfg.scan_tl_long_break_price_src < 0) cfg.scan_tl_long_break_price_src = 0;
+         if(cfg.scan_tl_long_break_price_src > 2) cfg.scan_tl_long_break_price_src = 2;
+         #endif
+
+        // Footprint z-score thresholds (defensive clamps)
+        cfg.scan_foot_zstrong  = MathMin(MathMax(cfg.scan_foot_zstrong,  0.25), 8.0);
+        cfg.scan_foot_zdiverge = MathMin(MathMax(cfg.scan_foot_zdiverge, 0.10), 8.0);
+
+        // Absorption should never be easier than "strong"
+        if(cfg.scan_foot_zabsorb < cfg.scan_foot_zstrong)
+          cfg.scan_foot_zabsorb = cfg.scan_foot_zstrong;
+
+        cfg.scan_foot_zabsorb  = MathMin(MathMax(cfg.scan_foot_zabsorb,  cfg.scan_foot_zstrong), 10.0);
+      #endif
+      #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+          cfg.scan_foot_ticks_max_tf_sec    = MathMax(60, cfg.scan_foot_ticks_max_tf_sec);
+          cfg.scan_foot_min_ticks           = MathMax(0,  cfg.scan_foot_min_ticks);
+      
+          cfg.scan_foot_bin_points          = MathMax(1,  cfg.scan_foot_bin_points);
+          cfg.scan_foot_max_levels          = MathMax(8,  cfg.scan_foot_max_levels);
+      
+          cfg.scan_foot_value_area_pct      = MathMin(0.95, MathMax(0.50, cfg.scan_foot_value_area_pct));
+      
+          cfg.scan_foot_imb_ratio           = MathMin(10.0, MathMax(1.2, cfg.scan_foot_imb_ratio));
+          cfg.scan_foot_imb_min_vol         = MathMax(0.0, cfg.scan_foot_imb_min_vol);
+          cfg.scan_foot_stacked_levels      = MathMin(10, MathMax(2, cfg.scan_foot_stacked_levels));
+      
+          cfg.scan_foot_absorb_depth_levels = MathMin(10, MathMax(1, cfg.scan_foot_absorb_depth_levels));
+          cfg.scan_foot_absorb_min_ratio    = MathMin(10.0, MathMax(1.2, cfg.scan_foot_absorb_min_ratio));
+      
+          cfg.scan_foot_poc_approach_atr    = MathMin(2.0, MathMax(0.01, cfg.scan_foot_poc_approach_atr));
+      #endif
+
+      // --- Liquidity pool clamps (always-present fields)
+      cfg.scan_liq_pool_approach_atr    = MathMin(MathMax(cfg.scan_liq_pool_approach_atr,    0.05), 5.0);
+      cfg.scan_liq_confirm_bars         = MathMin(MathMax(cfg.scan_liq_confirm_bars,         1),    50);
+      cfg.scan_liq_warmup_bars          = MathMin(MathMax(cfg.scan_liq_warmup_bars,          0),    20000);
+      cfg.scan_liq_accept_margin_atr    = MathMin(MathMax(cfg.scan_liq_accept_margin_atr,    0.00), 1.0);
+      cfg.scan_liq_reject_margin_atr    = MathMin(MathMax(cfg.scan_liq_reject_margin_atr,    0.00), 1.0);
+      cfg.scan_liq_struct_break_eps_atr = MathMin(MathMax(cfg.scan_liq_struct_break_eps_atr, 0.00), 1.0);
+      cfg.scan_liq_min_zvol             = MathMin(MathMax(cfg.scan_liq_min_zvol,             0.00), 10.0);
+
+      #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+        // --- OBI clamps
+        cfg.scan_obi_depth_points = MathMin(MathMax(cfg.scan_obi_depth_points, 1), 250);
+        cfg.scan_obi_threshold    = MathMin(MathMax(cfg.scan_obi_threshold,    0.00), 1.00);
+        cfg.scan_obi_keylevel_atr = MathMin(MathMax(cfg.scan_obi_keylevel_atr, 0.05), 5.0);
+
+        // --- Wyckoff clamps
+        cfg.scan_wyck_phase_zvol_min = MathMin(MathMax(cfg.scan_wyck_phase_zvol_min, 0.00), 8.0);
+        cfg.scan_wyck_manip_zvol_min = MathMin(MathMax(cfg.scan_wyck_manip_zvol_min, 0.00), 10.0);
+        cfg.scan_wyck_lb_h4          = MathMin(MathMax(cfg.scan_wyck_lb_h4,          50), 5000);
+        cfg.scan_wyck_lb_d1          = MathMin(MathMax(cfg.scan_wyck_lb_d1,          50), 5000);
+
+        // --- Correlation clamps (hysteresis: recover <= threshold)
+        cfg.scan_corr_threshold = MathMin(MathMax(cfg.scan_corr_threshold, 0.00), 0.999);
+        cfg.scan_corr_recover   = MathMin(MathMax(cfg.scan_corr_recover,   0.00), cfg.scan_corr_threshold);
+        cfg.scan_corr_len       = MathMin(MathMax(cfg.scan_corr_len,       20),   600);
+
+        // --- News strategy-window clamps (seconds)
+        cfg.scan_news_straddle_sec = MathMin(MathMax(cfg.scan_news_straddle_sec, 0), 86400);
+        cfg.scan_news_fade_sec     = MathMin(MathMax(cfg.scan_news_fade_sec,     0), 86400);
+        cfg.scan_news_breakout_sec = MathMin(MathMax(cfg.scan_news_breakout_sec, 0), 86400);
+
+        cfg.scan_news_breakout_squeeze_ratio = MathMin(MathMax(cfg.scan_news_breakout_squeeze_ratio, 0.10), 2.00);
+        cfg.scan_news_breakout_lookback_bars = MathMin(MathMax(cfg.scan_news_breakout_lookback_bars, 5),    500);
+
+        // --- Volume Profile clamps
+        cfg.scan_vp_lookback_bars    = MathMin(MathMax(cfg.scan_vp_lookback_bars,    50),  5000);
+        cfg.scan_vp_bin_points       = MathMin(MathMax(cfg.scan_vp_bin_points,       1),   2000);
+        cfg.scan_vp_value_area_pct   = MathMin(MathMax(cfg.scan_vp_value_area_pct,   0.50), 0.95);
+
+        cfg.scan_vp_touch_atr        = MathMin(MathMax(cfg.scan_vp_touch_atr,        0.01), 3.0);
+        cfg.scan_vp_break_margin_atr = MathMin(MathMax(cfg.scan_vp_break_margin_atr, 0.00), 1.0);
+        cfg.scan_vp_poc_shift_atr    = MathMin(MathMax(cfg.scan_vp_poc_shift_atr,    0.01), 5.0);
+
+        cfg.scan_vp_stale_sec        = MathMin(MathMax(cfg.scan_vp_stale_sec,        60),  86400);
+      #endif
+
+      #ifdef CFG_HAS_FVG_LOOKBACK_BARS
+        cfg.fvg_lookback_bars = MathMin(MathMax(cfg.fvg_lookback_bars, 50), 3000);
+      #endif
+      #ifdef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+        cfg.fvg_impulse_lookahead_bars = MathMin(MathMax(cfg.fvg_impulse_lookahead_bars, 1), 50);
+      #endif
+      #ifdef CFG_HAS_FVG_MIN_GAP_ATR
+        cfg.fvg_min_gap_atr = MathMin(MathMax(cfg.fvg_min_gap_atr, 0.0), 5.0);
+      #endif
+
       // Provider / API (fail-safe to local)
       if(cfg.auto_provider < 0 || cfg.auto_provider > 2) cfg.auto_provider = 0;
       if(cfg.auto_provider != 0 && cfg.auto_api_base_url == "") cfg.auto_provider = 0;
@@ -3102,6 +3732,31 @@ namespace Config
       if(cfg.auto_tf_mask < 0) cfg.auto_tf_mask = 0;
       cfg.auto_tf_mask = (cfg.auto_tf_mask & 0x7F);
 
+      // --- StructureSDOB / Supply-Demand knobs ---------------------------------
+      if(cfg.struct_zz_depth <= 0) cfg.struct_zz_depth = 12;
+      cfg.struct_zz_depth = MathMin(MathMax(cfg.struct_zz_depth, 5), 100);
+      
+      if(cfg.struct_htf_mult <= 0) cfg.struct_htf_mult = 3;
+      cfg.struct_htf_mult = MathMin(MathMax(cfg.struct_htf_mult, 1), 12);
+      
+      if(cfg.ob_prox_max_pips <= 0.0) cfg.ob_prox_max_pips = 15.0;
+      cfg.ob_prox_max_pips = MathMin(MathMax(cfg.ob_prox_max_pips, 0.0), 200.0);
+      
+      #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+        if(cfg.struct_zone_margin_pips < 0.0) cfg.struct_zone_margin_pips = 0.0;
+        cfg.struct_zone_margin_pips = MathMin(MathMax(cfg.struct_zone_margin_pips, 0.0), 50.0);
+      #endif
+      
+      #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+        if(cfg.struct_min_touch_count < 0) cfg.struct_min_touch_count = 0;
+        cfg.struct_min_touch_count = MathMin(MathMax(cfg.struct_min_touch_count, 0), 10);
+      #endif
+      
+      #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+        if(cfg.struct_zone_min_score < 0.0) cfg.struct_zone_min_score = 0.0;
+        cfg.struct_zone_min_score = MathMin(MathMax(cfg.struct_zone_min_score, 0.0), 1.0);
+      #endif
+
       // Master min quality: fallback only (does not override explicit per-type mins)
       cfg.auto_min_quality = MathMin(MathMax(cfg.auto_min_quality, 0.0), 1.0);
       if(cfg.auto_min_quality > 0.0)
@@ -3109,6 +3764,22 @@ namespace Config
          if(cfg.auto_chart_min_quality <= 0.0) cfg.auto_chart_min_quality = cfg.auto_min_quality;
          if(cfg.auto_fib_min_quality   <= 0.0) cfg.auto_fib_min_quality   = cfg.auto_min_quality;
       }
+      
+      // Autofib tolerance
+      if(cfg.autofib_ratio_tolerance <= 0.0) cfg.autofib_ratio_tolerance = 0.05;
+      cfg.autofib_ratio_tolerance = MathMin(MathMax(cfg.autofib_ratio_tolerance, 0.01), 0.15);
+      
+      // Dedicated harmonic pivots
+      if(cfg.auto_fib_pivot_L < 1) cfg.auto_fib_pivot_L = cfg.auto_chart_pivot_L;
+      if(cfg.auto_fib_pivot_R < 1) cfg.auto_fib_pivot_R = cfg.auto_chart_pivot_R;
+      
+      // Stops/targets
+      if(cfg.auto_fib_stop_atr_mult <= 0.0) cfg.auto_fib_stop_atr_mult = 0.35;
+      cfg.auto_fib_stop_atr_mult = MathMin(MathMax(cfg.auto_fib_stop_atr_mult, 0.05), 5.0);
+      
+      if(cfg.auto_fib_target_r1 <= 0.0) cfg.auto_fib_target_r1 = 0.382;
+      if(cfg.auto_fib_target_r2 <= 0.0) cfg.auto_fib_target_r2 = 0.618;
+      if(cfg.auto_fib_target_r3 <= 0.0) cfg.auto_fib_target_r3 = 1.000;
 
      #ifdef CFG_HAS_CF_WEIGHTS
       // Alias weight mirroring (avoid “two sources of truth” drift)
@@ -3139,16 +3810,57 @@ namespace Config
       cfg.auto_fib_min_quality = MathMin(MathMax(cfg.auto_fib_min_quality, 0.0), 1.0);
       
       // Key levels params
-      if(cfg.auto_keylevel_min_touches < 3) cfg.auto_keylevel_min_touches = 3;
-      if(cfg.auto_keylevel_min_touches > 8) cfg.auto_keylevel_min_touches = 8;
-      
+      cfg.auto_keylevel_min_touches  = MathMin(MathMax(cfg.auto_keylevel_min_touches,  3), 8);
       cfg.auto_keylevel_cluster_atr  = MathMin(MathMax(cfg.auto_keylevel_cluster_atr,  0.05), 0.80);
-      cfg.auto_keylevel_approach_atr = MathMin(MathMax(cfg.auto_keylevel_approach_atr, 0.05), 1.20);
+      cfg.auto_keylevel_approach_atr = MathMin(MathMax(cfg.auto_keylevel_approach_atr, 0.05), 0.80);
+      
+      cfg.auto_keylevel_min_pips         = MathMin(MathMax(cfg.auto_keylevel_min_pips,         1.0), 200.0);
+      cfg.auto_keylevel_break_margin_atr = MathMin(MathMax(cfg.auto_keylevel_break_margin_atr, 0.02), 0.50);
+      if(cfg.auto_keylevel_bounce_window < 3)  cfg.auto_keylevel_bounce_window = 3;
+      if(cfg.auto_keylevel_bounce_window > 25) cfg.auto_keylevel_bounce_window = 25;
+
+      cfg.auto_keylevel_w_touches = MathMin(MathMax(cfg.auto_keylevel_w_touches, 0.0), 2.0);
+      cfg.auto_keylevel_w_recency = MathMin(MathMax(cfg.auto_keylevel_w_recency, 0.0), 2.0);
+      cfg.auto_keylevel_w_bounce  = MathMin(MathMax(cfg.auto_keylevel_w_bounce,  0.0), 2.0);
       
       #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
          cfg.auto_key_min_sig = MathMin(MathMax(cfg.auto_key_min_sig, 0.0), 1.0);
       #endif
       
+      #ifdef CFG_HAS_SR_DETECTOR_SETTINGS
+        // If unset (common after CSV into a zeroed struct), seed sane defaults
+        if(cfg.sr_pivot_left  <= 0) cfg.sr_pivot_left  = 5;
+        if(cfg.sr_pivot_right <= 0) cfg.sr_pivot_right = 5;
+
+        // Pivot bounds
+        if(cfg.sr_pivot_left  < 2)  cfg.sr_pivot_left  = 2;
+        if(cfg.sr_pivot_left  > 20) cfg.sr_pivot_left  = 20;
+
+        if(cfg.sr_pivot_right < 2)  cfg.sr_pivot_right = 2;
+        if(cfg.sr_pivot_right > 20) cfg.sr_pivot_right = 20;
+
+        // Expiry: 0 allowed (never expire)
+        if(cfg.sr_level_expiry_bars < 0) cfg.sr_level_expiry_bars = 0;
+
+        // Max levels: 0 allowed (disable emitting/keeping levels)
+        if(cfg.sr_max_levels < 0)   cfg.sr_max_levels = 0;
+        if(cfg.sr_max_levels > 200) cfg.sr_max_levels = 200;
+
+        // Zone width in ATR
+        if(cfg.sr_zone_width_atr <= 0.0) cfg.sr_zone_width_atr = 0.25;
+        cfg.sr_zone_width_atr = MathMin(MathMax(cfg.sr_zone_width_atr, 0.05), 2.0);
+
+        // Volume ratios
+        if(cfg.sr_break_vol_ratio <= 0.0) cfg.sr_break_vol_ratio = 1.50;
+        if(cfg.sr_touch_vol_ratio <= 0.0) cfg.sr_touch_vol_ratio = 1.20;
+
+        cfg.sr_break_vol_ratio = MathMin(MathMax(cfg.sr_break_vol_ratio, 0.50), 5.0);
+        cfg.sr_touch_vol_ratio = MathMin(MathMax(cfg.sr_touch_vol_ratio, 0.50), 5.0);
+
+        // MTF mask: keep non-negative; 0 allowed
+        if(cfg.sr_mtf_mask < 0) cfg.sr_mtf_mask = 0;
+      #endif
+
       // Volatility params
       if(cfg.auto_vol_lookback_days < 30)  cfg.auto_vol_lookback_days = 30;
       if(cfg.auto_vol_lookback_days > 365) cfg.auto_vol_lookback_days = 365;
@@ -3158,6 +3870,23 @@ namespace Config
       
       cfg.auto_vol_min_range_atr = MathMin(MathMax(cfg.auto_vol_min_range_atr, 0.25), 3.00);
       
+      // PowerStats-like clamps
+      cfg.auto_vol_sd_mult = MathMin(MathMax(cfg.auto_vol_sd_mult, 0.5), 3.0);
+
+      cfg.auto_vol_sl_max_mult          = MathMin(MathMax(cfg.auto_vol_sl_max_mult,          0.5), 6.0);
+      cfg.auto_vol_tp_cap_mult          = MathMin(MathMax(cfg.auto_vol_tp_cap_mult,          0.5), 6.0);
+      cfg.auto_vol_tp_cap_breakout_mult = MathMin(MathMax(cfg.auto_vol_tp_cap_breakout_mult, 0.5), 6.0);
+
+      // Fractional floor (not really a "multiplier"—keep it sane)
+      cfg.auto_vol_sl_min_frac = MathMin(MathMax(cfg.auto_vol_sl_min_frac, 0.01), 1.0);
+
+      // Normalized 0..1
+      cfg.auto_vol_breakout_adx01 = MathMin(MathMax(cfg.auto_vol_breakout_adx01, 0.0), 1.0);
+
+      // Ensure breakout cap is not accidentally tighter than non-breakout cap
+      if(cfg.auto_vol_tp_cap_breakout_mult < cfg.auto_vol_tp_cap_mult)
+        cfg.auto_vol_tp_cap_breakout_mult = cfg.auto_vol_tp_cap_mult;
+
       // Risk scaling params
       cfg.auto_risk_scale_floor = MathMin(MathMax(cfg.auto_risk_scale_floor, 0.10), 2.00);
       cfg.auto_risk_scale_cap   = MathMin(MathMax(cfg.auto_risk_scale_cap,   0.10), 3.00);
@@ -3572,6 +4301,18 @@ namespace Config
       if(cfg.corr_veto_on && cfg.regime_tq_min>0.60)
         warns+="regime_tq_min > 0.60; squeeze/trend may rarely qualify.\n";
     #endif
+    
+    // SDOB sanity (warnings only)
+    if(cfg.struct_zz_depth < 5)
+      warns += "struct_zz_depth < 5; SDOB zones may be noisy.\n";
+   
+    if(cfg.ob_prox_max_pips < 2.0)
+      warns += "ob_prox_max_pips < 2; SDOB approach/touch detection may be too tight.\n";
+   
+    #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+      if(cfg.struct_zone_min_score > 0.0 && cfg.struct_zone_min_score < 0.10)
+        warns += "struct_zone_min_score is very low; filter may be ineffective.\n";
+    #endif
 
     #ifdef CFG_HAS_ORDERFLOW_TH
       if(cfg.orderflow_th < 0.10) warns += "orderflow_th < 0.10; likely too permissive or unstable.\n";
@@ -3762,6 +4503,37 @@ namespace Config
        cfg.strategyKind = ICT_STRAT_CORE;
      #endif
      
+      // WyckoffCycle defaults (keep close to previously hardcoded behavior)
+      #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+        cfg.wyck_range_lookback      = 150;
+        cfg.wyck_min_range_bars      = 20;
+
+        cfg.wyck_eq_tol_atr          = 0.25;
+        cfg.wyck_max_range_atr       = 2.5;
+
+        cfg.wyck_use_atr_compression = true;
+        cfg.wyck_atr_len             = 14;
+        cfg.wyck_atr_ma_len          = 50;
+
+        cfg.wyck_use_bb_compression  = true;
+        cfg.wyck_bb_len              = 20;
+        cfg.wyck_bb_dev              = 2.0;
+        cfg.wyck_bb_width_thr        = 0.015;
+
+        cfg.wyck_swingL              = 5;
+        cfg.wyck_swingR              = 5;
+
+        cfg.wyck_bos_confirm_closes  = 1;
+
+        cfg.wyck_manip_min_quality   = 0.55;
+        cfg.wyck_wick_min_ratio      = 0.60;
+        cfg.wyck_close_inside_min    = 0.20;
+
+        cfg.wyck_ar_window_bars      = 60;
+        cfg.wyck_vol_len             = 20;
+        cfg.wyck_vol_mult            = 1.5;
+      #endif
+
      // Silver Bullet hard requirements: default OFF unless extras enable them
      #ifdef CFG_HAS_SB_REQUIRE_OTE
        cfg.sb_require_ote = false;
@@ -3993,6 +4765,13 @@ namespace Config
      ex.atr_period_2            = 14;
      ex.struct_zz_depth         = 12;
      ex.struct_htf_mult         = 3;
+     ex.ob_prox_max_pips        = 15.0;
+
+     // SDOB quality gates (0 = disabled)
+     ex.struct_zone_margin_pips = 0.0;
+     ex.struct_min_touch_count  = 0;
+     ex.struct_zone_min_score   = 0.0;
+
      ex.weekly_open_spread_ramp = true;
    
      return BuildSettingsEx(
@@ -4204,7 +4983,45 @@ namespace Config
     // Directional bias mode (manual vs ICT auto)
     s+=",dirBias="+IntegerToString((int)c.direction_bias_mode);
 
+    s+=",acOn="+BoolStr(c.auto_enable);
+    s+=",acTF="+IntegerToString(c.auto_tf_mask);
+    s+=",acChartQ="+DoubleToString(c.auto_chart_min_quality,3);
+    s+=",acFibQ="+DoubleToString(c.auto_fib_min_quality,3);
+    s+=",acFibTol="+DoubleToString(c.autofib_ratio_tolerance,4);
+    s+=",acFibPL="+IntegerToString(c.auto_fib_pivot_L);
+    s+=",acFibPR="+IntegerToString(c.auto_fib_pivot_R);
+    s+=",acFibStopATR="+DoubleToString(c.auto_fib_stop_atr_mult,3);
+    s+=",acFibT1="+DoubleToString(c.auto_fib_target_r1,3);
+    s+=",acFibT2="+DoubleToString(c.auto_fib_target_r2,3);
+    s+=",acFibT3="+DoubleToString(c.auto_fib_target_r3,3);
+
+    // Key levels (local)
+    s+=",acKeyTouches="+IntegerToString(c.auto_keylevel_min_touches);
+    s+=",acKeyClustATR="+DoubleToString(c.auto_keylevel_cluster_atr,3);
+    s+=",acKeyApprATR="+DoubleToString(c.auto_keylevel_approach_atr,3);
+
+    s+=",acKeyMinPips="+DoubleToString(c.auto_keylevel_min_pips,1);
+    s+=",acKeyBrkATR="+DoubleToString(c.auto_keylevel_break_margin_atr,3);
+    s+=",acKeyBW="+IntegerToString(c.auto_keylevel_bounce_window);
+
+    s+=",acKeyWT="+DoubleToString(c.auto_keylevel_w_touches,3);
+    s+=",acKeyWR="+DoubleToString(c.auto_keylevel_w_recency,3);
+    s+=",acKeyWB="+DoubleToString(c.auto_keylevel_w_bounce,3);
+    
     // ICT strategy kind profile (for FVG settings)
+    #ifdef CFG_HAS_SR_DETECTOR_SETTINGS
+      s+=",srPL="+IntegerToString(c.sr_pivot_left);
+      s+=",srPR="+IntegerToString(c.sr_pivot_right);
+      s+=",srFrac="+BoolStr(c.sr_use_fractals);
+      s+=",srStatic="+BoolStr(c.sr_static_mode);
+      s+=",srExp="+IntegerToString(c.sr_level_expiry_bars);
+      s+=",srMax="+IntegerToString(c.sr_max_levels);
+      s+=",srZwATR="+DoubleToString(c.sr_zone_width_atr,3);
+      s+=",srBrVol="+DoubleToString(c.sr_break_vol_ratio,3);
+      s+=",srTv="+DoubleToString(c.sr_touch_vol_ratio,3);
+      s+=",srMtf="+IntegerToString(c.sr_mtf_mask);
+    #endif
+
     #ifdef CFG_HAS_STRATEGY_KIND
       s+=",ictStrat="+IntegerToString((int)c.strategyKind);
     #endif
@@ -4323,6 +5140,35 @@ namespace Config
     s+=",xWYT="+BoolStr(c.extra_wyckoff_turn);
     s+=",wWYT="+DoubleToString(c.w_wyckoff_turn,3);
     
+    #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+      s+=",wyRLB="+IntegerToString(c.wyck_range_lookback);
+      s+=",wyMinRB="+IntegerToString(c.wyck_min_range_bars);
+      s+=",wyEqATR="+DoubleToString(c.wyck_eq_tol_atr,3);
+      s+=",wyMaxATR="+DoubleToString(c.wyck_max_range_atr,3);
+
+      s+=",wyATRc="+BoolStr(c.wyck_use_atr_compression);
+      s+=",wyATRn="+IntegerToString(c.wyck_atr_len);
+      s+=",wyATRm="+IntegerToString(c.wyck_atr_ma_len);
+
+      s+=",wyBBc="+BoolStr(c.wyck_use_bb_compression);
+      s+=",wyBBn="+IntegerToString(c.wyck_bb_len);
+      s+=",wyBBd="+DoubleToString(c.wyck_bb_dev,3);
+      s+=",wyBBw="+DoubleToString(c.wyck_bb_width_thr,5);
+
+      s+=",wySwL="+IntegerToString(c.wyck_swingL);
+      s+=",wySwR="+IntegerToString(c.wyck_swingR);
+
+      s+=",wyBosC="+IntegerToString(c.wyck_bos_confirm_closes);
+
+      s+=",wyManQ="+DoubleToString(c.wyck_manip_min_quality,3);
+      s+=",wyWick="+DoubleToString(c.wyck_wick_min_ratio,3);
+      s+=",wyClsIn="+DoubleToString(c.wyck_close_inside_min,3);
+
+      s+=",wyARw="+IntegerToString(c.wyck_ar_window_bars);
+      s+=",wyVolN="+IntegerToString(c.wyck_vol_len);
+      s+=",wyVolM="+DoubleToString(c.wyck_vol_mult,3);
+    #endif
+
     #ifdef CFG_HAS_EXTRA_PHASE_CTX
       s+=",xPH="+BoolStr(c.extra_phase_ctx);
     #endif
@@ -4392,6 +5238,170 @@ namespace Config
     #ifdef CFG_HAS_CORR_REF_SYMBOL
       if(StringLen(c.corr_ref_symbol)>0) s+=",corrRef="+c.corr_ref_symbol;
     #endif
+
+    // ---- Structured scanners (MarketScannerHub) ----
+    s+=",scTF="+IntegerToString(c.scan_tf_mask);
+    s+=",scInt="+IntegerToString(c.auto_scan_interval_sec);
+    s+=",scLB="+IntegerToString(c.auto_scan_lookback_bars);
+
+    #ifdef CFG_HAS_SCAN_FVG_SETTINGS
+      s+=",scFVGOn="+BoolStr(c.scan_fvg_enable);
+      s+=",scFVG5="+BoolStr(c.scan_fvg_tf_5m);
+      s+=",scFVG15="+BoolStr(c.scan_fvg_tf_15m);
+      s+=",scFVG1h="+BoolStr(c.scan_fvg_tf_1h);
+
+      s+=",scFVGAppr="+DoubleToString(c.scan_fvg_approach_atr,3);
+      s+=",scFVGBrk="+DoubleToString(c.scan_fvg_break_margin_atr,3);
+
+      s+=",scFVGtZv="+DoubleToString(c.scan_fvg_touch_zvol_min,3);
+      s+=",scFVGbZv="+DoubleToString(c.scan_fvg_breakout_zvol_min,3);
+      s+=",scFVGtDz="+DoubleToString(c.scan_fvg_touch_delta_min,3);
+      s+=",scFVGbDz="+DoubleToString(c.scan_fvg_breakout_delta_min,3);
+
+      s+=",scFVGATR="+BoolStr(c.scan_fvg_use_atr_proxy);
+    #endif
+
+    #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+      #ifdef CFG_HAS_SCAN_TL_SETTINGS
+        // Trendlines scan (3 buckets)
+        s+=",scTLOn="+BoolStr(c.scan_tl_enable);
+        s+=",scTLMskS="+IntegerToString(c.scan_tl_tf_mask_short);
+        s+=",scTLMskM="+IntegerToString(c.scan_tl_tf_mask_mid);
+        s+=",scTLMskL="+IntegerToString(c.scan_tl_tf_mask_long);
+
+        // Short bucket
+        s+=",scTLSLB="+IntegerToString(c.scan_tl_short_lookback_bars);
+        s+=",scTLSPL="+IntegerToString(c.scan_tl_short_pivot_left);
+        s+=",scTLSPR="+IntegerToString(c.scan_tl_short_pivot_right);
+        s+=",scTLSTch="+IntegerToString(c.scan_tl_short_min_touches);
+        s+=",scTLSTol="+DoubleToString(c.scan_tl_short_tol_atr_mult,3);
+        s+=",scTLSBrk="+DoubleToString(c.scan_tl_short_break_atr_mult,3);
+        s+=",scTLSDev="+DoubleToString(c.scan_tl_short_dev_atr_mult,3);
+        s+=",scTLSMinPV="+DoubleToString(c.scan_tl_short_min_pivot_strength_atr,3);
+        s+=",scTLSSrcP="+IntegerToString(c.scan_tl_short_pivot_price_src);
+        s+=",scTLSSrcT="+IntegerToString(c.scan_tl_short_touch_price_src);
+        s+=",scTLSSrcB="+IntegerToString(c.scan_tl_short_break_price_src);
+        s+=",scTLSConf="+BoolStr(c.scan_tl_short_confirmed_only);
+
+        // Mid bucket
+        s+=",scTLMLB="+IntegerToString(c.scan_tl_mid_lookback_bars);
+        s+=",scTLMPL="+IntegerToString(c.scan_tl_mid_pivot_left);
+        s+=",scTLMPR="+IntegerToString(c.scan_tl_mid_pivot_right);
+        s+=",scTLMTch="+IntegerToString(c.scan_tl_mid_min_touches);
+        s+=",scTLMTol="+DoubleToString(c.scan_tl_mid_tol_atr_mult,3);
+        s+=",scTLMBrk="+DoubleToString(c.scan_tl_mid_break_atr_mult,3);
+        s+=",scTLMDev="+DoubleToString(c.scan_tl_mid_dev_atr_mult,3);
+        s+=",scTLMMinPV="+DoubleToString(c.scan_tl_mid_min_pivot_strength_atr,3);
+        s+=",scTLMSrcP="+IntegerToString(c.scan_tl_mid_pivot_price_src);
+        s+=",scTLMSrcT="+IntegerToString(c.scan_tl_mid_touch_price_src);
+        s+=",scTLMSrcB="+IntegerToString(c.scan_tl_mid_break_price_src);
+        s+=",scTLMConf="+BoolStr(c.scan_tl_mid_confirmed_only);
+
+        // Long bucket
+        s+=",scTLLLB="+IntegerToString(c.scan_tl_long_lookback_bars);
+        s+=",scTLLPL="+IntegerToString(c.scan_tl_long_pivot_left);
+        s+=",scTLLPR="+IntegerToString(c.scan_tl_long_pivot_right);
+        s+=",scTLLTch="+IntegerToString(c.scan_tl_long_min_touches);
+        s+=",scTLLTol="+DoubleToString(c.scan_tl_long_tol_atr_mult,3);
+        s+=",scTLLBrk="+DoubleToString(c.scan_tl_long_break_atr_mult,3);
+        s+=",scTLLDev="+DoubleToString(c.scan_tl_long_dev_atr_mult,3);
+        s+=",scTLLMinPV="+DoubleToString(c.scan_tl_long_min_pivot_strength_atr,3);
+        s+=",scTLLSrcP="+IntegerToString(c.scan_tl_long_pivot_price_src);
+        s+=",scTLLSrcT="+IntegerToString(c.scan_tl_long_touch_price_src);
+        s+=",scTLLSrcB="+IntegerToString(c.scan_tl_long_break_price_src);
+        s+=",scTLLConf="+BoolStr(c.scan_tl_long_confirmed_only);
+      #endif
+
+      // Liquidity scan
+      s+=",scLiqOn="+BoolStr(c.scan_liq_enable);
+      s+=",scLiq5="+BoolStr(c.scan_liq_tf_5m);
+      s+=",scLiq15="+BoolStr(c.scan_liq_tf_15m);
+      s+=",scLiq1h="+BoolStr(c.scan_liq_tf_1h);
+      s+=",scLiqSw="+BoolStr(c.scan_liq_emit_sweeps);
+
+      // Wyckoff scan
+      s+=",scWyOn="+BoolStr(c.scan_wyck_enable);
+      s+=",scWyH4="+IntegerToString(c.scan_wyck_tf_h4);
+      s+=",scWyD1="+IntegerToString(c.scan_wyck_tf_d1);
+      s+=",scWyPh="+BoolStr(c.scan_wyck_emit_phase);
+      s+=",scWyPhZv="+DoubleToString(c.scan_wyck_phase_zvol_min,3);
+      s+=",scWyMnZv="+DoubleToString(c.scan_wyck_manip_zvol_min,3);
+      s+=",scWyLB4="+IntegerToString(c.scan_wyck_lb_h4);
+      s+=",scWyLBD1="+IntegerToString(c.scan_wyck_lb_d1);
+
+      // OBI scan
+      s+=",scOBIOn="+BoolStr(c.scan_obi_enable);
+      s+=",scOBID="+IntegerToString(c.scan_obi_depth_points);
+      s+=",scOBIThr="+DoubleToString(c.scan_obi_threshold,3);
+      s+=",scOBIVW="+BoolStr(c.scan_obi_vwap_enable);
+      s+=",scOBIKL="+DoubleToString(c.scan_obi_keylevel_atr,3);
+
+      s+=",scOBICms="+IntegerToString(c.scan_obi_cache_ms);
+      s+=",scOBIMax="+IntegerToString(c.scan_obi_max_levels);
+      s+=",scOBIMinV="+DoubleToString(c.scan_obi_min_tot_vol,2);
+      s+=",scOBIVWDist="+DoubleToString(c.scan_obi_vwap_dist_atr,3);
+
+      // Footprint scan
+      s+=",scFootOn="+BoolStr(c.scan_foot_enable);
+      s+=",scFootATR="+BoolStr(c.scan_foot_use_atr_proxy);
+      s+=",scFootZs="+DoubleToString(c.scan_foot_zstrong,3);
+      s+=",scFootZa="+DoubleToString(c.scan_foot_zabsorb,3);
+      s+=",scFootZd="+DoubleToString(c.scan_foot_zdiverge,3);
+
+      s+=",scFTickOn="+BoolStr(c.scan_foot_allow_ticks);
+      s+=",scFTickMax="+IntegerToString(c.scan_foot_ticks_max_tf_sec);
+      s+=",scFMinTk="+IntegerToString(c.scan_foot_min_ticks);
+
+      s+=",scFBin="+IntegerToString(c.scan_foot_bin_points);
+      s+=",scFMaxL="+IntegerToString(c.scan_foot_max_levels);
+      s+=",scFVA="+DoubleToString(c.scan_foot_value_area_pct,3);
+
+      s+=",scFImbR="+DoubleToString(c.scan_foot_imb_ratio,3);
+      s+=",scFImbV="+DoubleToString(c.scan_foot_imb_min_vol,2);
+      s+=",scFStk="+IntegerToString(c.scan_foot_stacked_levels);
+
+      s+=",scFAbsD="+IntegerToString(c.scan_foot_absorb_depth_levels);
+      s+=",scFAbsR="+DoubleToString(c.scan_foot_absorb_min_ratio,3);
+      s+=",scFPOCap="+DoubleToString(c.scan_foot_poc_approach_atr,3);
+
+      // Correlation scan (existing keys preserved)
+      s+=",scCorrOn="+BoolStr(c.scan_corr_enable);
+      s+=",scCorrThr="+DoubleToString(c.scan_corr_threshold,3);
+      s+=",scCorrRec="+DoubleToString(c.scan_corr_recover,3);
+      s+=",scCorrLen="+IntegerToString(c.scan_corr_len);
+
+      // News scan
+      s+=",scNewsOn="+BoolStr(c.scan_news_enable);
+      s+=",scNewsSoon="+IntegerToString(c.scan_news_soon_sec);
+      s+=",scNewsBlk="+IntegerToString(c.scan_news_block_sec);
+      s+=",scNewsWin="+BoolStr(c.scan_news_emit_strat_windows);
+
+      s+=",scNewsStr="+IntegerToString(c.scan_news_straddle_sec);
+      s+=",scNewsFade="+IntegerToString(c.scan_news_fade_sec);
+      s+=",scNewsBrk="+IntegerToString(c.scan_news_breakout_sec);
+      s+=",scNewsSqz="+DoubleToString(c.scan_news_breakout_squeeze_ratio,3);
+      s+=",scNewsLB="+IntegerToString(c.scan_news_breakout_lookback_bars);
+
+      // Volume Profile scan
+      s+=",scVPOn="+BoolStr(c.scan_vp_enable);
+      s+=",scVPLB="+IntegerToString(c.scan_vp_lookback_bars);
+      s+=",scVPBin="+IntegerToString(c.scan_vp_bin_points);
+      s+=",scVPVA="+DoubleToString(c.scan_vp_value_area_pct,3);
+      s+=",scVPTch="+DoubleToString(c.scan_vp_touch_atr,3);
+      s+=",scVPBrk="+DoubleToString(c.scan_vp_break_margin_atr,3);
+      s+=",scVPPoc="+DoubleToString(c.scan_vp_poc_shift_atr,3);
+      s+=",scVPStale="+IntegerToString(c.scan_vp_stale_sec);
+      s+=",scVPDist="+BoolStr(c.scan_vp_distribute_range);
+    #endif
+
+    // Liquidity pool thresholds (scanner behavior tuning)
+    s+=",scLPAppr="+DoubleToString(c.scan_liq_pool_approach_atr,3);
+    s+=",scLPConf="+IntegerToString(c.scan_liq_confirm_bars);
+    s+=",scLPWarm="+IntegerToString(c.scan_liq_warmup_bars);
+    s+=",scLPAcc="+DoubleToString(c.scan_liq_accept_margin_atr,3);
+    s+=",scLPRej="+DoubleToString(c.scan_liq_reject_margin_atr,3);
+    s+=",scLPStr="+DoubleToString(c.scan_liq_struct_break_eps_atr,3);
+    s+=",scLPZv="+DoubleToString(c.scan_liq_min_zvol,3);
 
     // Liquidity Pools (Lux-style)
     #ifdef CFG_HAS_LIQPOOL_FIELDS
@@ -5350,7 +6360,51 @@ namespace Config
       else if(k=="dirBias")
          cfg.direction_bias_mode = ToInt(v);
 
+      else if(k=="acOn") cfg.auto_enable = ToBool(v);
+      else if(k=="acTF") cfg.auto_tf_mask = ToInt(v);
+      else if(k=="acChartQ") cfg.auto_chart_min_quality = ToDouble(v);
+      else if(k=="acFibQ") cfg.auto_fib_min_quality = ToDouble(v);
+      
+      else if(k=="acFibTol") cfg.autofib_ratio_tolerance = ToDouble(v);
+      else if(k=="acFibPL") cfg.auto_fib_pivot_L = ToInt(v);
+      else if(k=="acFibPR") cfg.auto_fib_pivot_R = ToInt(v);
+      
+      else if(k=="acFibStopATR") cfg.auto_fib_stop_atr_mult = ToDouble(v);
+      else if(k=="acFibT1") cfg.auto_fib_target_r1 = ToDouble(v);
+      else if(k=="acFibT2") cfg.auto_fib_target_r2 = ToDouble(v);
+      else if(k=="acFibT3") cfg.auto_fib_target_r3 = ToDouble(v);
+
+      // Key levels (local)
+      else if(k=="acKeyTouches")  cfg.auto_keylevel_min_touches = ToInt(v);
+      else if(k=="acKeyClustATR") cfg.auto_keylevel_cluster_atr = ToDouble(v);
+      else if(k=="acKeyApprATR")  cfg.auto_keylevel_approach_atr = ToDouble(v);
+
+      else if(k=="acKeyMinPips")  cfg.auto_keylevel_min_pips = ToDouble(v);
+      else if(k=="acKeyBrkATR")   cfg.auto_keylevel_break_margin_atr = ToDouble(v);
+      else if(k=="acKeyBW")       cfg.auto_keylevel_bounce_window = ToInt(v);
+
+      else if(k=="acKeyWT")       cfg.auto_keylevel_w_touches = ToDouble(v);
+      else if(k=="acKeyWR")       cfg.auto_keylevel_w_recency = ToDouble(v);
+      else if(k=="acKeyWB")       cfg.auto_keylevel_w_bounce = ToDouble(v);
+
       // ICT strategy kind profile (for FVG strictness per-playbook)
+      #ifdef CFG_HAS_SR_DETECTOR_SETTINGS
+        else if(k=="srPL")     cfg.sr_pivot_left = ToInt(v);
+        else if(k=="srPR")     cfg.sr_pivot_right = ToInt(v);
+        else if(k=="srFrac")   cfg.sr_use_fractals = ToBool(v);
+        else if(k=="srStatic") cfg.sr_static_mode = ToBool(v);
+        else if(k=="srExp")    cfg.sr_level_expiry_bars = ToInt(v);
+        else if(k=="srMax")    cfg.sr_max_levels = ToInt(v);
+        else if(k=="srZwATR")  cfg.sr_zone_width_atr = ToDouble(v);
+        else if(k=="srBrVol")  cfg.sr_break_vol_ratio = ToDouble(v);
+        else if(k=="srTv")     cfg.sr_touch_vol_ratio = ToDouble(v);
+        else if(k=="srMtf")    cfg.sr_mtf_mask = ToInt(v);
+
+        // Optional human-friendly aliases (non-breaking)
+        else if(k=="srPivotL") cfg.sr_pivot_left = ToInt(v);
+        else if(k=="srPivotR") cfg.sr_pivot_right = ToInt(v);
+      #endif
+
       #ifdef CFG_HAS_STRATEGY_KIND
         else if(k=="ictStrat")
           cfg.strategyKind = (ICTStrategyKind)ToInt(v);
@@ -5448,6 +6502,22 @@ namespace Config
       else if(k=="pTau")   cfg.pattern_tau = ToDouble(v);
       else if(k=="vwL")    cfg.vwap_lookback = ToInt(v);
       else if(k=="vwSig")  cfg.vwap_sigma = ToDouble(v);
+      
+      // Structure / SDOB knobs
+      else if(k=="zzDepth" || k=="structZZ") cfg.struct_zz_depth = ToInt(v);
+      else if(k=="htfMult" || k=="structHTF") cfg.struct_htf_mult = ToInt(v);
+      else if(k=="obProx"  || k=="obPx")      cfg.ob_prox_max_pips = ToDouble(v);
+      
+      #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+        else if(k=="sdMargin" || k=="sdMarginPips") cfg.struct_zone_margin_pips = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+        else if(k=="sdMinTouches" || k=="sdTouches") cfg.struct_min_touch_count = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+        else if(k=="sdMinScore" || k=="sdScore") cfg.struct_zone_min_score = ToDouble(v);
+      #endif
+
       #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
         else if(k=="mainReq"){ cfg.main_require_checklist=ToBool(v); seenMainReq=true; }
       #endif
@@ -5485,6 +6555,35 @@ namespace Config
       else if(k=="xWYT") cfg.extra_wyckoff_turn = ToBool(v);
       else if(k=="wWYT") cfg.w_wyckoff_turn = ToDouble(v);
 
+      #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+        else if(k=="wyRLB")   cfg.wyck_range_lookback = ToInt(v);
+        else if(k=="wyMinRB") cfg.wyck_min_range_bars = ToInt(v);
+        else if(k=="wyEqATR") cfg.wyck_eq_tol_atr = ToDouble(v);
+        else if(k=="wyMaxATR")cfg.wyck_max_range_atr = ToDouble(v);
+
+        else if(k=="wyATRc")  cfg.wyck_use_atr_compression = ToBool(v);
+        else if(k=="wyATRn")  cfg.wyck_atr_len = ToInt(v);
+        else if(k=="wyATRm")  cfg.wyck_atr_ma_len = ToInt(v);
+
+        else if(k=="wyBBc")   cfg.wyck_use_bb_compression = ToBool(v);
+        else if(k=="wyBBn")   cfg.wyck_bb_len = ToInt(v);
+        else if(k=="wyBBd")   cfg.wyck_bb_dev = ToDouble(v);
+        else if(k=="wyBBw")   cfg.wyck_bb_width_thr = ToDouble(v);
+
+        else if(k=="wySwL")   cfg.wyck_swingL = ToInt(v);
+        else if(k=="wySwR")   cfg.wyck_swingR = ToInt(v);
+
+        else if(k=="wyBosC")  cfg.wyck_bos_confirm_closes = ToInt(v);
+
+        else if(k=="wyManQ")  cfg.wyck_manip_min_quality = ToDouble(v);
+        else if(k=="wyWick")  cfg.wyck_wick_min_ratio = ToDouble(v);
+        else if(k=="wyClsIn") cfg.wyck_close_inside_min = ToDouble(v);
+
+        else if(k=="wyARw")   cfg.wyck_ar_window_bars = ToInt(v);
+        else if(k=="wyVolN")  cfg.wyck_vol_len = ToInt(v);
+        else if(k=="wyVolM")  cfg.wyck_vol_mult = ToDouble(v);
+      #endif
+
       else if(k=="xMTFZ")  cfg.extra_mtf_zones = ToBool(v);
       else if(k=="wZ1")    cfg.w_mtf_zone_h1 = ToDouble(v);
       else if(k=="wZ4")    cfg.w_mtf_zone_h4 = ToDouble(v);
@@ -5520,6 +6619,161 @@ namespace Config
       else if(k=="corrLb")   cfg.corr_lookback = ToInt(v);
       else if(k=="corrAbs")  cfg.corr_min_abs = ToDouble(v);
       else if(k=="corrRef")  cfg.corr_ref_symbol = v;
+      
+      else if(k=="scTF")  cfg.scan_tf_mask = ToInt(v);
+      else if(k=="scInt") cfg.auto_scan_interval_sec = ToInt(v);
+      else if(k=="scLB")  cfg.auto_scan_lookback_bars = ToInt(v);
+
+      #ifdef CFG_HAS_SCAN_FVG_SETTINGS
+        else if(k=="scFVGOn")   cfg.scan_fvg_enable = ToBool(v);
+        else if(k=="scFVG5")    cfg.scan_fvg_tf_5m = ToBool(v);
+        else if(k=="scFVG15")   cfg.scan_fvg_tf_15m = ToBool(v);
+        else if(k=="scFVG1h")   cfg.scan_fvg_tf_1h = ToBool(v);
+
+        else if(k=="scFVGAppr") cfg.scan_fvg_approach_atr = ToDouble(v);
+        else if(k=="scFVGBrk")  cfg.scan_fvg_break_margin_atr = ToDouble(v);
+
+        else if(k=="scFVGtZv")  cfg.scan_fvg_touch_zvol_min = ToDouble(v);
+        else if(k=="scFVGbZv")  cfg.scan_fvg_breakout_zvol_min = ToDouble(v);
+        else if(k=="scFVGtDz")  cfg.scan_fvg_touch_delta_min = ToDouble(v);
+        else if(k=="scFVGbDz")  cfg.scan_fvg_breakout_delta_min = ToDouble(v);
+
+        else if(k=="scFVGATR")  cfg.scan_fvg_use_atr_proxy = ToBool(v);
+      #endif
+
+      #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+        #ifdef CFG_HAS_SCAN_TL_SETTINGS
+          else if(k=="scTLOn")   cfg.scan_tl_enable = ToBool(v);
+          else if(k=="scTLMskS") cfg.scan_tl_tf_mask_short = ToInt(v);
+          else if(k=="scTLMskM") cfg.scan_tl_tf_mask_mid   = ToInt(v);
+          else if(k=="scTLMskL") cfg.scan_tl_tf_mask_long  = ToInt(v);
+
+          // Short bucket
+          else if(k=="scTLSLB")    cfg.scan_tl_short_lookback_bars = ToInt(v);
+          else if(k=="scTLSPL")    cfg.scan_tl_short_pivot_left    = ToInt(v);
+          else if(k=="scTLSPR")    cfg.scan_tl_short_pivot_right   = ToInt(v);
+          else if(k=="scTLSTch")   cfg.scan_tl_short_min_touches   = ToInt(v);
+          else if(k=="scTLSTol")   cfg.scan_tl_short_tol_atr_mult = ToDouble(v);
+          else if(k=="scTLSBrk")   cfg.scan_tl_short_break_atr_mult = ToDouble(v);
+          else if(k=="scTLSDev")   cfg.scan_tl_short_dev_atr_mult   = ToDouble(v);
+          else if(k=="scTLSMinPV") cfg.scan_tl_short_min_pivot_strength_atr = ToDouble(v);
+          else if(k=="scTLSSrcP")  cfg.scan_tl_short_pivot_price_src = ToInt(v);
+          else if(k=="scTLSSrcT")  cfg.scan_tl_short_touch_price_src = ToInt(v);
+          else if(k=="scTLSSrcB")  cfg.scan_tl_short_break_price_src = ToInt(v);
+          else if(k=="scTLSConf")  cfg.scan_tl_short_confirmed_only  = ToBool(v);
+
+          // Mid bucket
+          else if(k=="scTLMLB")    cfg.scan_tl_mid_lookback_bars = ToInt(v);
+          else if(k=="scTLMPL")    cfg.scan_tl_mid_pivot_left    = ToInt(v);
+          else if(k=="scTLMPR")    cfg.scan_tl_mid_pivot_right   = ToInt(v);
+          else if(k=="scTLMTch")   cfg.scan_tl_mid_min_touches   = ToInt(v);
+          else if(k=="scTLMTol")   cfg.scan_tl_mid_tol_atr_mult = ToDouble(v);
+          else if(k=="scTLMBrk")   cfg.scan_tl_mid_break_atr_mult = ToDouble(v);
+          else if(k=="scTLMDev")   cfg.scan_tl_mid_dev_atr_mult   = ToDouble(v);
+          else if(k=="scTLMMinPV") cfg.scan_tl_mid_min_pivot_strength_atr = ToDouble(v);
+          else if(k=="scTLMSrcP")  cfg.scan_tl_mid_pivot_price_src = ToInt(v);
+          else if(k=="scTLMSrcT")  cfg.scan_tl_mid_touch_price_src = ToInt(v);
+          else if(k=="scTLMSrcB")  cfg.scan_tl_mid_break_price_src = ToInt(v);
+          else if(k=="scTLMConf")  cfg.scan_tl_mid_confirmed_only  = ToBool(v);
+
+          // Long bucket
+          else if(k=="scTLLLB")    cfg.scan_tl_long_lookback_bars = ToInt(v);
+          else if(k=="scTLLPL")    cfg.scan_tl_long_pivot_left    = ToInt(v);
+          else if(k=="scTLLPR")    cfg.scan_tl_long_pivot_right   = ToInt(v);
+          else if(k=="scTLLTch")   cfg.scan_tl_long_min_touches   = ToInt(v);
+          else if(k=="scTLLTol")   cfg.scan_tl_long_tol_atr_mult = ToDouble(v);
+          else if(k=="scTLLBrk")   cfg.scan_tl_long_break_atr_mult = ToDouble(v);
+          else if(k=="scTLLDev")   cfg.scan_tl_long_dev_atr_mult   = ToDouble(v);
+          else if(k=="scTLLMinPV") cfg.scan_tl_long_min_pivot_strength_atr = ToDouble(v);
+          else if(k=="scTLLSrcP")  cfg.scan_tl_long_pivot_price_src = ToInt(v);
+          else if(k=="scTLLSrcT")  cfg.scan_tl_long_touch_price_src = ToInt(v);
+          else if(k=="scTLLSrcB")  cfg.scan_tl_long_break_price_src = ToInt(v);
+          else if(k=="scTLLConf")  cfg.scan_tl_long_confirmed_only  = ToBool(v);
+        #endif
+
+        else if(k=="scLiqOn") cfg.scan_liq_enable = ToBool(v);
+        else if(k=="scLiq5")  cfg.scan_liq_tf_5m = ToBool(v);
+        else if(k=="scLiq15") cfg.scan_liq_tf_15m = ToBool(v);
+        else if(k=="scLiq1h") cfg.scan_liq_tf_1h = ToBool(v);
+        else if(k=="scLiqSw") cfg.scan_liq_emit_sweeps = ToBool(v);
+
+        else if(k=="scWyOn")    cfg.scan_wyck_enable = ToBool(v);
+        else if(k=="scWyH4")    cfg.scan_wyck_tf_h4 = ToInt(v);
+        else if(k=="scWyD1")    cfg.scan_wyck_tf_d1 = ToInt(v);
+        else if(k=="scWyPh")    cfg.scan_wyck_emit_phase = ToBool(v);
+        else if(k=="scWyPhZv")  cfg.scan_wyck_phase_zvol_min = ToDouble(v);
+        else if(k=="scWyMnZv")  cfg.scan_wyck_manip_zvol_min = ToDouble(v);
+        else if(k=="scWyLB4")   cfg.scan_wyck_lb_h4 = ToInt(v);
+        else if(k=="scWyLBD1")  cfg.scan_wyck_lb_d1 = ToInt(v);
+
+        else if(k=="scOBIOn")   cfg.scan_obi_enable = ToBool(v);
+        else if(k=="scOBID")    cfg.scan_obi_depth_points = ToInt(v);
+        else if(k=="scOBIThr")  cfg.scan_obi_threshold = ToDouble(v);
+        else if(k=="scOBIVW")   cfg.scan_obi_vwap_enable = ToBool(v);
+        else if(k=="scOBIKL")   cfg.scan_obi_keylevel_atr = ToDouble(v);
+
+        else if(k=="scOBICms")  cfg.scan_obi_cache_ms = ToInt(v);
+        else if(k=="scOBIMax")  cfg.scan_obi_max_levels = ToInt(v);
+        else if(k=="scOBIMinV") cfg.scan_obi_min_tot_vol = ToDouble(v);
+        else if(k=="scOBIVWDist") cfg.scan_obi_vwap_dist_atr = ToDouble(v);
+
+        else if(k=="scFootOn")  cfg.scan_foot_enable = ToBool(v);
+        else if(k=="scFootATR") cfg.scan_foot_use_atr_proxy = ToBool(v);
+        else if(k=="scFootZs")  cfg.scan_foot_zstrong = ToDouble(v);
+        else if(k=="scFootZa")  cfg.scan_foot_zabsorb = ToDouble(v);
+        else if(k=="scFootZd")  cfg.scan_foot_zdiverge = ToDouble(v);
+
+        else if(k=="scFTickOn")  cfg.scan_foot_allow_ticks = ToBool(v);
+        else if(k=="scFTickMax") cfg.scan_foot_ticks_max_tf_sec = ToInt(v);
+        else if(k=="scFMinTk")   cfg.scan_foot_min_ticks = ToInt(v);
+
+        else if(k=="scFBin")   cfg.scan_foot_bin_points = ToInt(v);
+        else if(k=="scFMaxL")  cfg.scan_foot_max_levels = ToInt(v);
+        else if(k=="scFVA")    cfg.scan_foot_value_area_pct = ToDouble(v);
+
+        else if(k=="scFImbR")  cfg.scan_foot_imb_ratio = ToDouble(v);
+        else if(k=="scFImbV")  cfg.scan_foot_imb_min_vol = ToDouble(v);
+        else if(k=="scFStk")   cfg.scan_foot_stacked_levels = ToInt(v);
+
+        else if(k=="scFAbsD")  cfg.scan_foot_absorb_depth_levels = ToInt(v);
+        else if(k=="scFAbsR")  cfg.scan_foot_absorb_min_ratio = ToDouble(v);
+        else if(k=="scFPOCap") cfg.scan_foot_poc_approach_atr = ToDouble(v);
+
+        // Correlation (existing)
+        else if(k=="scCorrOn")  cfg.scan_corr_enable    = ToBool(v);
+        else if(k=="scCorrThr") cfg.scan_corr_threshold = ToDouble(v);
+        else if(k=="scCorrRec") cfg.scan_corr_recover   = ToDouble(v);
+        else if(k=="scCorrLen") cfg.scan_corr_len       = ToInt(v);
+
+        else if(k=="scNewsOn")   cfg.scan_news_enable = ToBool(v);
+        else if(k=="scNewsSoon") cfg.scan_news_soon_sec = ToInt(v);
+        else if(k=="scNewsBlk")  cfg.scan_news_block_sec = ToInt(v);
+        else if(k=="scNewsWin")  cfg.scan_news_emit_strat_windows = ToBool(v);
+
+        else if(k=="scNewsStr")  cfg.scan_news_straddle_sec = ToInt(v);
+        else if(k=="scNewsFade") cfg.scan_news_fade_sec = ToInt(v);
+        else if(k=="scNewsBrk")  cfg.scan_news_breakout_sec = ToInt(v);
+        else if(k=="scNewsSqz")  cfg.scan_news_breakout_squeeze_ratio = ToDouble(v);
+        else if(k=="scNewsLB")   cfg.scan_news_breakout_lookback_bars = ToInt(v);
+
+        else if(k=="scVPOn")    cfg.scan_vp_enable = ToBool(v);
+        else if(k=="scVPLB")    cfg.scan_vp_lookback_bars = ToInt(v);
+        else if(k=="scVPBin")   cfg.scan_vp_bin_points = ToInt(v);
+        else if(k=="scVPVA")    cfg.scan_vp_value_area_pct = ToDouble(v);
+        else if(k=="scVPTch")   cfg.scan_vp_touch_atr = ToDouble(v);
+        else if(k=="scVPBrk")   cfg.scan_vp_break_margin_atr = ToDouble(v);
+        else if(k=="scVPPoc")   cfg.scan_vp_poc_shift_atr = ToDouble(v);
+        else if(k=="scVPStale") cfg.scan_vp_stale_sec = ToInt(v);
+        else if(k=="scVPDist")  cfg.scan_vp_distribute_range = ToBool(v);
+      #endif
+
+      else if(k=="scLPAppr") cfg.scan_liq_pool_approach_atr = ToDouble(v);
+      else if(k=="scLPConf") cfg.scan_liq_confirm_bars = ToInt(v);
+      else if(k=="scLPWarm") cfg.scan_liq_warmup_bars = ToInt(v);
+      else if(k=="scLPAcc")  cfg.scan_liq_accept_margin_atr = ToDouble(v);
+      else if(k=="scLPRej")  cfg.scan_liq_reject_margin_atr = ToDouble(v);
+      else if(k=="scLPStr")  cfg.scan_liq_struct_break_eps_atr = ToDouble(v);
+      else if(k=="scLPZv")   cfg.scan_liq_min_zvol = ToDouble(v);
 
       // Liquidity Pools (Lux-style)
       else if(k=="liqMinTouch") cfg.liqPoolMinTouches = ToInt(v);
@@ -6000,6 +7254,168 @@ struct Settings
    int    auto_scan_interval_sec;
    int    auto_scan_lookback_bars;
    
+   // --- Additional scanners (structured scans) ---
+#ifdef CFG_HAS_SCAN_FVG_SETTINGS
+  bool   scan_fvg_enable;              // master toggle for FVG scanner events
+  // Per-TF gating for FVG scanner
+  bool scan_fvg_tf_5m;
+  bool scan_fvg_tf_15m;
+  bool scan_fvg_tf_1h;
+  double scan_fvg_approach_atr;         // ATR-multiple proximity band (approach emit)
+  double scan_fvg_break_margin_atr;     // ATR-multiple beyond boundary to qualify breakout
+
+  // Volume confirmation thresholds (reuse VSA zVol + DeltaProxy alignment)
+  double scan_fvg_touch_zvol_min;       // min zVol for "confirmed" touch/mitigation
+  double scan_fvg_breakout_zvol_min;    // min zVol for breakout emit
+  double scan_fvg_touch_delta_min;      // min |delta z| alignment threshold for touch
+  double scan_fvg_breakout_delta_min;   // min |delta z| alignment threshold for breakout
+  bool   scan_fvg_use_atr_proxy;        // allow ATR-based proxy when real delta/session delta isn't reliable
+#endif
+#ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+   // Reserved toggles (no logic wired in this response; keeps IDs stable later)
+   #ifdef CFG_HAS_SCAN_TL_SETTINGS
+   // Trendlines scanner (3 independent buckets: short / mid / long)
+   bool scan_tl_enable;
+   int  scan_tl_tf_mask_short;
+   int  scan_tl_tf_mask_mid;
+   int  scan_tl_tf_mask_long;
+   
+   // Short bucket
+   int    scan_tl_short_lookback_bars;
+   int    scan_tl_short_pivot_left;
+   int    scan_tl_short_pivot_right;
+   int    scan_tl_short_min_touches;
+   double scan_tl_short_tol_atr_mult;
+   double scan_tl_short_break_atr_mult;
+   double scan_tl_short_dev_atr_mult;
+   double scan_tl_short_min_pivot_strength_atr;
+   int    scan_tl_short_pivot_price_src;   // 0=WICK, 1=BODY, 2=CLOSE (matches TL_PriceSource)
+   int    scan_tl_short_touch_price_src;   // 0=WICK, 1=BODY, 2=CLOSE
+   int    scan_tl_short_break_price_src;   // 0=WICK, 1=BODY, 2=CLOSE
+   bool   scan_tl_short_confirmed_only;
+   
+   // Mid bucket
+   int    scan_tl_mid_lookback_bars;
+   int    scan_tl_mid_pivot_left;
+   int    scan_tl_mid_pivot_right;
+   int    scan_tl_mid_min_touches;
+   double scan_tl_mid_tol_atr_mult;
+   double scan_tl_mid_break_atr_mult;
+   double scan_tl_mid_dev_atr_mult;
+   double scan_tl_mid_min_pivot_strength_atr;
+   int    scan_tl_mid_pivot_price_src;
+   int    scan_tl_mid_touch_price_src;
+   int    scan_tl_mid_break_price_src;
+   bool   scan_tl_mid_confirmed_only;
+   
+   // Long bucket
+   int    scan_tl_long_lookback_bars;
+   int    scan_tl_long_pivot_left;
+   int    scan_tl_long_pivot_right;
+   int    scan_tl_long_min_touches;
+   double scan_tl_long_tol_atr_mult;
+   double scan_tl_long_break_atr_mult;
+   double scan_tl_long_dev_atr_mult;
+   double scan_tl_long_min_pivot_strength_atr;
+   int    scan_tl_long_pivot_price_src;
+   int    scan_tl_long_touch_price_src;
+   int    scan_tl_long_break_price_src;
+   bool   scan_tl_long_confirmed_only;
+   #endif
+
+   bool scan_liq_enable;
+   // Liquidity per-TF gating + emit controls
+   bool scan_liq_tf_5m;
+   bool scan_liq_tf_15m;
+   bool scan_liq_tf_1h;
+   bool scan_liq_emit_sweeps;
+
+   bool scan_wyck_enable;
+   // Optional TF override (0 = use defaults in Confluence: H4/D1)
+   int scan_wyck_tf_h4;
+   int scan_wyck_tf_d1;
+
+   // Wyckoff scanner semantics (phase + manipulation + VSA confirmation)
+   bool   scan_wyck_emit_phase;        // emit SC_WYCK_ACCUM / SC_WYCK_DISTRIB on phase change; emit SC_WYCK_MANIP on spring/UTAD
+   double scan_wyck_phase_zvol_min;    // min VSA zVol to treat phase-change / breakout as "confirmed"
+   double scan_wyck_manip_zvol_min;    // min VSA zVol (or climax) to boost/confirm manipulation (spring/UTAD)
+   int    scan_wyck_lb_h4;             // lookback bars for H4 phase detect (WyckoffCycle)
+   int    scan_wyck_lb_d1;             // lookback bars for D1 phase detect (WyckoffCycle)
+
+   bool scan_obi_enable;
+   // OBI scanner (config-driven)
+   int    scan_obi_depth_points;   // DOM band depth in points (e.g. 25)
+   double scan_obi_threshold;      // imbalance threshold (e.g. 0.30)
+   bool   scan_obi_vwap_enable;    // enable VWAP-filtered OBI emits
+   double scan_obi_keylevel_atr;   // gating distance: within X * ATR of key level
+   // OBI compute tuning (wired into OrderBookImbalance::Settings)
+   int    scan_obi_cache_ms;
+   int    scan_obi_max_levels;
+   double scan_obi_min_tot_vol;
+   // Optional VWAP distance gating (ATR multiples; 0 disables)
+   double scan_obi_vwap_dist_atr;
+
+   bool scan_foot_enable;
+   // Footprint / delta (orderflow-lite) tuning
+   bool   scan_foot_use_atr_proxy;  // use ATR proxy when session delta isn't reliable
+   double scan_foot_zstrong;        // strong delta threshold (|z|)
+   double scan_foot_zabsorb;        // absorption threshold (|z|)
+   double scan_foot_zdiverge;       // divergence threshold (|z|)
+
+   bool scan_corr_enable;
+   double scan_corr_threshold;   // abs(corr) threshold to classify "strong"
+   double scan_corr_recover;     // abs(corr) <= this => "weak" (hysteresis)
+   int    scan_corr_len;         // lookback bars for Pearson returns + zscore sample
+
+   bool scan_news_enable;
+   int scan_news_soon_sec;
+   int scan_news_block_sec;
+   bool scan_news_emit_strat_windows;
+   int scan_news_straddle_sec;
+   int scan_news_fade_sec;
+   int scan_news_breakout_sec;
+   double scan_news_breakout_squeeze_ratio;
+   int scan_news_breakout_lookback_bars;
+
+    // --- Footprint proxy (backend-only) ---
+    bool   scan_foot_allow_ticks;
+    int    scan_foot_ticks_max_tf_sec;
+    int    scan_foot_min_ticks;
+
+    int    scan_foot_bin_points;
+    int    scan_foot_max_levels;
+
+    double scan_foot_value_area_pct;
+
+    double scan_foot_imb_ratio;
+    double scan_foot_imb_min_vol;
+    int    scan_foot_stacked_levels;
+
+    int    scan_foot_absorb_depth_levels;
+    double scan_foot_absorb_min_ratio;
+
+    double scan_foot_poc_approach_atr;
+
+   // Volume Profile scanner
+   bool   scan_vp_enable;
+   int    scan_vp_lookback_bars;       // histogram build lookback (closed bars)
+   int    scan_vp_bin_points;          // bin size in points (auto-adjusts if too many bins)
+   double scan_vp_value_area_pct;      // 0.70 = 70% VA
+   double scan_vp_touch_atr;           // touch band in ATR multiples
+   double scan_vp_break_margin_atr;    // breakout margin beyond VAH/VAL in ATR multiples
+   double scan_vp_poc_shift_atr;       // emit POC shift if moves > X * ATR
+   int    scan_vp_stale_sec;           // rebuild if cache older than this
+   bool   scan_vp_distribute_range;    // distribute bar weight over range (slower)
+#endif
+   
+   double scan_liq_pool_approach_atr;      // e.g. 0.35
+   int    scan_liq_confirm_bars;           // e.g. 6
+   int    scan_liq_warmup_bars;            // e.g. 600
+   double scan_liq_accept_margin_atr;      // e.g. 0.15
+   double scan_liq_reject_margin_atr;      // e.g. 0.10
+   double scan_liq_struct_break_eps_atr;   // e.g. 0.05
+   double scan_liq_min_zvol;               // e.g. 1.0 (reuse VSA zVol)
+
    // Main confluence toggles
    bool   cf_autochartist_chart;
    bool   cf_autochartist_fib;
@@ -6035,21 +7451,65 @@ struct Settings
 
    // Fibonacci/harmonic (local)
    double auto_fib_min_quality;
+   double autofib_ratio_tolerance;
+   int    auto_fib_pivot_L;
+   int    auto_fib_pivot_R;
+   
+   double auto_fib_stop_atr_mult;
+   double auto_fib_target_r1;
+   double auto_fib_target_r2;
+   double auto_fib_target_r3;
    
    // Key levels (local)
    int    auto_keylevel_min_touches;
    double auto_keylevel_cluster_atr;
    double auto_keylevel_approach_atr;
    
+   double auto_keylevel_min_pips;
+   double auto_keylevel_break_margin_atr;
+   int    auto_keylevel_bounce_window;
+
+   double auto_keylevel_w_touches;
+   double auto_keylevel_w_recency;
+   double auto_keylevel_w_bounce;
+   
    #ifdef CFG_HAS_AUTO_KEY_MIN_SIG
       double auto_key_min_sig; // min significance (0..1) for keylevel confluence
    #endif
+   
+   // Support/Resistance detector (SRDet) — canonical S/R engine for SR scan + key-level reuse
+   #ifdef CFG_HAS_SR_DETECTOR_SETTINGS
+     int    sr_pivot_left;          // swing validation (left bars)
+     int    sr_pivot_right;         // swing validation (right bars)
+     bool   sr_use_fractals;        // optional fractal logic (Bill Williams style)
+     bool   sr_static_mode;         // true=no repaint (static), false=dynamic updates
+     int    sr_level_expiry_bars;   // 0 => never expire
+     int    sr_max_levels;          // hard cap to control CPU/noise
+     double sr_zone_width_atr;      // zone half-width in ATR units (banded levels)
+     double sr_break_vol_ratio;     // breakout volume confirmation ratio
+     double sr_touch_vol_ratio;     // validation/touch volume confirmation ratio
+     int    sr_mtf_mask;            // bitmask; use same bit layout as scan_tf_mask
+   #endif
 
    // Volatility / movement (local)
+   // NOTE: compute cadence lives in Settings::auto_vol_cache_hours (see AutoVol cache block above).
    int    auto_vol_lookback_days;
    int    auto_vol_horizon_minutes;
    double auto_vol_min_range_atr;
    
+   // PowerStats-like extensions (used by Autochartist vol + RiskEngine sanity)
+   bool   auto_vol_use_m15;                 // true => include 15m/30m bands (more realism)
+   double auto_vol_sd_mult;                 // k for mean + k*sd bands
+
+   bool   auto_vol_sltp_sanity_enable;      // default false (avoid surprise behavior changes)
+   double auto_vol_sl_max_mult;             // cap SL vs expected range
+   double auto_vol_sl_min_frac;             // floor SL vs expected range (fraction)
+   double auto_vol_tp_cap_mult;             // cap TP vs expected range (non-breakout)
+   double auto_vol_tp_cap_breakout_mult;    // cap TP vs expected range (breakout regime)
+   double auto_vol_breakout_adx01;          // breakout threshold in normalized 0..1 space
+
+   bool   auto_vol_sanity_clamp;            // true => clamp instead of veto
+
    // Optional risk scaling
    bool   auto_risk_scale_enable;
    double auto_risk_scale_floor;
@@ -6185,6 +7645,40 @@ struct Settings
   bool   extra_phase_ctx;
   double w_phase_ctx;
   
+  // ──────────────────────────────────────────────────────────────
+  // WyckoffCycle core knobs (range / BOS / manipulation / volume)
+  // These are used by WyckoffCycle.mqh so it doesn't hardcode tuning.
+  // ──────────────────────────────────────────────────────────────
+  #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+    int    wyck_range_lookback;        // range scan window (bars)
+    int    wyck_min_range_bars;        // min bars to accept a trading range
+
+    double wyck_eq_tol_atr;            // equal-high/low tolerance (ATR multiple)
+    double wyck_max_range_atr;         // reject ranges wider than this (ATR multiple)
+
+    bool   wyck_use_atr_compression;   // range filter: ATR compression
+    int    wyck_atr_len;               // ATR period
+    int    wyck_atr_ma_len;            // ATR MA period
+
+    bool   wyck_use_bb_compression;    // range filter: BB width compression
+    int    wyck_bb_len;                // BB period
+    double wyck_bb_dev;                // BB deviation
+    double wyck_bb_width_thr;          // BB width threshold (fraction, e.g. 0.015)
+
+    int    wyck_swingL;                // swing pivot left
+    int    wyck_swingR;                // swing pivot right
+
+    int    wyck_bos_confirm_closes;    // BOS confirm closes (1..N)
+
+    double wyck_manip_min_quality;     // min quality score for Spring/UTAD
+    double wyck_wick_min_ratio;        // wick ratio threshold for sweep bar
+    double wyck_close_inside_min;      // reclaim threshold into range (0..1)
+
+    int    wyck_ar_window_bars;        // AR/SC window
+    int    wyck_vol_len;               // volume MA length
+    double wyck_vol_mult;              // volume spike multiplier (e.g. 1.5)
+  #endif
+
   // Multi-TF zones (H1/H4 zone proximity)
   bool   extra_mtf_zones;
   double w_mtf_zone_h1;
@@ -6313,6 +7807,16 @@ struct Settings
      // if Config.mqh already includes Types.mqh at this point and you
      // prefer strong typing, you can instead use:
      // FVGMode fvg_mode;
+  #endif
+
+  #ifdef CFG_HAS_FVG_LOOKBACK_BARS
+     int fvg_lookback_bars;              // bars scanned to detect FVGs
+  #endif
+  #ifdef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+     int fvg_impulse_lookahead_bars;     // bars to validate impulse continuation
+  #endif
+  #ifdef CFG_HAS_FVG_MIN_GAP_ATR
+     double fvg_min_gap_atr;             // minimum gap size in ATR multiples (filter)
   #endif
 
   // Confluence blending weights (0..0.50 typical)
@@ -6507,6 +8011,16 @@ struct Settings
   int        struct_zz_depth;
   int        struct_htf_mult;
   double     ob_prox_max_pips;
+
+  #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+    double     struct_zone_margin_pips;
+  #endif
+  #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+    int        struct_min_touch_count;
+  #endif
+  #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+    double     struct_zone_min_score;
+  #endif
 
   // -------------------------------------------------
    // 2. BIAS / DIRECTION CONTROL
