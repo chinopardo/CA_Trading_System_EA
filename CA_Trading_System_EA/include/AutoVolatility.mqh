@@ -295,7 +295,7 @@ inline bool _AutoVolComputeATRPoints(const string sym,
 {
   atr_pts = 0.0; bars_used = 0; err = "";
 
-  const int per = _AutoVolClampInt(period, 2, 200);
+  const int per = _AutoVolClampInt(period, 1, 200);
   const double pt = _AutoVolPointSafe(sym);
 
   int h = iATR(sym, tf, per);

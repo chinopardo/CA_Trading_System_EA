@@ -59,6 +59,10 @@ struct Settings;
 #ifndef CFG_HAS_SR_DETECTOR_SETTINGS
   #define CFG_HAS_SR_DETECTOR_SETTINGS 1
 #endif
+// --- Fibonacci / OTE settings (cfg-wired) ---
+#ifndef CFG_HAS_FIB_SETTINGS
+  #define CFG_HAS_FIB_SETTINGS 1
+#endif
 // --- FVG settings (cfg-wired) ---
 #ifndef CFG_HAS_FVG_MIN_SCORE
   #define CFG_HAS_FVG_MIN_SCORE 1
@@ -121,6 +125,118 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_STRUCT_ZONE_MIN_SCORE
   #define CFG_HAS_STRUCT_ZONE_MIN_SCORE 1
+#endif
+
+// --- Patterns: SD base patterns (RBR/DBD/RBD/DBR) settings ---
+#ifndef CFG_HAS_PATTERNS_SD_SETTINGS
+  #define CFG_HAS_PATTERNS_SD_SETTINGS 1
+#endif
+#ifndef CFG_HAS_PATTERNS_SD_SETTINGS_FIELDS
+  // Settings contains sd_* members used by Confluence->Patterns runtime mapping
+  #define CFG_HAS_PATTERNS_SD_SETTINGS_FIELDS 1
+#endif
+
+// --- Universal Pattern (Patterns.mqh best-kind + risk + events) settings ---
+#ifndef CFG_HAS_PATT_SETTINGS
+  #define CFG_HAS_PATT_SETTINGS 1
+#endif
+#ifndef CFG_HAS_PATT_SETTINGS_FIELDS
+  // Settings contains patt_* members used by Confluence->Patterns runtime mapping
+  #define CFG_HAS_PATT_SETTINGS_FIELDS 1
+#endif
+
+#ifndef CFG_HAS_PATT_MODE
+  #define CFG_HAS_PATT_MODE 1
+#endif
+#ifndef CFG_HAS_PATT_MIN_QUALITY01
+  #define CFG_HAS_PATT_MIN_QUALITY01 1
+#endif
+#ifndef CFG_HAS_PATT_RETEST_WINDOW_BARS
+  #define CFG_HAS_PATT_RETEST_WINDOW_BARS 1
+#endif
+#ifndef CFG_HAS_PATT_STOP_ATR_MULT
+  #define CFG_HAS_PATT_STOP_ATR_MULT 1
+#endif
+#ifndef CFG_HAS_PATT_TARGET_HEIGHT_MULT
+  #define CFG_HAS_PATT_TARGET_HEIGHT_MULT 1
+#endif
+#ifndef CFG_HAS_PATT_EMIT_CANDLES
+  #define CFG_HAS_PATT_EMIT_CANDLES 1
+#endif
+#ifndef CFG_HAS_PATT_EMIT_CLASSIC
+  #define CFG_HAS_PATT_EMIT_CLASSIC 1
+#endif
+#ifndef CFG_HAS_PATT_EMIT_AUTOC
+  #define CFG_HAS_PATT_EMIT_AUTOC 1
+#endif
+
+// --- Universal Pattern (AMPDI inputs + thresholds) ---
+#ifndef CFG_HAS_PATT_ATR_PERIOD
+  #define CFG_HAS_PATT_ATR_PERIOD 1
+#endif
+#ifndef CFG_HAS_PATT_EMA_FAST
+  #define CFG_HAS_PATT_EMA_FAST 1
+#endif
+#ifndef CFG_HAS_PATT_EMA_SLOW
+  #define CFG_HAS_PATT_EMA_SLOW 1
+#endif
+#ifndef CFG_HAS_PATT_VOLUME_SMA_PERIOD
+  #define CFG_HAS_PATT_VOLUME_SMA_PERIOD 1
+#endif
+#ifndef CFG_HAS_PATT_VOLUME_MULT
+  #define CFG_HAS_PATT_VOLUME_MULT 1
+#endif
+#ifndef CFG_HAS_PATT_USE_VOLUME_FILTER
+  #define CFG_HAS_PATT_USE_VOLUME_FILTER 1
+#endif
+#ifndef CFG_HAS_PATT_USE_MOMENTUM
+  #define CFG_HAS_PATT_USE_MOMENTUM 1
+#endif
+#ifndef CFG_HAS_PATT_RSI_PERIOD
+  #define CFG_HAS_PATT_RSI_PERIOD 1
+#endif
+#ifndef CFG_HAS_PATT_PIVOT_L
+  #define CFG_HAS_PATT_PIVOT_L 1
+#endif
+#ifndef CFG_HAS_PATT_PIVOT_R
+  #define CFG_HAS_PATT_PIVOT_R 1
+#endif
+#ifndef CFG_HAS_PATT_TOL_ATR_K
+  #define CFG_HAS_PATT_TOL_ATR_K 1
+#endif
+#ifndef CFG_HAS_PATT_MIN_SCORE01
+  #define CFG_HAS_PATT_MIN_SCORE01 1
+#endif
+
+#ifndef CFG_HAS_PATT_CS_HAMMER_BODY_PCT_MAX
+  #define CFG_HAS_PATT_CS_HAMMER_BODY_PCT_MAX 1
+#endif
+#ifndef CFG_HAS_PATT_CS_HAMMER_LW_BODY_MULT
+  #define CFG_HAS_PATT_CS_HAMMER_LW_BODY_MULT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_HAMMER_UW_BODY_MULT
+  #define CFG_HAS_PATT_CS_HAMMER_UW_BODY_MULT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_SPIN_BODY_PCT_MAX
+  #define CFG_HAS_PATT_CS_SPIN_BODY_PCT_MAX 1
+#endif
+#ifndef CFG_HAS_PATT_CS_SPIN_WICK_SYM_RNG_PCT
+  #define CFG_HAS_PATT_CS_SPIN_WICK_SYM_RNG_PCT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_DOJI_BODY_RNG_PCT
+  #define CFG_HAS_PATT_CS_DOJI_BODY_RNG_PCT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_DOJI_UW_RNG_PCT
+  #define CFG_HAS_PATT_CS_DOJI_UW_RNG_PCT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_DOJI_LW_RNG_PCT
+  #define CFG_HAS_PATT_CS_DOJI_LW_RNG_PCT 1
+#endif
+#ifndef CFG_HAS_PATT_CS_STAR_BODY3_RNG_MIN
+  #define CFG_HAS_PATT_CS_STAR_BODY3_RNG_MIN 1
+#endif
+#ifndef CFG_HAS_PATT_CS_STAR_RETRACE_BODY1_K
+  #define CFG_HAS_PATT_CS_STAR_RETRACE_BODY1_K 1
 #endif
 
 // --- WyckoffCycle core knobs (range/BOS/manip/volume) ---
@@ -377,6 +493,16 @@ struct Settings;
 #ifndef CFG_HAS_EXTRA_STOCHRSI
   #define CFG_HAS_EXTRA_STOCHRSI 1
 #endif
+#ifndef CFG_HAS_STOCHRSI_PARAMS
+  #define CFG_HAS_STOCHRSI_PARAMS 1
+#endif
+
+#ifndef CFG_HAS_STOCHRSI_K_SMOOTH
+  #define CFG_HAS_STOCHRSI_K_SMOOTH 1
+#endif
+#ifndef CFG_HAS_STOCHRSI_D_SMOOTH
+  #define CFG_HAS_STOCHRSI_D_SMOOTH 1
+#endif
 #ifndef CFG_HAS_STOCHRSI_RSI_PERIOD
   #define CFG_HAS_STOCHRSI_RSI_PERIOD 1
 #endif
@@ -407,6 +533,12 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_W_MACD
   #define CFG_HAS_W_MACD 1
+#endif
+#ifndef CFG_HAS_MACD_PARAMS
+  #define CFG_HAS_MACD_PARAMS 1
+#endif
+#ifndef CFG_HAS_MACD_PRICE
+  #define CFG_HAS_MACD_PRICE 1
 #endif
 
 #ifndef CFG_HAS_EXTRA_ADX_REGIME
@@ -963,11 +1095,14 @@ namespace Config
      double w_dom_imbalance;
      
      // StochRSI
-     bool   extra_stochrsi; int stochrsi_rsi_period; int stochrsi_k_period;
+     bool   extra_stochrsi; int stochrsi_rsi_period; int stochrsi_k_period; int stochrsi_k_smooth; int stochrsi_d_smooth;
      double stochrsi_ob; double stochrsi_os; double w_stochrsi;
    
      // MACD
      bool extra_macd; int macd_fast; int macd_slow; int macd_signal; double w_macd;
+     #ifdef CFG_HAS_MACD_PRICE
+       ENUM_APPLIED_PRICE macd_price;
+     #endif
    
      // ADX regime
      bool extra_adx_regime; int adx_period; double adx_min; double w_adx_regime;
@@ -1996,6 +2131,16 @@ namespace Config
     #ifdef CFG_HAS_STOCHRSI_K_PERIOD
       cfg.stochrsi_k_period = MathMax(1, x.stochrsi_k_period);
     #endif
+    #ifdef CFG_HAS_STOCHRSI_K_SMOOTH
+      cfg.stochrsi_k_smooth = x.stochrsi_k_smooth;
+      if(cfg.stochrsi_k_smooth<=0) cfg.stochrsi_k_smooth = 3;
+      if(cfg.stochrsi_k_smooth>200) cfg.stochrsi_k_smooth = 200;
+    #endif
+    #ifdef CFG_HAS_STOCHRSI_D_SMOOTH
+      cfg.stochrsi_d_smooth = x.stochrsi_d_smooth;
+      if(cfg.stochrsi_d_smooth<=0) cfg.stochrsi_d_smooth = 3;
+      if(cfg.stochrsi_d_smooth>200) cfg.stochrsi_d_smooth = 200;
+    #endif
     #ifdef CFG_HAS_STOCHRSI_OB
       cfg.stochrsi_ob = x.stochrsi_ob;
     #endif
@@ -2018,6 +2163,10 @@ namespace Config
      #endif
      #ifdef CFG_HAS_MACD_SIGNAL
        cfg.macd_signal = MathMax(1, x.macd_signal);
+     #endif
+     #ifdef CFG_HAS_MACD_PRICE
+       const int ap = (int)x.macd_price;
+       cfg.macd_price = (ENUM_APPLIED_PRICE)MathMax(0, MathMin(6, ap));
      #endif
      #ifdef CFG_HAS_W_MACD
        cfg.w_macd = x.w_macd;
@@ -2362,8 +2511,12 @@ namespace Config
          x.main_news_hard_veto = true;
      #endif
       
-     x.stochrsi_rsi_period=14; x.stochrsi_k_period=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
+     x.stochrsi_rsi_period=14; x.stochrsi_k_period=14; x.stochrsi_k_smooth=3; x.stochrsi_d_smooth=3; x.stochrsi_ob=0.8; x.stochrsi_os=0.2;
      x.macd_fast=12; x.macd_slow=26; x.macd_signal=9;
+     #ifdef CFG_HAS_MACD_PRICE
+       x.macd_price = PRICE_CLOSE;
+     #endif
+    
      x.adx_period=14; x.adx_min=20.0;
      x.corr_lookback=200;
      
@@ -2801,6 +2954,23 @@ namespace Config
     cfg.main_min_rr_from_chart_target          = 1.2;
     cfg.main_autoc_completed_dir_mismatch_veto = false;
     cfg.main_autoc_tighten_invalidation        = false;
+
+    #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+      // SD base patterns (RBR/DBD/RBD/DBR) defaults (match Patterns SD spec knobs)
+      cfg.sd_atr_period          = 14;
+      cfg.sd_base_min_bars       = 3;
+      cfg.sd_base_max_bars       = 8;
+      
+      cfg.sd_min_move_atr        = 1.50;
+      cfg.sd_max_base_range_atr  = 0.50;
+      
+      cfg.sd_break_min_pips      = 0.0;
+      cfg.sd_break_atr_k         = 0.0;
+      cfg.sd_close_confirm_only  = true;
+      
+      cfg.sd_use_volume_filter   = false;
+      cfg.sd_vol_spike_k         = 1.25;
+    #endif
 
     // Fibonacci/harmonic (local)
     cfg.auto_fib_min_quality    = 0.60;   
@@ -3353,6 +3523,43 @@ namespace Config
     if(cfg.fibMaxBarsBack < 100)  cfg.fibMaxBarsBack = 100;
     if(cfg.fibMaxBarsBack > 5000) cfg.fibMaxBarsBack = 5000;
 
+    #ifdef CFG_HAS_FIB_SETTINGS
+      // CanonicalCSV uses ',' between k=v pairs → values MUST NOT contain commas.
+      // Convert commas to ';' so SplitCSV() still works (it auto-detects ';' first).
+      StringReplace(cfg.fibRetraceRatiosCSV, ",", ";");
+      StringReplace(cfg.fibExtensionRatiosCSV, ",", ";");
+      cfg.fibRetraceRatiosCSV   = Trim(cfg.fibRetraceRatiosCSV);
+      cfg.fibExtensionRatiosCSV = Trim(cfg.fibExtensionRatiosCSV);
+
+      // OTE tolerance sanity
+      if(cfg.fibOTEToleranceATR < 0.0) cfg.fibOTEToleranceATR = 0.0;
+      if(cfg.fibOTEToleranceATR > 5.0) cfg.fibOTEToleranceATR = 5.0;
+
+      // OTE band sanity (ratio space)
+      if(cfg.fibOTE_Low  < 0.0)  cfg.fibOTE_Low  = 0.0;
+      if(cfg.fibOTE_Low  > 0.99) cfg.fibOTE_Low  = 0.99;
+      if(cfg.fibOTE_High < 0.0)  cfg.fibOTE_High = 0.0;
+      if(cfg.fibOTE_High > 1.0)  cfg.fibOTE_High = 1.0;
+
+      if(cfg.fibOTE_Low >= cfg.fibOTE_High)
+      {
+        // reset to canonical OTE band
+        cfg.fibOTE_Low  = 0.618;
+        cfg.fibOTE_High = 0.786;
+      }
+
+      // Range-defense leg filters
+      if(cfg.fibMinLegHeightATR < 0.0)  cfg.fibMinLegHeightATR = 0.0;
+      if(cfg.fibMinLegHeightATR > 10.0) cfg.fibMinLegHeightATR = 10.0;
+
+      if(cfg.fibMinLegBars < 1)   cfg.fibMinLegBars = 1;
+      if(cfg.fibMinLegBars > 500) cfg.fibMinLegBars = 500;
+
+      // "Near level" threshold
+      if(cfg.fibApproachATRMult < 0.01) cfg.fibApproachATRMult = 0.01;
+      if(cfg.fibApproachATRMult > 5.0)  cfg.fibApproachATRMult = 5.0;
+    #endif
+
     if(cfg.fibMinConfluenceScore < 0.0) cfg.fibMinConfluenceScore = 0.0;
     if(cfg.fibMinConfluenceScore > 1.0) cfg.fibMinConfluenceScore = 1.0;
 
@@ -3806,6 +4013,28 @@ namespace Config
       if(cfg.auto_chart_pivot_R < 2)  cfg.auto_chart_pivot_R = 2;
       if(cfg.auto_chart_pivot_R > 10) cfg.auto_chart_pivot_R = 10;
       
+      #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+        // SD base patterns clamps
+        cfg.sd_atr_period = MathMin(MathMax(cfg.sd_atr_period, 5), 200);
+      
+        cfg.sd_base_min_bars = MathMin(MathMax(cfg.sd_base_min_bars, 1), 20);
+      
+        // ensure max >= min and keep bounded
+        if(cfg.sd_base_max_bars < cfg.sd_base_min_bars)
+          cfg.sd_base_max_bars = cfg.sd_base_min_bars;
+        cfg.sd_base_max_bars = MathMin(MathMax(cfg.sd_base_max_bars, cfg.sd_base_min_bars), 50);
+      
+        cfg.sd_min_move_atr       = MathMin(MathMax(cfg.sd_min_move_atr,       0.10), 10.0);
+        cfg.sd_max_base_range_atr = MathMin(MathMax(cfg.sd_max_base_range_atr, 0.05), 5.0);
+      
+        cfg.sd_break_min_pips = MathMin(MathMax(cfg.sd_break_min_pips, 0.0), 200.0);
+        cfg.sd_break_atr_k    = MathMin(MathMax(cfg.sd_break_atr_k,    0.0), 2.0);
+      
+        // volume spike ratio is only meaningful >= 1.0
+        if(cfg.sd_vol_spike_k < 1.0) cfg.sd_vol_spike_k = 1.0;
+        cfg.sd_vol_spike_k = MathMin(cfg.sd_vol_spike_k, 10.0);
+      #endif
+
       // Fib params
       cfg.auto_fib_min_quality = MathMin(MathMax(cfg.auto_fib_min_quality, 0.0), 1.0);
       
@@ -3965,11 +4194,20 @@ namespace Config
     #endif
 
     #ifdef CFG_HAS_STOCHRSI_PARAMS
-      cfg.rsi_period = MathMax(2,   cfg.rsi_period);
-      cfg.stoch_k    = MathMax(1,   cfg.stoch_k);
-      cfg.stoch_d    = MathMax(1,   cfg.stoch_d);
-      cfg.stoch_ob   = MathMin(MathMax(cfg.stoch_ob, 0.0), 1.0);
-      cfg.stoch_os   = MathMin(MathMax(cfg.stoch_os, 0.0), 1.0);
+      // Preserve "0 = unset" behavior by seeding canonical defaults
+      if(cfg.rsi_period<=0)     cfg.rsi_period     = 14;
+      if(cfg.stoch_k<=0)        cfg.stoch_k        = 14;
+      if(cfg.stoch_k_smooth<=0) cfg.stoch_k_smooth = 3;
+      if(cfg.stoch_d<=0)        cfg.stoch_d        = 3;
+   
+      // Clamp to sane ranges
+      cfg.rsi_period     = MathMax(2, MathMin(cfg.rsi_period, 200));
+      cfg.stoch_k        = MathMax(1, MathMin(cfg.stoch_k, 200));
+      cfg.stoch_k_smooth = MathMax(1, MathMin(cfg.stoch_k_smooth, 200));
+      cfg.stoch_d        = MathMax(1, MathMin(cfg.stoch_d, 200));
+   
+      cfg.stoch_ob = MathMin(MathMax(cfg.stoch_ob, 0.0), 1.0);
+      cfg.stoch_os = MathMin(MathMax(cfg.stoch_os, 0.0), 1.0);
     #endif
 
     #ifdef CFG_HAS_MACD_PARAMS
@@ -3978,12 +4216,41 @@ namespace Config
       cfg.macd_signal = MathMax(1,              cfg.macd_signal);
     #endif
 
+    #ifdef CFG_HAS_MACD_PRICE
+      cfg.macd_price = (ENUM_APPLIED_PRICE)MathMax(0, MathMin(6, (int)cfg.macd_price));
+    #endif
+    
     // Confluence safety
     if(cfg.vwap_z_edge<0.0) cfg.vwap_z_edge=0.0;
     if(cfg.vwap_z_avoidtrend<0.0) cfg.vwap_z_avoidtrend=0.0;
     if(cfg.pattern_lookback<5) cfg.pattern_lookback=5;
     if(cfg.pattern_tau<0.05) cfg.pattern_tau=0.05;
 
+    #ifdef CFG_HAS_PATT_SETTINGS_FIELDS
+      // Universal Pattern clamps
+      #ifdef CFG_HAS_PATT_MODE
+        if(cfg.patt_mode < 0) cfg.patt_mode = 0;
+        if(cfg.patt_mode > 1) cfg.patt_mode = 1;
+      #endif
+
+      #ifdef CFG_HAS_PATT_MIN_QUALITY01
+        cfg.patt_min_quality01 = MathMin(1.0, MathMax(0.0, cfg.patt_min_quality01));
+      #endif
+
+      #ifdef CFG_HAS_PATT_RETEST_WINDOW_BARS
+        if(cfg.patt_retest_window_bars < 3)  cfg.patt_retest_window_bars = 3;
+        if(cfg.patt_retest_window_bars > 50) cfg.patt_retest_window_bars = 50;
+      #endif
+
+      #ifdef CFG_HAS_PATT_STOP_ATR_MULT
+        cfg.patt_stop_atr_mult = MathMin(5.0, MathMax(0.5, cfg.patt_stop_atr_mult));
+      #endif
+
+      #ifdef CFG_HAS_PATT_TARGET_HEIGHT_MULT
+        cfg.patt_target_height_mult = MathMin(5.0, MathMax(0.25, cfg.patt_target_height_mult));
+      #endif
+    #endif
+    
     // Aliases for backward compatibility
     cfg.patt_lookback=cfg.pattern_lookback;
     cfg.patt_tau     =cfg.pattern_tau;
@@ -4292,6 +4559,15 @@ namespace Config
       if(cfg.p1_close_pct+cfg.p2_close_pct>100.5) warns+="partials close % sum > 100%; engine will clamp.\n";
     }
 
+    #ifdef CFG_HAS_FIB_SETTINGS
+      if(cfg.fibOTE_Low >= cfg.fibOTE_High)
+        warns += "fibOTE_Low >= fibOTE_High; Normalize() will reset to 0.618/0.786.\n";
+      if(cfg.fibApproachATRMult < 0.05)
+        warns += "fibApproachATRMult < 0.05; near-level detection may rarely trigger.\n";
+      if(cfg.fibMinLegBars > 150)
+        warns += "fibMinLegBars very high; impulse legs may never qualify.\n";
+    #endif
+
     // Veto knobs sanity
     #ifdef CFG_HAS_LIQUIDITY_LIMIT
       if(cfg.liquidity_veto_on && cfg.liquidity_spr_atr_max<0.10)
@@ -4309,6 +4585,21 @@ namespace Config
     if(cfg.ob_prox_max_pips < 2.0)
       warns += "ob_prox_max_pips < 2; SDOB approach/touch detection may be too tight.\n";
    
+    #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+      // SD base patterns sanity (warnings only)
+      if(cfg.sd_base_min_bars < 2)
+        warns += "sd_base_min_bars < 2; SD base detection may be noisy/overfit.\n";
+      
+      if(cfg.sd_max_base_range_atr < 0.10)
+        warns += "sd_max_base_range_atr < 0.10; bases may rarely qualify.\n";
+      
+      if(cfg.sd_min_move_atr > 3.0)
+        warns += "sd_min_move_atr > 3.0; prior-move gate may rarely qualify.\n";
+      
+      if(cfg.sd_use_volume_filter && cfg.sd_vol_spike_k <= 1.0)
+        warns += "sd_use_volume_filter=true but sd_vol_spike_k<=1; filter is effectively off.\n";
+    #endif
+
     #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
       if(cfg.struct_zone_min_score > 0.0 && cfg.struct_zone_min_score < 0.10)
         warns += "struct_zone_min_score is very low; filter may be ineffective.\n";
@@ -4649,6 +4940,22 @@ namespace Config
      cfg.fibATRPeriod          = 14;
      cfg.fibDevATRMult         = 3.0;
      cfg.fibMaxBarsBack        = 500;
+     
+     #ifdef CFG_HAS_FIB_SETTINGS
+       cfg.fibUseLogScale          = false;
+       cfg.fibOTE_Low              = 0.618;
+       cfg.fibOTE_High             = 0.786;
+   
+       // Use ';' separator to keep CanonicalCSV parseable (',' is reserved for KV separation)
+       cfg.fibRetraceRatiosCSV     = "0;0.236;0.382;0.5;0.618;0.786;0.886;1";
+       cfg.fibExtensionRatiosCSV = "1;1.272;1.618;2;2.24;2.618;3.618;4.236";
+   
+       cfg.fibExpansionEnable      = false;  // safe default unless you explicitly wire/use ABC
+       cfg.fibMinLegHeightATR      = 0.50;   // range-defense (impulse must be meaningful)
+       cfg.fibMinLegBars           = 8;
+       cfg.fibApproachATRMult      = 0.25;   // approach threshold
+     #endif
+
      cfg.fibUseConfluence      = true;
      cfg.fibMinConfluenceScore = 0.35;   // mid of 0.30–0.40
      cfg.fibOTEToleranceATR    = 0.25;   // 0.25x ATR from band
@@ -4701,6 +5008,53 @@ namespace Config
      cfg.vwap_z_avoidtrend = vwap_z_avoidtrend;
      cfg.pattern_lookback  = pattern_lookback;
      cfg.pattern_tau       = pattern_tau;
+     #ifdef CFG_HAS_PATT_SETTINGS_FIELDS
+       // Defaults chosen to preserve non-spam, non-repaint behavior:
+       // confirmed scanning by default, no global quality gate unless user sets one.
+       cfg.patt_mode               = 0;     // confirmed
+       cfg.patt_min_quality01      = 0.0;   // disabled gate by default
+       cfg.patt_retest_window_bars = 12;    // reasonable default
+       cfg.patt_stop_atr_mult      = 1.5;   // aligns with Patterns.mqh runtime defaults
+       cfg.patt_target_height_mult = 1.0;   // classic measured move = 1x height
+
+       cfg.patt_emit_candles       = true;
+       cfg.patt_emit_classic       = true;
+       cfg.patt_emit_autoc         = false; // avoid duplicates with AutoC events by default
+        
+        // AMPDI defaults (spec)
+        cfg.patt_atr_period        = 14;
+        cfg.patt_ema_fast          = 50;
+        cfg.patt_ema_slow          = 200;
+
+        cfg.patt_volume_sma_period = 20;
+        cfg.patt_volume_mult       = 1.5;
+        cfg.patt_use_volume_filter = false;
+
+        cfg.patt_use_momentum      = false;
+        cfg.patt_rsi_period        = 14;
+
+        cfg.patt_pivot_L           = 3;
+        cfg.patt_pivot_R           = 3;
+
+        cfg.patt_tol_atr_k         = 1.0;
+        cfg.patt_min_score01       = 0.70;
+
+        // Candlestick thresholds (AMPDI spec)
+        cfg.patt_cs_hammer_body_pct_max   = 0.40;
+        cfg.patt_cs_hammer_lw_body_mult   = 2.0;
+        cfg.patt_cs_hammer_uw_body_mult   = 0.25;
+
+        cfg.patt_cs_spin_body_pct_max     = 0.30;
+        cfg.patt_cs_spin_wick_sym_rng_pct = 0.20;
+
+        cfg.patt_cs_doji_body_rng_pct     = 0.05;
+        cfg.patt_cs_doji_uw_rng_pct       = 0.10;
+        cfg.patt_cs_doji_lw_rng_pct       = 0.60;
+
+        cfg.patt_cs_star_body3_rng_min    = 0.60;
+        cfg.patt_cs_star_retrace_body1_k  = 0.50;
+     #endif
+      
      cfg.vwap_lookback     = vwap_lookback;
      cfg.vwap_sigma        = vwap_sigma;
    
@@ -4985,6 +5339,23 @@ namespace Config
 
     s+=",acOn="+BoolStr(c.auto_enable);
     s+=",acTF="+IntegerToString(c.auto_tf_mask);
+    
+    #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+      s+=",sdAtrP="+IntegerToString(c.sd_atr_period);
+      s+=",sdBaseMin="+IntegerToString(c.sd_base_min_bars);
+      s+=",sdBaseMax="+IntegerToString(c.sd_base_max_bars);
+   
+      s+=",sdMinMoveATR="+DoubleToString(c.sd_min_move_atr,2);
+      s+=",sdMaxBaseATR="+DoubleToString(c.sd_max_base_range_atr,2);
+   
+      s+=",sdBrkPips="+DoubleToString(c.sd_break_min_pips,1);
+      s+=",sdBrkK="+DoubleToString(c.sd_break_atr_k,3);
+      s+=",sdCloseOnly="+BoolStr(c.sd_close_confirm_only);
+   
+      s+=",sdVolOn="+BoolStr(c.sd_use_volume_filter);
+      s+=",sdVolK="+DoubleToString(c.sd_vol_spike_k,2);
+    #endif
+    
     s+=",acChartQ="+DoubleToString(c.auto_chart_min_quality,3);
     s+=",acFibQ="+DoubleToString(c.auto_fib_min_quality,3);
     s+=",acFibTol="+DoubleToString(c.autofib_ratio_tolerance,4);
@@ -5099,11 +5470,65 @@ namespace Config
     s+=",fibMinRR="+DoubleToString(c.minRRFibAllowed,3);
     s+=",fibRRHard="+BoolStr(c.fibRRHardReject);
 
+    #ifdef CFG_HAS_FIB_SETTINGS
+      s+=",fibLog="+BoolStr(c.fibUseLogScale);
+      s+=",fibOTEL="+DoubleToString(c.fibOTE_Low,4);
+      s+=",fibOTEH="+DoubleToString(c.fibOTE_High,4);
+      s+=",fibRetr="+c.fibRetraceRatiosCSV;
+      s+=",fibExt="+c.fibExtensionRatiosCSV;
+      s+=",fibABC="+BoolStr(c.fibExpansionEnable);
+      s+=",fibLegATR="+DoubleToString(c.fibMinLegHeightATR,3);
+      s+=",fibLegBars="+IntegerToString(c.fibMinLegBars);
+      s+=",fibAppATR="+DoubleToString(c.fibApproachATRMult,3);
+    #endif
+
     s+=",zEdge="+DoubleToString(c.vwap_z_edge,3);
     s+=",zAvoid="+DoubleToString(c.vwap_z_avoidtrend,3);
     s+=",pLook="+IntegerToString(c.pattern_lookback);
     s+=",pTau="+DoubleToString(c.pattern_tau,3);
 
+    #ifdef CFG_HAS_PATT_SETTINGS_FIELDS
+      s+=",pattMode="+IntegerToString(c.patt_mode);
+      s+=",pattMinQ="+DoubleToString(c.patt_min_quality01,3);
+      s+=",pattRet="+IntegerToString(c.patt_retest_window_bars);
+      s+=",pattStopATR="+DoubleToString(c.patt_stop_atr_mult,3);
+      s+=",pattTH="+DoubleToString(c.patt_target_height_mult,3);
+      s+=",pattC="+BoolStr(c.patt_emit_candles);
+      s+=",pattCh="+BoolStr(c.patt_emit_classic);
+      s+=",pattAC="+BoolStr(c.patt_emit_autoc);
+      
+      s+=",pattATR="+IntegerToString(c.patt_atr_period);
+      s+=",pattEMAf="+IntegerToString(c.patt_ema_fast);
+      s+=",pattEMAs="+IntegerToString(c.patt_ema_slow);
+
+      s+=",pattVolSMA="+IntegerToString(c.patt_volume_sma_period);
+      s+=",pattVolM="+DoubleToString(c.patt_volume_mult,3);
+      s+=",pattUseVol="+BoolStr(c.patt_use_volume_filter);
+
+      s+=",pattUseMom="+BoolStr(c.patt_use_momentum);
+      s+=",pattRSI="+IntegerToString(c.patt_rsi_period);
+
+      s+=",pattPvL="+IntegerToString(c.patt_pivot_L);
+      s+=",pattPvR="+IntegerToString(c.patt_pivot_R);
+
+      s+=",pattTolK="+DoubleToString(c.patt_tol_atr_k,3);
+      s+=",pattMinS="+DoubleToString(c.patt_min_score01,3);
+
+      s+=",pattHamBP="+DoubleToString(c.patt_cs_hammer_body_pct_max,3);
+      s+=",pattHamLW="+DoubleToString(c.patt_cs_hammer_lw_body_mult,3);
+      s+=",pattHamUW="+DoubleToString(c.patt_cs_hammer_uw_body_mult,3);
+
+      s+=",pattSpinBP="+DoubleToString(c.patt_cs_spin_body_pct_max,3);
+      s+=",pattSpinSym="+DoubleToString(c.patt_cs_spin_wick_sym_rng_pct,3);
+
+      s+=",pattDojiBP="+DoubleToString(c.patt_cs_doji_body_rng_pct,3);
+      s+=",pattDojiUW="+DoubleToString(c.patt_cs_doji_uw_rng_pct,3);
+      s+=",pattDojiLW="+DoubleToString(c.patt_cs_doji_lw_rng_pct,3);
+
+      s+=",pattStarB3="+DoubleToString(c.patt_cs_star_body3_rng_min,3);
+      s+=",pattStarRet="+DoubleToString(c.patt_cs_star_retrace_body1_k,3);
+    #endif
+    
     s+=",vwL="+IntegerToString(c.vwap_lookback);
     s+=",vwSig="+DoubleToString(c.vwap_sigma,3);
     #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
@@ -6362,6 +6787,23 @@ namespace Config
 
       else if(k=="acOn") cfg.auto_enable = ToBool(v);
       else if(k=="acTF") cfg.auto_tf_mask = ToInt(v);
+      
+      #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+        else if(k=="sdAtrP")      cfg.sd_atr_period = ToInt(v);
+        else if(k=="sdBaseMin")   cfg.sd_base_min_bars = ToInt(v);
+        else if(k=="sdBaseMax")   cfg.sd_base_max_bars = ToInt(v);
+      
+        else if(k=="sdMinMoveATR") cfg.sd_min_move_atr = ToDouble(v);
+        else if(k=="sdMaxBaseATR") cfg.sd_max_base_range_atr = ToDouble(v);
+      
+        else if(k=="sdBrkPips")   cfg.sd_break_min_pips = ToDouble(v);
+        else if(k=="sdBrkK")      cfg.sd_break_atr_k = ToDouble(v);
+        else if(k=="sdCloseOnly") cfg.sd_close_confirm_only = ToBool(v);
+      
+        else if(k=="sdVolOn")     cfg.sd_use_volume_filter = ToBool(v);
+        else if(k=="sdVolK")      cfg.sd_vol_spike_k = ToDouble(v);
+      #endif
+      
       else if(k=="acChartQ") cfg.auto_chart_min_quality = ToDouble(v);
       else if(k=="acFibQ") cfg.auto_fib_min_quality = ToDouble(v);
       
@@ -6495,12 +6937,67 @@ namespace Config
       else if(k=="fibMinRR")   cfg.minRRFibAllowed = ToDouble(v);
       else if(k=="fibRRHard")  cfg.fibRRHardReject = ToBool(v);
 
+      #ifdef CFG_HAS_FIB_SETTINGS
+        else if(k=="fibLog")     cfg.fibUseLogScale        = ToBool(v);
+        else if(k=="fibOTEL")    cfg.fibOTE_Low            = ToDouble(v);
+        else if(k=="fibOTEH")    cfg.fibOTE_High           = ToDouble(v);
+        else if(k=="fibRetr")    cfg.fibRetraceRatiosCSV   = v;
+        else if(k=="fibExt")     cfg.fibExtensionRatiosCSV = v;
+        else if(k=="fibABC")     cfg.fibExpansionEnable    = ToBool(v);
+        else if(k=="fibLegATR")  cfg.fibMinLegHeightATR    = ToDouble(v);
+        else if(k=="fibLegBars") cfg.fibMinLegBars         = ToInt(v);
+        else if(k=="fibAppATR")  cfg.fibApproachATRMult    = ToDouble(v);
+      #endif
+
       // Confluence / VWAP / pattern
       else if(k=="zEdge")  cfg.vwap_z_edge = ToDouble(v);
       else if(k=="zAvoid") cfg.vwap_z_avoidtrend = ToDouble(v);
       else if(k=="pLook")  cfg.pattern_lookback = ToInt(v);
       else if(k=="pTau")   cfg.pattern_tau = ToDouble(v);
       else if(k=="vwL")    cfg.vwap_lookback = ToInt(v);
+      
+      #ifdef CFG_HAS_PATT_SETTINGS_FIELDS
+        else if(k=="pattMode")   cfg.patt_mode               = ToInt(v);
+        else if(k=="pattMinQ")   cfg.patt_min_quality01      = ToDouble(v);
+        else if(k=="pattRet")    cfg.patt_retest_window_bars = ToInt(v);
+        else if(k=="pattStopATR")cfg.patt_stop_atr_mult      = ToDouble(v);
+        else if(k=="pattTH")     cfg.patt_target_height_mult = ToDouble(v);
+        else if(k=="pattC")      cfg.patt_emit_candles       = ToBool(v);
+        else if(k=="pattCh")     cfg.patt_emit_classic       = ToBool(v);
+        else if(k=="pattAC")     cfg.patt_emit_autoc         = ToBool(v);
+        
+        else if(k=="pattATR")    cfg.patt_atr_period        = ToInt(v);
+        else if(k=="pattEMAf")   cfg.patt_ema_fast          = ToInt(v);
+        else if(k=="pattEMAs")   cfg.patt_ema_slow          = ToInt(v);
+
+        else if(k=="pattVolSMA") cfg.patt_volume_sma_period = ToInt(v);
+        else if(k=="pattVolM")   cfg.patt_volume_mult       = ToDouble(v);
+        else if(k=="pattUseVol") cfg.patt_use_volume_filter = ToBool(v);
+
+        else if(k=="pattUseMom") cfg.patt_use_momentum      = ToBool(v);
+        else if(k=="pattRSI")    cfg.patt_rsi_period        = ToInt(v);
+
+        else if(k=="pattPvL")    cfg.patt_pivot_L           = ToInt(v);
+        else if(k=="pattPvR")    cfg.patt_pivot_R           = ToInt(v);
+
+        else if(k=="pattTolK")   cfg.patt_tol_atr_k         = ToDouble(v);
+        else if(k=="pattMinS")   cfg.patt_min_score01       = ToDouble(v);
+
+        else if(k=="pattHamBP")  cfg.patt_cs_hammer_body_pct_max   = ToDouble(v);
+        else if(k=="pattHamLW")  cfg.patt_cs_hammer_lw_body_mult   = ToDouble(v);
+        else if(k=="pattHamUW")  cfg.patt_cs_hammer_uw_body_mult   = ToDouble(v);
+
+        else if(k=="pattSpinBP") cfg.patt_cs_spin_body_pct_max     = ToDouble(v);
+        else if(k=="pattSpinSym")cfg.patt_cs_spin_wick_sym_rng_pct = ToDouble(v);
+
+        else if(k=="pattDojiBP") cfg.patt_cs_doji_body_rng_pct     = ToDouble(v);
+        else if(k=="pattDojiUW") cfg.patt_cs_doji_uw_rng_pct       = ToDouble(v);
+        else if(k=="pattDojiLW") cfg.patt_cs_doji_lw_rng_pct       = ToDouble(v);
+
+        else if(k=="pattStarB3") cfg.patt_cs_star_body3_rng_min    = ToDouble(v);
+        else if(k=="pattStarRet")cfg.patt_cs_star_retrace_body1_k  = ToDouble(v);
+      #endif
+      
       else if(k=="vwSig")  cfg.vwap_sigma = ToDouble(v);
       
       // Structure / SDOB knobs
@@ -7059,6 +7556,23 @@ struct Settings
   int                fibATRPeriod;          // ATR period used for OTE tolerance
   double             fibDevATRMult;         // how many ATRs from mean for swing dev
   int                fibMaxBarsBack;        // how far we search swings
+  
+  #ifdef CFG_HAS_FIB_SETTINGS
+  bool               fibUseLogScale;          // compute in log(price) space (optional; big % swings)
+  double             fibOTE_Low;              // OTE band low  (default 0.618)
+  double             fibOTE_High;             // OTE band high (default 0.786)
+
+  // IMPORTANT: must NOT contain commas because CanonicalCSV uses ',' as KV separator.
+  // Use ';' separated ratios: "0;0.236;0.382;0.5;0.618;0.786;0.886;1"
+  string             fibRetraceRatiosCSV;     // retracement ratios list
+  string             fibExtensionRatiosCSV;   // extension ratios list (targets)
+
+  bool               fibExpansionEnable;      // ABC expansion (3-point extension) enable
+  double             fibMinLegHeightATR;      // minimum impulse leg height in ATR
+  int                fibMinLegBars;           // minimum bars in impulse leg
+  double             fibApproachATRMult;      // "near level" threshold = ATR * mult
+  #endif
+
   bool               fibUseConfluence;      // combine with OB/FVG/liquidity
   double             fibMinConfluenceScore; // 0..1 confluence floor
   double             fibOTEToleranceATR;    // max distance from ideal OTE band (in ATR)
@@ -7433,6 +7947,22 @@ struct Settings
    int    auto_chart_pivot_L;
    int    auto_chart_pivot_R;
    
+   // SD base patterns (RBR/DBD/RBD/DBR) detector tuning
+   #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
+     int    sd_atr_period;           // ATR lookback for base/range sizing
+     int    sd_base_min_bars;        // minimum base bars (consolidation width)
+     int    sd_base_max_bars;        // maximum base bars (cap for base window)
+     double sd_min_move_atr;         // prior leg size threshold (ATR multiples)
+     double sd_max_base_range_atr;   // base range ceiling (ATR multiples)
+   
+     double sd_break_min_pips;       // extra breakout margin in pips (optional)
+     double sd_break_atr_k;          // extra breakout margin in ATR (optional)
+     bool   sd_close_confirm_only;   // true=close beyond base; false=wick ok
+   
+     bool   sd_use_volume_filter;    // optional: breakout volume spike vs base avg
+     double sd_vol_spike_k;          // required spike ratio (e.g., 1.25)
+   #endif
+
    #ifdef CFG_HAS_AUTOCHART_RR_NORM
        double auto_chart_rr_norm; // RR normalization for target scoring (ATR multiples)
    #endif
@@ -7538,6 +8068,8 @@ struct Settings
    bool   extra_stochrsi;           // enable StochRSI as an extra gate
    int    stochrsi_rsi_period;      // inner RSI period for StochRSI
    int    stochrsi_k_period;        // %K period for StochRSI
+   int    stochrsi_k_smooth;        // %K smoothing (default 3)
+   int    stochrsi_d_smooth;        // %D smoothing (default 3)
    double stochrsi_ob;              // StochRSI overbought level (0..1)
    double stochrsi_os;              // StochRSI oversold level (0..1)
 
@@ -7589,6 +8121,7 @@ struct Settings
    
    int    rsi_period;
    int    stoch_k;
+   int    stoch_k_smooth;    // %K smoothing for StochRSI (default 3)
    int    stoch_d;
    double stoch_ob;          // 0..1
    double stoch_os;          // 0..1
@@ -7596,6 +8129,10 @@ struct Settings
    int    macd_fast;
    int    macd_slow;         // must be > fast
    int    macd_signal;
+   
+   #ifdef CFG_HAS_MACD_PRICE
+     ENUM_APPLIED_PRICE macd_price;
+   #endif
 
   // --- News: hard block + surprise risk scaling -----------------------------
   bool              news_on;
@@ -7787,6 +8324,52 @@ struct Settings
   int               patt_lookback;       // legacy alias
   double            patt_tau;            // legacy alias
 
+  #ifdef CFG_HAS_PATT_SETTINGS_FIELDS
+    // --- Universal Pattern (candles + classic charts) ---
+    int               patt_mode;               // 0=confirmed, 1=aggressive
+    double            patt_min_quality01;      // global PQSS/quality threshold
+    int               patt_retest_window_bars; // breakout->retest window (bars)
+    double            patt_stop_atr_mult;      // ATR stop multiple
+    double            patt_target_height_mult; // classic measured-move scale (default 1.0)
+
+    bool              patt_emit_candles;       // emit candle events
+    bool              patt_emit_classic;       // emit classic chart events
+    bool              patt_emit_autoc;         // optionally mirror autochartist-class patterns (usually false)
+    
+    // --- AMPDI required inputs / gates (Patterns.mqh) ---
+    int               patt_atr_period;
+    int               patt_ema_fast;
+    int               patt_ema_slow;
+
+    int               patt_volume_sma_period;
+    double            patt_volume_mult;
+    bool              patt_use_volume_filter;
+
+    bool              patt_use_momentum;
+    int               patt_rsi_period;
+
+    int               patt_pivot_L;
+    int               patt_pivot_R;
+
+    double            patt_tol_atr_k;
+    double            patt_min_score01; // AMPDI score gate (default 0.70)
+
+    // --- AMPDI candlestick thresholds (spec-aligned) ---
+    double            patt_cs_hammer_body_pct_max;
+    double            patt_cs_hammer_lw_body_mult;
+    double            patt_cs_hammer_uw_body_mult;
+
+    double            patt_cs_spin_body_pct_max;
+    double            patt_cs_spin_wick_sym_rng_pct;
+
+    double            patt_cs_doji_body_rng_pct;
+    double            patt_cs_doji_uw_rng_pct;
+    double            patt_cs_doji_lw_rng_pct;
+
+    double            patt_cs_star_body3_rng_min;
+    double            patt_cs_star_retrace_body1_k;
+  #endif
+  
   bool              useVWAPFilter;       // require VWAP alignment?
   bool              useEMAFilter;        // require EMA alignment?
 
