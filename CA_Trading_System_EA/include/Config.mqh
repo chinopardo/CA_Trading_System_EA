@@ -538,7 +538,9 @@ struct Settings;
   #define CFG_HAS_MACD_PARAMS 1
 #endif
 #ifndef CFG_HAS_MACD_PRICE
-  #define CFG_HAS_MACD_PRICE 1
+  #ifdef INDI_HAS_MACD_AP
+    #define CFG_HAS_MACD_PRICE 1
+  #endif
 #endif
 
 #ifndef CFG_HAS_EXTRA_ADX_REGIME
