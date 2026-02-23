@@ -48,8 +48,15 @@
 #include "include/OrderBookImbalance.mqh"
 #include "include/VolumeProfile.mqh"
 #define CONFLUENCE_API_BYNAME
+
 //#define UNIT_TEST_ROUTER_GATE
 #include "include/Confluence.mqh"
+
+// --- MarketScannerHub route hook (must be defined BEFORE including the hub) ---
+void MSH_RouteEvent(const Scan::ScanEvent &e);
+#define MARKETSCANNERHUB_CUSTOM_ROUTE(e)  MSH_RouteEvent(e)
+
+#include "include/MarketScannerHub.mqh"
 
 // Optional meta-layers
 #define ENABLE_ML_BLENDER
@@ -820,13 +827,82 @@ string   g_symbols[];              // parsed watchlist
 int      g_symCount = 0;
 static datetime g_lastBarTime[];   // per-symbol last closed-bar time on entry TF
 
-// NEW: price/time gates state
+// ================== MarketScannerHub: event-driven routing trigger ==================
+#define MSH_DIRTY_MAX 64
+
+static int      g_msh_dirty_n = 0;
+static string   g_msh_dirty_sym[MSH_DIRTY_MAX];
+static int      g_msh_dirty_tf[MSH_DIRTY_MAX];
+static datetime g_msh_dirty_ts[MSH_DIRTY_MAX];
+
+void MSH_DirtyClear()
+{
+   g_msh_dirty_n = 0;
+}
+
+bool MSH_DirtyHasSym(const string sym)
+{
+   for(int i=0;i<g_msh_dirty_n;i++)
+      if(g_msh_dirty_sym[i] == sym)
+         return true;
+   return false;
+}
+
+void MSH_DirtyTouch(const string sym, const int tf, const datetime ts)
+{
+   if(sym == "") return;
+
+   // De-dup by symbol (router evaluates watchlist; tf is informational)
+   for(int i=0;i<g_msh_dirty_n;i++)
+   {
+      if(g_msh_dirty_sym[i] == sym)
+      {
+         g_msh_dirty_tf[i] = tf;
+         g_msh_dirty_ts[i] = ts;
+         return;
+      }
+   }
+
+   // If full: evict oldest (small N, linear is fine)
+   if(g_msh_dirty_n >= MSH_DIRTY_MAX)
+   {
+      int oldest = 0;
+      datetime ots = g_msh_dirty_ts[0];
+      for(int k=1;k<g_msh_dirty_n;k++)
+      {
+         if(g_msh_dirty_ts[k] < ots)
+         {
+            ots = g_msh_dirty_ts[k];
+            oldest = k;
+         }
+      }
+      g_msh_dirty_sym[oldest] = sym;
+      g_msh_dirty_tf[oldest]  = tf;
+      g_msh_dirty_ts[oldest]  = ts;
+      return;
+   }
+
+   g_msh_dirty_sym[g_msh_dirty_n] = sym;
+   g_msh_dirty_tf[g_msh_dirty_n]  = tf;
+   g_msh_dirty_ts[g_msh_dirty_n]  = ts;
+   g_msh_dirty_n++;
+}
+
+// Called from MarketScannerHub.mqh RouteEvent(...) via MARKETSCANNERHUB_CUSTOM_ROUTE
+void MSH_RouteEvent(const Scan::ScanEvent &e)
+{
+   // Scan::ScanEvent fields (confirmed from MarketScannerHub.mqh RouteEventDefault):
+   // e.sym, e.tf, e.ts, ...
+   MSH_DirtyTouch(e.sym, (int)e.tf, e.ts);
+}
+
+// Price/time gates state
 static bool   g_armed_by_price     = false;
 static bool   g_stopped_by_price   = false;
 static double g_last_mid_arm       = 0.0;
 static double g_last_mid_stop      = 0.0;
 
-// NEW: streak state (reset daily by Risk day cache or session start)
+// streak state (reset daily by Risk day cache or session start)
 static int    g_consec_wins        = 0;
 static int    g_consec_losses      = 0;
 
@@ -2961,10 +3037,7 @@ int OnInit()
     
    // Autochartist-style engine init (after warmup so rates/ATR are usable)
    // AutoC::Init(S, g_symbols, g_symCount);
-   
-   // Timer (seconds; EventSetTimer is seconds granularity)
-   int sec = (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000);
-   EventSetTimer(MathMax(1, sec));
+   // Timer ownership moved to MarketScannerHub (MSH::InitWithSymbols sets timer cadence)
 
    // Optional benchmark
    RunIndicatorBenchmarks();
@@ -3018,10 +3091,33 @@ int OnInit()
    // 3. Initialize Router strategies registry (ICT-aware)
    RouterInit(g_router, g_cfg);
    RouterSetWatchlist(g_router, g_symbols, g_symCount);
+   
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();
-   // Autochartist engine init: align symbol-indexed caches with EA watchlist
-   AutoC::Init(S, g_symbols, g_symCount);
+   
+   // Scanner hub init: owns AutoC + Scan orchestration + timer
+   MSH::HubOptions hub_opt;
+   MSH::OptionsDefault(hub_opt);
+   
+   // Preserve current EA behavior: seconds timer derived from S.timer_ms
+   hub_opt.use_ms_timer = false;
+   hub_opt.timer_sec    = MathMax(1, (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000));
+   
+   // Universe cap (Hub has hard cap HUB_MAX_SYMBOLS)
+   hub_opt.max_symbols  = MathMin(g_symCount, (int)MSH::HUB_MAX_SYMBOLS);
+   
+   // Keep hub passive initially
+   hub_opt.log_events   = false;
+   hub_opt.log_summary  = false;
+   
+   // Preserve existing OnTimer behavior: MarketData refresh is done on timer
+   hub_opt.call_marketdata_refresh = true;
+   
+   // Avoid behavior change: EA did not call AutoVol timer here
+   hub_opt.call_autovol_timer = false;
+   
+   if(!MSH::InitWithSymbols(S, hub_opt, g_symbols, g_symCount))
+      return(INIT_FAILED);
 
    // 4. Initial ICT/Wyckoff context so panel not blank
    RefreshICTContext(g_state);
@@ -3240,13 +3336,10 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
-   EventKillTimer();
-   AutoC::Deinit();
+   MSH::Deinit();
    Exec::Deinit();
    MarketData::Deinit();
    Panel::Deinit();
-   OBI::Settings obi; // same settings not required for release
-   OBI::ReleaseAll(obi);
    #ifdef REVIEWUI_HAS_ICT_DEINIT
       ReviewUI_ICT_Deinit();   // optional, cleans labels
    #endif
@@ -3287,6 +3380,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
+   MSH::HubTimerTick(S);
    MarketData::OnTimerRefresh();
    AutoC::OnTimerScan(S, now_srv);
    ML::SetRuntimeOn(g_ml_on);
@@ -3304,9 +3398,13 @@ void OnTimer()
    MaybeResetStreaksDaily(now_srv);
 
    DriftAlarm_Check("OnTimer");
-   // Timer is UI/maintenance only. Trading eval is tick-driven.
    if(InpOnlyNewBar)
+   {
+      // We still scanned upstream (MSH tick ran), but we don't do timer-routing.
+      // Clear dirty queue so it never accumulates under tick-driven-only mode.
+      MSH_DirtyClear();
       return;
+   }
 
    // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
@@ -3315,11 +3413,16 @@ void OnTimer()
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
    if(g_use_registry)
    {
+      if(g_msh_dirty_n <= 0)
+         return;
       for(int i=0; i<g_symCount; i++)
       {
          const string sym = g_symbols[i];
+         if(!MSH_DirtyHasSym(sym))
+            continue;
          ProcessSymbol(sym, true);
       }
+      MSH_DirtyClear();
       return;
    }   
    // Legacy centralized router eval on timer – disabled.
@@ -3336,12 +3439,16 @@ void OnTimer()
       return;
    }
    
+   if(g_msh_dirty_n <= 0)
+      return;
+   
    if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
    {
       StateOnTickUpdate(g_state);
       RefreshICTContext(g_state);
       ICT_Context ictCtx = StateGetICTContext(g_state);
       RouterEvaluateAll(g_router, g_cfg, ictCtx);
+      MSH_DirtyClear();
    }
    else
    {
