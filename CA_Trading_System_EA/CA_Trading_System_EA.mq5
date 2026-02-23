@@ -2280,7 +2280,7 @@ void RunIndicatorBenchmarks()
 
 inline void UpdateRegistryRoutingFlag()
 {
-   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+   g_use_registry = InpUseRegistryRouting;
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
@@ -2881,12 +2881,6 @@ int OnInit()
    g_ml_on          = InpML_Enable;
    g_is_tester = (MQLInfoInteger(MQL_TESTER) != 0 || MQLInfoInteger(MQL_OPTIMIZATION) != 0);
 
-   if(InpUseRegistryRouting && !g_is_tester)
-   LogX::Warn("[Routing] InpUseRegistryRouting ignored in LIVE. RouterEvaluateAll() owns live trading.");
-
-   LogX::Info(StringFormat("Execution path: %s",
-                           (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
-
    Sanity::SetDebug(InpDebug);
    LogX::SetMinLevel(InpDebug ? LogX::LVL_DEBUG : LogX::LVL_INFO);
    LogX::EnablePrint(true);
@@ -2896,6 +2890,22 @@ int OnInit()
    FinalizeRuntimeSettings();
    Config::LogSettingsWithHash(S, "CFG");
 
+   // --- Routing mode diagnostics (post-FinalizeRuntimeSettings; g_use_registry is final) ---
+   if(InpUseRegistryRouting)
+   {
+      if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+         LogX::Warn("[Routing] Registry routing requested, but forced OFF (STRAT_MAIN_ONLY). Using RouterEvaluateAll().");
+      else
+         LogX::Info("[Routing] Registry routing ACTIVE (InpUseRegistryRouting=true). Using LEGACY ProcessSymbol/StratReg.");
+   }
+   else
+   {
+      LogX::Info("[Routing] RouterEvaluateAll ACTIVE (InpUseRegistryRouting=false).");
+   }
+   
+   LogX::Info(StringFormat("Execution path: %s",
+                           (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
+                        
    #ifdef CA_USE_HANDLE_REGISTRY
       HR::Init();
       LogX::Info("Indicators mode: registry-cached (HandleRegistry active).");
@@ -3381,8 +3391,8 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    MSH::HubTimerTick(S);
-   MarketData::OnTimerRefresh();
-   AutoC::OnTimerScan(S, now_srv);
+   // MarketData::OnTimerRefresh(); // already done inside MSH::HubTimerTick(S)
+   // AutoC::OnTimerScan(S, now_srv); // already done inside MSH::HubTimerTick(S)
    ML::SetRuntimeOn(g_ml_on);
    const Settings ml_cfg = (g_use_registry ? S : g_cfg);
    const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
@@ -4034,11 +4044,11 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       return;
    }
 
-   // Safety: ProcessSymbol() is tester/optimization-only under Option B (Router owns live trading)
-   if(!g_is_tester)
+   // Safety: in LIVE, ProcessSymbol() is allowed only when registry routing is explicitly enabled.
+   if(!g_is_tester && !g_use_registry)
    {
-      if(InpDebug) LogX::Warn("[LEGACY] ProcessSymbol blocked in LIVE. RouterEvaluateAll() owns live trading.");
-         return;
+      if(InpDebug) LogX::Warn("[LEGACY] ProcessSymbol blocked in LIVE (registry routing is OFF).");
+      return;
    }
 
    // NOTE: current strategies rely on _Symbol internally; only evaluate on chart symbol.
@@ -4392,8 +4402,10 @@ void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, co
             {
                if(!g_is_tester)
                {
-                  g_use_registry = false;
-                  PrintFormat("[UI] Routing locked to ROUTER (live trading).");
+                  // LIVE: routing is controlled by the input flag and finalized settings; do not toggle here.
+                  PrintFormat("[UI] Routing (LIVE): %s (controlled by InpUseRegistryRouting=%s)",
+                              (g_use_registry ? "REGISTRY" : "ROUTER"),
+                              (InpUseRegistryRouting ? "true" : "false"));
                }
                else if(S.strat_mode == STRAT_MAIN_ONLY)
                {
