@@ -1672,6 +1672,18 @@ namespace Config
      #endif
    }
 
+   // Helper: treat pack strategies as "confluence-only contributors" in MAIN_ONLY
+   // ONLY when the router confluence pool is explicitly enabled.
+   inline bool CfgMainOnly_AllowPackConfluencePool(const Settings &cfg)
+   {
+     // Pool considered "in use" if either:
+     //  - the pool toggle is ON, OR
+     //  - the blend weight is > 0 (even if the toggle is forgotten)
+     if(CfgRouterUseConflPool(cfg)) return true;
+     if(CfgRouterPoolBlendW(cfg) > 0.0) return true;
+     return false;
+   }
+    
    inline int NewsPreMins(const Settings &c)
    {
      #ifdef CFG_HAS_NEWS_PRE_MINS
@@ -2645,22 +2657,30 @@ namespace Config
       #ifdef CFG_HAS_STRAT_TOGGLES
           const StrategyMode sm = CfgStrategyMode(cfg);
       
-          if(sm == STRAT_MAIN_ONLY)
-          {
-            // Disable PACK strategies (leave main + sub-ICT on)
-            cfg.enable_trend_vwap_pullback      = false;
-            cfg.enable_trend_bos_continuation   = false;
-            cfg.enable_mr_vwap_band             = false;
-            cfg.enable_mr_range_nr7ib           = false;
-            cfg.enable_breakout_squeeze         = false;
-            cfg.enable_breakout_orb             = false;
-            cfg.enable_reversal_sweep_choch     = false;
-            cfg.enable_reversal_vsa_climax_fade = false;
-            cfg.enable_corr_divergence          = false;
-            cfg.enable_pairs_spreadlite         = false;
-            cfg.enable_news_deviation           = false;
-            cfg.enable_news_postfade            = false;
-          }
+           if(sm == STRAT_MAIN_ONLY)
+           {
+             // MAIN_ONLY default posture: disable pack strategies.
+             // Exception: if the router confluence-only pool is explicitly enabled,
+             // keep pack toggles as-is so they can contribute confluence-only signals.
+             const bool allow_pack_confl = CfgMainOnly_AllowPackConfluencePool(cfg);
+             if(!allow_pack_confl)
+             {
+               // Disable PACK strategies (leave main + sub-ICT on)
+               cfg.enable_trend_vwap_pullback      = false;
+               cfg.enable_trend_bos_continuation   = false;
+               cfg.enable_mr_vwap_band             = false;
+               cfg.enable_mr_range_nr7ib           = false;
+               cfg.enable_breakout_squeeze         = false;
+               cfg.enable_breakout_orb             = false;
+               cfg.enable_reversal_sweep_choch     = false;
+               cfg.enable_reversal_vsa_climax_fade = false;
+               cfg.enable_corr_divergence          = false;
+               cfg.enable_pairs_spreadlite         = false;
+               cfg.enable_news_deviation           = false;
+               cfg.enable_news_postfade            = false;
+             }
+             // else: leave pack toggles unchanged (confluence-only pool mode)
+           }
           else if(sm == STRAT_PACK_ONLY)
           {
             // Disable MAIN strategy + its sub toggles
@@ -3401,7 +3421,14 @@ namespace Config
     #ifdef CFG_HAS_ENABLE_PACK_STRATS
       #ifdef CFG_HAS_STRAT_MODE
         if(CfgStrategyMode(cfg) == STRAT_MAIN_ONLY)
-          cfg.enable_pack_strats = false;
+        {
+          // Default: packs OFF in MAIN_ONLY.
+          // Exception: if the router confluence-only pool is enabled, allow packs to remain
+          // registered/enabled for confluence-only computation (they still cannot trade).
+          const bool allow_pack_confl = CfgMainOnly_AllowPackConfluencePool(cfg);
+          if(!allow_pack_confl)
+            cfg.enable_pack_strats = false;
+        }
       #endif
    
       #ifdef CFG_HAS_DISABLE_PACKS
@@ -4612,6 +4639,21 @@ namespace Config
         #ifdef CFG_HAS_DISABLE_PACKS
           if(cfg.disable_packs)
             warns += "disable_packs=true; pack strategies are globally disabled (PACK_ONLY/COMBINED may produce no trades).\\n";
+        #endif
+      }
+      
+      if(sm == STRAT_MAIN_ONLY)
+      {
+        const bool poolWanted = CfgMainOnly_AllowPackConfluencePool(cfg);
+
+        #ifdef CFG_HAS_ENABLE_PACK_STRATS
+          if(poolWanted && !cfg.enable_pack_strats)
+            warns += "MAIN_ONLY with router confluence pool enabled but enable_pack_strats=false; confluence-only pool from disallowed strategies will be empty.\\n";
+        #endif
+
+        #ifdef CFG_HAS_DISABLE_PACKS
+          if(poolWanted && cfg.disable_packs)
+            warns += "MAIN_ONLY with router confluence pool enabled but disable_packs=true; pack confluence pool is hard-disabled.\\n";
         #endif
       }
     #endif

@@ -182,6 +182,79 @@ inline string StrategyModeNameLocal(const StrategyMode s)
   }
 }
 
+// ---------------- Router confluence-only pool diagnostics ----------------
+// Prints pool intent + key flags (compile-safe; no spam unless called).
+inline void LogRouterConfluencePoolStatus(const Settings &cfg, const string where_tag)
+{
+  bool   use_pool = false;
+  double blend_w  = 0.0;
+  bool   have_any = false;
+
+  #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+    use_pool = cfg.router_use_confl_pool;
+    have_any = true;
+  #endif
+
+  #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+    blend_w  = cfg.router_pool_blend_w;
+    have_any = true;
+  #endif
+
+  if(!have_any) return;
+
+  const bool wanted = (use_pool || (blend_w > 0.0));
+  const StrategyMode sm = Config::CfgStrategyMode(cfg);
+
+  string msg = StringFormat("%s RouterPool: wanted=%d use=%d w=%.2f mode=%s(%d)",
+                            where_tag,
+                            (wanted ? 1 : 0),
+                            (use_pool ? 1 : 0),
+                            blend_w,
+                            StrategyModeNameLocal(sm),
+                            (int)sm);
+
+  #ifdef CFG_HAS_ENABLE_PACK_STRATS
+    msg += StringFormat(" enable_pack_strats=%d", (cfg.enable_pack_strats ? 1 : 0));
+  #endif
+  #ifdef CFG_HAS_DISABLE_PACKS
+    msg += StringFormat(" disable_packs=%d", (cfg.disable_packs ? 1 : 0));
+  #endif
+
+  LogX::Info(msg);
+
+  // Helpful warnings (no behavior changes)
+  if(sm == STRAT_MAIN_ONLY && wanted)
+  {
+    #ifdef CFG_HAS_ENABLE_PACK_STRATS
+      if(!cfg.enable_pack_strats)
+        LogX::Warn("RouterPool is ON in MAIN_ONLY but enable_pack_strats=false; confluence-only pool may be empty.");
+    #endif
+    #ifdef CFG_HAS_DISABLE_PACKS
+      if(cfg.disable_packs)
+        LogX::Warn("RouterPool is ON in MAIN_ONLY but disable_packs=true; pack confluence pool is hard-disabled.");
+    #endif
+  }
+}
+
+// Optional: log once-per-entry-bar (prevents timer/tick spam)
+inline void MaybeLogRouterConfluencePoolStatusOncePerBar(const Settings &cfg, const string where_tag)
+{
+  // Only when debug-ish
+  bool want = cfg.debug;
+  #ifdef CFG_HAS_ROUTER_DEBUG_LOG
+    if(cfg.router_debug_log) want = true;
+  #endif
+  if(!want) return;
+
+  static datetime s_last_bt = 0;
+  const datetime bt = iTime(_Symbol, (ENUM_TIMEFRAMES)cfg.tf_entry, 0);
+  if(bt <= 0) return;
+  if(bt == s_last_bt) return;
+  s_last_bt = bt;
+
+  LogRouterConfluencePoolStatus(cfg, where_tag);
+}
+
 // ================== User Inputs ==================
 // Assets / TFs
 input string           InpAssetList             = "CURRENT"; // "CURRENT" or comma/space-separated symbols
@@ -354,6 +427,12 @@ input StrategyMode InpStrat_Mode                = STRAT_MAIN_ONLY; // Strategy M
 // 0 = best-of-all-symbols (current behavior)
 // 1 = per-symbol execution (evaluate each symbol and send eligible entries per symbol)
 input int InpRouterExecMode          = 0;  // Router exec mode: 0=best-of-all, 1=per-symbol
+
+// ---- Router confluence-only pool (optional) ----
+// When enabled, Router can blend "confluence-only pool" score into candidate ranking.
+// This is used by Track 2 (pack strategies contribute confluence-only in MAIN_ONLY).
+input bool   InpRouterUseConfluencePool = false; // Router: Use confluence-only pool in ranking
+input double InpRouterPoolBlendW        = 0.0;   // Router: Pool blend weight (0..1)
 
 // Position caps used by PositionMgmt/Router when "execute more than one" is enabled.
 // Per-symbol: >=1 (1 preserves old behavior). Total: 0 = unlimited.
@@ -1362,6 +1441,17 @@ void MirrorInputsToSettings(Settings &cfg)
      if(rem < 0) rem = 0;
      if(rem > 1) rem = 1;
      cfg.router_eval_all_mode = rem;
+   #endif
+   
+   // ---- Router confluence-only pool controls (optional) ----
+   #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+     cfg.router_use_confl_pool = InpRouterUseConfluencePool;
+   #endif
+   #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+     double pw = InpRouterPoolBlendW;
+     if(pw < 0.0) pw = 0.0;
+     if(pw > 1.0) pw = 1.0;
+     cfg.router_pool_blend_w = pw;
    #endif
    cfg.profile = InpProfile;
    
@@ -2648,6 +2738,9 @@ void FinalizeRuntimeSettings()
    // 4) Apply remaining input overlays last (uses refactored overlay helper)
    BuildSettingsFromInputs(cfg);
 
+   // Re-assert strat_mode => enable_* toggle coherence after overlays (no full Normalize).
+   Config::EnforceStrategyModeToggles(cfg);
+
    // 5) Set magic number INSIDE snapshot (MOVE OnInit lines 2317–2326, S->cfg)
    #ifdef CFG_HAS_MAGIC_NUMBER
       const StrategyMode sm = Config::CfgStrategyMode(cfg);
@@ -2717,6 +2810,9 @@ void UI_CommitSettings(const string reason, const bool resync_router=false)
    // Recompute derived flags into the UI snapshot (allowed: hotkey mutation)
    SyncRuntimeCfgFlags(S);
 
+   // Keep strat_mode authoritative even when UI/hotkeys toggle flags.
+   Config::EnforceStrategyModeToggles(S);
+
    // Mirror UI snapshot into canonical runtime snapshot
    g_cfg = S;
 
@@ -2727,6 +2823,10 @@ void UI_CommitSettings(const string reason, const bool resync_router=false)
       UpdateRegistryRoutingFlag();
    }
 
+   // UI breadcrumb: confirms whether RouterPool is active after UI mutations
+   if(InpDebug)
+     LogRouterConfluencePoolStatus(S, "[UI]");
+      
    if(InpDebug)
       LogX::Info(StringFormat("[UI] Settings committed: %s", reason));
       
@@ -2924,6 +3024,9 @@ int OnInit()
                              StrategyModeNameLocal(sm), (int)sm));
    }
 
+   // Router confluence-only pool status (inputs -> Settings mirror)
+   LogRouterConfluencePoolStatus(S, "[OnInit]");
+    
    // --- Init subsystems ---
    if(!MarketData::Init(S))
    {
@@ -3422,6 +3525,12 @@ void OnTimer()
          return;
    }
 
+   // Timer breadcrumb (once per entry bar): helps diagnose pool on sparse-tick symbols
+   {
+     const Settings pcfg = (g_use_registry ? S : g_cfg);
+     MaybeLogRouterConfluencePoolStatusOncePerBar(pcfg, "[Timer]");
+   }
+    
    // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
       g_use_registry = false;
