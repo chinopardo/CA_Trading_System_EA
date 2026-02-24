@@ -55,14 +55,39 @@ struct Settings;
 #ifndef CFG_HAS_AUTOCHARTIST_SETTINGS
   #define CFG_HAS_AUTOCHARTIST_SETTINGS 1
 #endif
+
+// --- Autochartist patterns export control (single source of truth) ---
+#ifndef CFG_HAS_AUTOC_PATT_SETTINGS
+  #define CFG_HAS_AUTOC_PATT_SETTINGS 1
+#endif
+#ifndef CFG_HAS_AUTOC_PATT_EXPORT_LEVEL
+  #define CFG_HAS_AUTOC_PATT_EXPORT_LEVEL 1
+#endif
+#ifndef CFG_HAS_AUTOC_PATT_EMIT_MODE
+  #define CFG_HAS_AUTOC_PATT_EMIT_MODE 1
+#endif
+#ifndef CFG_HAS_AUTOC_PATT_TOPN
+  #define CFG_HAS_AUTOC_PATT_TOPN 1
+#endif
+#ifndef CFG_HAS_AUTOC_PATT_MIN_SCORE01
+  #define CFG_HAS_AUTOC_PATT_MIN_SCORE01 1
+#endif
+
+// Back-compat: AutochartistEngine.mqh currently guards patt_all using this macro name
+#ifndef CFG_HAS_AUTO_PATT_ALL_SETTINGS_FIELDS
+  #define CFG_HAS_AUTO_PATT_ALL_SETTINGS_FIELDS 1
+#endif
+
 // --- Support/Resistance detector (SRDet) ---
 #ifndef CFG_HAS_SR_DETECTOR_SETTINGS
   #define CFG_HAS_SR_DETECTOR_SETTINGS 1
 #endif
+
 // --- Fibonacci / OTE settings (cfg-wired) ---
 #ifndef CFG_HAS_FIB_SETTINGS
   #define CFG_HAS_FIB_SETTINGS 1
 #endif
+
 // --- FVG settings (cfg-wired) ---
 #ifndef CFG_HAS_FVG_MIN_SCORE
   #define CFG_HAS_FVG_MIN_SCORE 1
@@ -954,6 +979,23 @@ namespace Config
   {
      DIRM_MANUAL_SELECTOR = 0,
      DIRM_AUTO_SMARTMONEY = 1
+  };
+  
+  // Autochartist patterns export level (single source of truth)
+  enum AutoPattExportLevel
+  {
+     AUTOC_PATT_EXPORT_OFF  = 0, // no patterns computed/exported by AutoC
+     AUTOC_PATT_EXPORT_BEST = 1, // AC best + minimal summaries
+     AUTOC_PATT_EXPORT_EXT  = 2, // BEST + best CS/CH/SD
+     AUTOC_PATT_EXPORT_FULL = 3  // EXT + full bank exports (patt_all)
+  };
+
+  // Autochartist pattern event emission policy (used by AutoC / scanners)
+  enum AutoPattEmitMode
+  {
+     AUTOC_PATT_EMIT_DIGEST_CHANGE = 0,
+     AUTOC_PATT_EMIT_TOP_CHANGE    = 1,
+     AUTOC_PATT_EMIT_ALWAYS        = 2
   };
   
   inline string Join(const string &arr[], const string sep)
@@ -2762,6 +2804,30 @@ namespace Config
     cfg.auto_scan_interval_sec  = 60;
     cfg.auto_scan_lookback_bars = 320;
    
+    // Autochartist patterns export (single truth)
+    cfg.autoc_patt_export_level = AUTOC_PATT_EXPORT_EXT;          // preserves current “EXT snapshot” behavior
+    cfg.autoc_patt_emit_mode    = AUTOC_PATT_EMIT_DIGEST_CHANGE;
+    cfg.autoc_patt_topN         = 24;
+
+    cfg.autoc_patt_min_score01       = 0.50;
+    cfg.autoc_patt_min_score_autoc   = -1.0; // inherit
+    cfg.autoc_patt_min_score_candle  = -1.0; // inherit
+    cfg.autoc_patt_min_score_classic = -1.0; // inherit
+    cfg.autoc_patt_min_score_sd      = -1.0; // inherit
+
+     #ifdef CFG_HAS_AUTO_PATT_ALL_SETTINGS_FIELDS
+       // Legacy mirrors are set again in Normalize(); initialize here for clean state
+       cfg.auto_patt_all_enable = false;
+       cfg.auto_patt_all_emit_mode = cfg.autoc_patt_emit_mode;
+       cfg.auto_patt_all_topN      = cfg.autoc_patt_topN;
+
+       cfg.auto_patt_all_min_score01      = cfg.autoc_patt_min_score01;
+       cfg.auto_patt_all_min_score_autoc  = cfg.autoc_patt_min_score01;
+       cfg.auto_patt_all_min_score_candle = cfg.autoc_patt_min_score01;
+       cfg.auto_patt_all_min_score_classic= cfg.autoc_patt_min_score01;
+       cfg.auto_patt_all_min_score_sd     = cfg.autoc_patt_min_score01;
+     #endif
+     
     #ifdef CFG_HAS_SCAN_FVG_SETTINGS
      cfg.scan_fvg_enable           = false;   // keep off by default (avoids scan load surprises)
      // default ON so FVG scanner respects scan_tf_mask but can be selectively gated later
@@ -3759,14 +3825,49 @@ namespace Config
       }
     #endif
 
-    // ---- Autochartist-style scanner clamps ----
-      // Scan cadence / lookback
-      if(cfg.auto_scan_interval_sec < 5)   cfg.auto_scan_interval_sec = 5;
-      if(cfg.auto_scan_interval_sec > 900) cfg.auto_scan_interval_sec = 900;
+     // ---- Autochartist-style scanner clamps ----
+     // Scan cadence / lookback
+     if(cfg.auto_scan_interval_sec < 5)   cfg.auto_scan_interval_sec = 5;
+     if(cfg.auto_scan_interval_sec > 900) cfg.auto_scan_interval_sec = 900;
       
-      if(cfg.auto_scan_lookback_bars < 120)  cfg.auto_scan_lookback_bars = 120;
-      if(cfg.auto_scan_lookback_bars > 2000) cfg.auto_scan_lookback_bars = 2000;
+     if(cfg.auto_scan_lookback_bars < 120)  cfg.auto_scan_lookback_bars = 120;
+     if(cfg.auto_scan_lookback_bars > 2000) cfg.auto_scan_lookback_bars = 2000;
       
+     // ---- Autochartist patterns export clamps (single truth) ----
+     cfg.autoc_patt_export_level = MathMax(0, MathMin(cfg.autoc_patt_export_level, (int)AUTOC_PATT_EXPORT_FULL));
+     cfg.autoc_patt_emit_mode    = MathMax(0, MathMin(cfg.autoc_patt_emit_mode,    (int)AUTOC_PATT_EMIT_ALWAYS));
+
+     if(cfg.autoc_patt_topN < 0)  cfg.autoc_patt_topN = 0;
+     if(cfg.autoc_patt_topN > 64) cfg.autoc_patt_topN = 64;
+
+     cfg.autoc_patt_min_score01 = MathMin(MathMax(cfg.autoc_patt_min_score01, 0.0), 1.0);
+
+     if(cfg.autoc_patt_min_score_autoc < 0.0) cfg.autoc_patt_min_score_autoc = cfg.autoc_patt_min_score01;
+     else cfg.autoc_patt_min_score_autoc = MathMin(MathMax(cfg.autoc_patt_min_score_autoc, 0.0), 1.0);
+
+     if(cfg.autoc_patt_min_score_candle < 0.0) cfg.autoc_patt_min_score_candle = cfg.autoc_patt_min_score01;
+     else cfg.autoc_patt_min_score_candle = MathMin(MathMax(cfg.autoc_patt_min_score_candle, 0.0), 1.0);
+
+     if(cfg.autoc_patt_min_score_classic < 0.0) cfg.autoc_patt_min_score_classic = cfg.autoc_patt_min_score01;
+     else cfg.autoc_patt_min_score_classic = MathMin(MathMax(cfg.autoc_patt_min_score_classic, 0.0), 1.0);
+
+     if(cfg.autoc_patt_min_score_sd < 0.0) cfg.autoc_patt_min_score_sd = cfg.autoc_patt_min_score01;
+     else cfg.autoc_patt_min_score_sd = MathMin(MathMax(cfg.autoc_patt_min_score_sd, 0.0), 1.0);
+
+     #ifdef CFG_HAS_AUTO_PATT_ALL_SETTINGS_FIELDS
+       // Legacy mirrors (read-only): keep old AutochartistEngine paths stable
+       cfg.auto_patt_all_enable = (cfg.autoc_patt_export_level >= (int)AUTOC_PATT_EXPORT_FULL);
+
+       cfg.auto_patt_all_emit_mode = cfg.autoc_patt_emit_mode;
+       cfg.auto_patt_all_topN      = cfg.autoc_patt_topN;
+
+       cfg.auto_patt_all_min_score01      = cfg.autoc_patt_min_score01;
+       cfg.auto_patt_all_min_score_autoc  = cfg.autoc_patt_min_score_autoc;
+       cfg.auto_patt_all_min_score_candle = cfg.autoc_patt_min_score_candle;
+       cfg.auto_patt_all_min_score_classic= cfg.autoc_patt_min_score_classic;
+       cfg.auto_patt_all_min_score_sd     = cfg.autoc_patt_min_score_sd;
+     #endif
+     
       #ifdef CFG_HAS_SCAN_FVG_SETTINGS
         cfg.scan_fvg_approach_atr     = MathMin(MathMax(cfg.scan_fvg_approach_atr,     0.05), 3.0);
         cfg.scan_fvg_break_margin_atr = MathMin(MathMax(cfg.scan_fvg_break_margin_atr, 0.00), 1.0);
@@ -5342,6 +5443,17 @@ namespace Config
     s+=",acOn="+BoolStr(c.auto_enable);
     s+=",acTF="+IntegerToString(c.auto_tf_mask);
     
+    // Autochartist patterns export (single truth)
+    s+=",acPLev="+IntegerToString(c.autoc_patt_export_level);
+    s+=",acPEm="+IntegerToString(c.autoc_patt_emit_mode);
+    s+=",acPTop="+IntegerToString(c.autoc_patt_topN);
+
+    s+=",acPMin="+DoubleToString(c.autoc_patt_min_score01,3);
+    s+=",acPMinAC="+DoubleToString(c.autoc_patt_min_score_autoc,3);
+    s+=",acPMinCS="+DoubleToString(c.autoc_patt_min_score_candle,3);
+    s+=",acPMinCH="+DoubleToString(c.autoc_patt_min_score_classic,3);
+    s+=",acPMinSD="+DoubleToString(c.autoc_patt_min_score_sd,3);
+     
     #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
       s+=",sdAtrP="+IntegerToString(c.sd_atr_period);
       s+=",sdBaseMin="+IntegerToString(c.sd_base_min_bars);
@@ -6790,6 +6902,17 @@ namespace Config
       else if(k=="acOn") cfg.auto_enable = ToBool(v);
       else if(k=="acTF") cfg.auto_tf_mask = ToInt(v);
       
+      // Autochartist patterns export (single truth)
+      else if(k=="acPLev")   cfg.autoc_patt_export_level = ToInt(v);
+      else if(k=="acPEm")    cfg.autoc_patt_emit_mode    = ToInt(v);
+      else if(k=="acPTop")   cfg.autoc_patt_topN         = ToInt(v);
+
+      else if(k=="acPMin")   cfg.autoc_patt_min_score01  = ToDouble(v);
+      else if(k=="acPMinAC") cfg.autoc_patt_min_score_autoc   = ToDouble(v);
+      else if(k=="acPMinCS") cfg.autoc_patt_min_score_candle  = ToDouble(v);
+      else if(k=="acPMinCH") cfg.autoc_patt_min_score_classic = ToDouble(v);
+      else if(k=="acPMinSD") cfg.autoc_patt_min_score_sd      = ToDouble(v);
+      
       #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
         else if(k=="sdAtrP")      cfg.sd_atr_period = ToInt(v);
         else if(k=="sdBaseMin")   cfg.sd_base_min_bars = ToInt(v);
@@ -7769,6 +7892,30 @@ struct Settings
 
    int    auto_scan_interval_sec;
    int    auto_scan_lookback_bars;
+   
+   // --- Autochartist patterns export (single source of truth) ---
+   int    autoc_patt_export_level;   // Config::AutoPattExportLevel (0..3)
+   int    autoc_patt_emit_mode;      // Config::AutoPattEmitMode (0..2)
+   int    autoc_patt_topN;           // cap for flattened bank (FULL only)
+
+   double autoc_patt_min_score01;        // global min score [0..1]
+   double autoc_patt_min_score_autoc;    // <0 => inherit global
+   double autoc_patt_min_score_candle;   // <0 => inherit global
+   double autoc_patt_min_score_classic;  // <0 => inherit global
+   double autoc_patt_min_score_sd;       // <0 => inherit global
+
+   // --- Legacy AutoPattAll knobs (DEPRECATED; derived from autoc_patt_* in Normalize()) ---
+   #ifdef CFG_HAS_AUTO_PATT_ALL_SETTINGS_FIELDS
+     bool   auto_patt_all_enable;
+     int    auto_patt_all_emit_mode;
+     int    auto_patt_all_topN;
+
+     double auto_patt_all_min_score01;
+     double auto_patt_all_min_score_autoc;
+     double auto_patt_all_min_score_candle;
+     double auto_patt_all_min_score_classic;
+     double auto_patt_all_min_score_sd;
+   #endif
    
    // --- Additional scanners (structured scans) ---
 #ifdef CFG_HAS_SCAN_FVG_SETTINGS

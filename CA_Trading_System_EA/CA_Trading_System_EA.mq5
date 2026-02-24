@@ -952,6 +952,7 @@ string _GateReasonStr(const int c)
       case GATE_PRICE_STOP: return "PRICE_STOP";
       case GATE_NEWS:       return "NEWS";
       case GATE_EXEC_LOCK:  return "EXEC_LOCK";
+      case GATE_TRADE_DISABLED: return "TRADE_DISABLED";
       case GATE_WARMUP:     return "WARMUP";
       case GATE_INHIBIT:    return "INHIBIT";
       case GATE_NONE:       return "NONE";
@@ -1038,9 +1039,9 @@ bool WarmupGateOK()
    ticks++;
 
    // Primary readiness: same gates you already use elsewhere
-   const bool gate_ready = Warmup::GateReadyOnce(InpDebug);
-   const bool data_ready = Warmup::DataReadyForEntry(g_cfg);
-   const bool ready      = (gate_ready && data_ready);
+   const bool gate_ready = (InpDebug ? Warmup::GateReadyOnce(InpDebug) : true); // debug info only
+   const bool data_ready = Warmup::DataReadyForEntryRT(g_cfg, InpDebug);        // RT non-blocking series check
+   const bool ready      = data_ready;     
    
    if(ready)
    {
@@ -2293,9 +2294,8 @@ void MaybeEvaluate()
    // Unified warmup gate (tester-safe; single source of truth)
    if(!WarmupGateOK())
       return;
-   // Short series gate for VWAP/patterns/ATR (from Warmup.mqh patch)
-   if(!Warmup::DataReadyForEntry(g_cfg))
-      return;
+   
+   // Short series gate is handled inside WarmupGateOK() (RT non-blocking). No duplicate gate here.
 
    static datetime last_bar = 0;
    const datetime bt = iTime(_Symbol, Warmup::TF_Entry(g_cfg), 0);
@@ -3410,10 +3410,16 @@ void OnTimer()
    DriftAlarm_Check("OnTimer");
    if(InpOnlyNewBar)
    {
-      // We still scanned upstream (MSH tick ran), but we don't do timer-routing.
-      // Clear dirty queue so it never accumulates under tick-driven-only mode.
-      MSH_DirtyClear();
-      return;
+      // Allow timer-driven routing ONCE per bar (fixes sparse-tick stalls).
+      const bool use_reg = (g_use_registry && g_cfg.strat_mode != STRAT_MAIN_ONLY);
+      const Settings gate_cfg = (use_reg ? S : g_cfg);
+      const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
+   
+      // Router mode should use a stable watchlist reference; registry mode uses chart symbol.
+      const string gate_sym = (use_reg ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
+   
+      if(!IsNewBarRouter(gate_sym, tf))
+         return;
    }
 
    // Hard guarantee: STRAT_MAIN_ONLY always routes via RouterEvaluateAll()
@@ -3423,14 +3429,24 @@ void OnTimer()
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
    if(g_use_registry)
    {
-      if(g_msh_dirty_n <= 0)
+      if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
          return;
+      
+      if(InpOnlyNewBar && g_msh_dirty_n <= 0)
+      {
+         const bool nb0 = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
+         ProcessSymbol(_Symbol, nb0);
+         MSH_DirtyClear();
+         return;
+      }
+
       for(int i=0; i<g_symCount; i++)
       {
          const string sym = g_symbols[i];
          if(!MSH_DirtyHasSym(sym))
             continue;
-         ProcessSymbol(sym, true);
+         const bool nb = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
+         ProcessSymbol(sym, nb);
       }
       MSH_DirtyClear();
       return;
@@ -3449,7 +3465,7 @@ void OnTimer()
       return;
    }
    
-   if(g_msh_dirty_n <= 0)
+   if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
       return;
    
    if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
@@ -3818,6 +3834,34 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
    return true;
 }
 
+// -------- Trade environment gate (prevents pointless routing when trading is disabled) --------
+bool TradeEnvGateOK(const string sym, int &gate_reason_out)
+{
+   gate_reason_out = 0;
+
+   const bool in_tester = (MQLInfoInteger(MQL_TESTER) != 0) || (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+
+   const bool acc_ok  = (AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) != 0);
+   const bool mql_ok  = (MQLInfoInteger(MQL_TRADE_ALLOWED) != 0);
+   const bool term_ok = (TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) != 0);
+
+   // In tester/optimization, ignore terminal "Algo Trading" toggles; in live, require them.
+   if(!acc_ok || (!in_tester && (!mql_ok || !term_ok)))
+   {
+      gate_reason_out = GATE_TRADE_DISABLED;
+      Panel::SetGate(gate_reason_out);
+
+      const string detail = StringFormat("Trade disabled: ACCOUNT=%d MQL=%d TERM=%d",
+                                         (int)acc_ok, (int)mql_ok, (int)term_ok);
+
+      _LogGateBlocked("trade_env_gate", sym, gate_reason_out, detail);
+      TraceNoTrade(sym, TS_GATE, gate_reason_out, detail);
+
+      return false;
+   }
+   return true;
+}
+
 // -------- Router GLOBAL gate (watchlist-safe): no session/news/exec-lock --------
 bool RouterGateOK_Global(const string log_sym,
                          const Settings &cfg,
@@ -3858,6 +3902,9 @@ bool RouterGateOK_Global(const string log_sym,
       return false;
    }
 
+   if(!TradeEnvGateOK(log_sym, gate_reason_out))
+      return false;
+   
    // 1) Global policy/risk guard (DD, cooldown, etc.)
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
@@ -3925,6 +3972,9 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
       return false;
    }
 
+   if(!TradeEnvGateOK(sym, gate_reason_out))
+      return false;
+   
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
