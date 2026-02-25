@@ -42,10 +42,10 @@ struct Settings;
   #define CFG_HAS_STRAT_MODE 1
 #endif
 #ifndef CFG_HAS_ML_THRESHOLD
-#define CFG_HAS_ML_THRESHOLD 1
+   #define CFG_HAS_ML_THRESHOLD 1
 #endif
 #ifndef CFG_HAS_ML_SETTINGS
-#define CFG_HAS_ML_SETTINGS 1
+   #define CFG_HAS_ML_SETTINGS 1
 #endif
 
 // --- Autochartist-style internal scanner ---
@@ -114,6 +114,9 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
+  #define CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS 1
 #endif
 
 // --- StructureSDOB / Supply-Demand (SDOB) / OB knobs -------------------------
@@ -2940,6 +2943,10 @@ namespace Config
       cfg.scan_foot_ticks_max_tf_sec   = 900;
       cfg.scan_foot_min_ticks          = 50;
    
+      // Tick classification (OFIS)
+      cfg.scan_foot_use_bidask_rule      = true;
+      cfg.scan_foot_bidask_eps_points    = 1.0;   // 0.5–1.0 typical; 1.0 safe
+      
       cfg.scan_foot_bin_points         = 2;
       cfg.scan_foot_max_levels         = 32;
    
@@ -2973,16 +2980,49 @@ namespace Config
       cfg.scan_obi_min_tot_vol   = 0.0;
       cfg.scan_obi_vwap_dist_atr = 0.0; // disabled by default
 
+      // --- OBI advanced defaults (back-compat: keep OFF / symmetric)
+      cfg.scan_obi_mode                    = 0;     // symmetric (mode 3 proxy-footprint exists but remains opt-in)
+      cfg.scan_obi_top_levels              = 0;     // disabled
+      cfg.scan_obi_weighted_enable         = false; // disabled
+      cfg.scan_obi_weight_half_life_points = 0.0;   // flat weights when disabled
+      cfg.scan_obi_ema_len                 = 0;     // disabled
+      cfg.scan_obi_weight_ref              = 0;     // MID
+      
       // --- Footprint thresholds (z-score based)
       cfg.scan_foot_use_atr_proxy = cfg.scan_fvg_use_atr_proxy;
       cfg.scan_foot_zstrong       = 1.25;
       cfg.scan_foot_zdiverge      = 0.90;
       cfg.scan_foot_zabsorb       = 1.25;
 
+      // --- OFIS defaults (Order Flow Imbalance System)
+      cfg.scan_of_delta_ema_len     = 14;
+      cfg.scan_of_cvd_ema_len       = 20;
+      cfg.scan_of_z_len             = 50;
+      cfg.scan_of_ofpi_thr          = 40.0;
+
+      cfg.scan_of_absorb_k_sigma    = 1.5;
+      cfg.scan_of_absorb_m_atr      = 0.5;
+
+      cfg.scan_of_exhaust_lb        = 5;
+      cfg.scan_of_htf_mult          = 4;
+      
       // --- Correlation tuning
       cfg.scan_corr_threshold = 0.70;
       cfg.scan_corr_recover   = 0.55;
       cfg.scan_corr_len       = 90;
+
+      #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
+        cfg.scan_corr_secondary_symbol = "";
+        cfg.scan_corr_price            = PRICE_CLOSE;
+        cfg.scan_corr_use_log_returns  = true;
+        cfg.scan_corr_smooth_len       = 5;
+        cfg.scan_corr_div_sensitivity  = 0.30;
+        cfg.scan_corr_z_len            = 200;
+        cfg.scan_corr_mom_k            = 5;
+        cfg.scan_corr_z_thr            = 2.0;
+        cfg.scan_corr_mom_thr          = 0.20;
+        cfg.scan_corr_mtf_len_enable   = false;
+      #endif
 
       // --- News timing + optional strategy windows (scanner emits only)
       cfg.scan_news_soon_sec           = 2700; // 45 minutes
@@ -3281,6 +3321,25 @@ namespace Config
       if(cfg.scan_obi_vwap_dist_atr < 0.0) cfg.scan_obi_vwap_dist_atr = 0.0;
       if(cfg.scan_obi_vwap_dist_atr > 10.0) cfg.scan_obi_vwap_dist_atr = 10.0;
 
+      // OBI advanced mode / aggregation clamps
+      if(cfg.scan_obi_mode < 0) cfg.scan_obi_mode = 0;
+      if(cfg.scan_obi_mode > 3) cfg.scan_obi_mode = 3; // mode 3 = proxy-footprint fallback
+
+      if(cfg.scan_obi_top_levels < 0)  cfg.scan_obi_top_levels = 0;
+      if(cfg.scan_obi_top_levels > 50) cfg.scan_obi_top_levels = 50;
+
+      if(cfg.scan_obi_weight_half_life_points < 0.0)
+         cfg.scan_obi_weight_half_life_points = 0.0;
+
+      if(cfg.scan_obi_ema_len < 0)   cfg.scan_obi_ema_len = 0;
+      if(cfg.scan_obi_ema_len > 200) cfg.scan_obi_ema_len = 200;
+
+      // Normalize 1 => disabled (keep semantics clean: 0/1 disabled, >=2 active)
+      if(cfg.scan_obi_ema_len == 1) cfg.scan_obi_ema_len = 0;
+
+      if(cfg.scan_obi_weight_ref < 0) cfg.scan_obi_weight_ref = 0;
+      if(cfg.scan_obi_weight_ref > 2) cfg.scan_obi_weight_ref = 2;
+      
       // Wyckoff TF selector clamps (0 allowed; invalid -> 0)
       if(cfg.scan_wyck_tf_h4 < 0) cfg.scan_wyck_tf_h4 = 0;
       if(cfg.scan_wyck_tf_d1 < 0) cfg.scan_wyck_tf_d1 = 0;
@@ -3325,6 +3384,26 @@ namespace Config
    
     if(cfg.scan_corr_len < 20)  cfg.scan_corr_len = 20;
     if(cfg.scan_corr_len > 500) cfg.scan_corr_len = 500;
+    
+    #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
+     if(cfg.scan_corr_smooth_len < 1)  cfg.scan_corr_smooth_len = 1;
+     if(cfg.scan_corr_smooth_len > 50) cfg.scan_corr_smooth_len = 50;
+   
+     if(cfg.scan_corr_div_sensitivity <= 0.0) cfg.scan_corr_div_sensitivity = 0.30;
+     if(cfg.scan_corr_div_sensitivity > 2.0)  cfg.scan_corr_div_sensitivity = 2.0;
+   
+     if(cfg.scan_corr_z_len < 20)  cfg.scan_corr_z_len = 20;
+     if(cfg.scan_corr_z_len > 600) cfg.scan_corr_z_len = 600;
+   
+     if(cfg.scan_corr_mom_k < 1) cfg.scan_corr_mom_k = 1;
+     if(cfg.scan_corr_mom_k >= cfg.scan_corr_z_len) cfg.scan_corr_mom_k = MathMax(1, cfg.scan_corr_z_len/4);
+   
+     if(cfg.scan_corr_z_thr <= 0.0) cfg.scan_corr_z_thr = 2.0;
+     if(cfg.scan_corr_z_thr > 10.0) cfg.scan_corr_z_thr = 10.0;
+   
+     if(cfg.scan_corr_mom_thr <= 0.0) cfg.scan_corr_mom_thr = 0.20;
+     if(cfg.scan_corr_mom_thr > 1.0)  cfg.scan_corr_mom_thr = 1.0;
+    #endif
    
     #ifdef CFG_HAS_ML_THRESHOLD
       if(cfg.ml_threshold <= 0.0) cfg.ml_threshold = 0.55;  // keep existing fallback behavior
@@ -4003,6 +4082,22 @@ namespace Config
           cfg.scan_foot_absorb_min_ratio    = MathMin(10.0, MathMax(1.2, cfg.scan_foot_absorb_min_ratio));
       
           cfg.scan_foot_poc_approach_atr    = MathMin(2.0, MathMax(0.01, cfg.scan_foot_poc_approach_atr));
+          
+          // Tick classification clamps (eps in POINTS)
+          cfg.scan_foot_bidask_eps_points = MathMin(5.0, MathMax(0.0, cfg.scan_foot_bidask_eps_points));
+
+          // OFIS clamps (defensive)
+          cfg.scan_of_delta_ema_len  = MathMin(200, MathMax(2,  cfg.scan_of_delta_ema_len));   // EMA lens 2..200
+          cfg.scan_of_cvd_ema_len    = MathMin(200, MathMax(2,  cfg.scan_of_cvd_ema_len));     // EMA lens 2..200
+          cfg.scan_of_z_len          = MathMin(500, MathMax(10, cfg.scan_of_z_len));           // z window (safe)
+
+          cfg.scan_of_ofpi_thr       = MathMin(95.0, MathMax(5.0,  cfg.scan_of_ofpi_thr));     // OFPI thr 5..95
+
+          cfg.scan_of_absorb_k_sigma = MathMin(5.0,  MathMax(0.5,  cfg.scan_of_absorb_k_sigma)); // sigma 0.5..5
+          cfg.scan_of_absorb_m_atr   = MathMin(2.0,  MathMax(0.05, cfg.scan_of_absorb_m_atr));   // ATR mult 0.05..2
+
+          cfg.scan_of_exhaust_lb     = MathMin(50, MathMax(2, cfg.scan_of_exhaust_lb));        // 2..50
+          cfg.scan_of_htf_mult       = MathMin(24, MathMax(1, cfg.scan_of_htf_mult));          // practical cap
       #endif
 
       // --- Liquidity pool clamps (always-present fields)
@@ -5922,6 +6017,13 @@ namespace Config
       s+=",scOBIMinV="+DoubleToString(c.scan_obi_min_tot_vol,2);
       s+=",scOBIVWDist="+DoubleToString(c.scan_obi_vwap_dist_atr,3);
 
+      s+=",scOBIMode="+IntegerToString(c.scan_obi_mode);
+      s+=",scOBITop="+IntegerToString(c.scan_obi_top_levels);
+      s+=",scOBIWOn="+BoolStr(c.scan_obi_weighted_enable);
+      s+=",scOBIWHL="+DoubleToString(c.scan_obi_weight_half_life_points,3);
+      s+=",scOBIEMA="+IntegerToString(c.scan_obi_ema_len);
+      s+=",scOBIWRef="+IntegerToString(c.scan_obi_weight_ref);
+      
       // Footprint scan
       s+=",scFootOn="+BoolStr(c.scan_foot_enable);
       s+=",scFootATR="+BoolStr(c.scan_foot_use_atr_proxy);
@@ -5929,10 +6031,26 @@ namespace Config
       s+=",scFootZa="+DoubleToString(c.scan_foot_zabsorb,3);
       s+=",scFootZd="+DoubleToString(c.scan_foot_zdiverge,3);
 
+      // OFIS
+      s+=",scOFdE="+IntegerToString(c.scan_of_delta_ema_len);
+      s+=",scOFcE="+IntegerToString(c.scan_of_cvd_ema_len);
+      s+=",scOFzL="+IntegerToString(c.scan_of_z_len);
+
+      s+=",scOFthr="+DoubleToString(c.scan_of_ofpi_thr,1);
+      s+=",scOFk="+DoubleToString(c.scan_of_absorb_k_sigma,3);
+      s+=",scOFm="+DoubleToString(c.scan_of_absorb_m_atr,3);
+
+      s+=",scOFex="+IntegerToString(c.scan_of_exhaust_lb);
+      s+=",scOFhtf="+IntegerToString(c.scan_of_htf_mult);
+      
       s+=",scFTickOn="+BoolStr(c.scan_foot_allow_ticks);
       s+=",scFTickMax="+IntegerToString(c.scan_foot_ticks_max_tf_sec);
       s+=",scFMinTk="+IntegerToString(c.scan_foot_min_ticks);
 
+      // Tick classification (FootprintProxy)
+      s+=",scFBA="+BoolStr(c.scan_foot_use_bidask_rule);
+      s+=",scFBAeps="+DoubleToString(c.scan_foot_bidask_eps_points,2);
+      
       s+=",scFBin="+IntegerToString(c.scan_foot_bin_points);
       s+=",scFMaxL="+IntegerToString(c.scan_foot_max_levels);
       s+=",scFVA="+DoubleToString(c.scan_foot_value_area_pct,3);
@@ -5950,6 +6068,19 @@ namespace Config
       s+=",scCorrThr="+DoubleToString(c.scan_corr_threshold,3);
       s+=",scCorrRec="+DoubleToString(c.scan_corr_recover,3);
       s+=",scCorrLen="+IntegerToString(c.scan_corr_len);
+      
+      #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
+        if(StringLen(c.scan_corr_secondary_symbol)>0) s+=",scCorrSym="+c.scan_corr_secondary_symbol;
+        s+=",scCorrPx="+IntegerToString((int)c.scan_corr_price);
+        s+=",scCorrLog="+BoolStr(c.scan_corr_use_log_returns);
+        s+=",scCorrSm="+IntegerToString(c.scan_corr_smooth_len);
+        s+=",scCorrSens="+DoubleToString(c.scan_corr_div_sensitivity,3);
+        s+=",scCorrZL="+IntegerToString(c.scan_corr_z_len);
+        s+=",scCorrZt="+DoubleToString(c.scan_corr_z_thr,2);
+        s+=",scCorrMk="+IntegerToString(c.scan_corr_mom_k);
+        s+=",scCorrMt="+DoubleToString(c.scan_corr_mom_thr,2);
+        s+=",scCorrML="+BoolStr(c.scan_corr_mtf_len_enable);
+      #endif
 
       // News scan
       s+=",scNewsOn="+BoolStr(c.scan_news_enable);
@@ -7380,17 +7511,40 @@ namespace Config
         else if(k=="scOBIMax")  cfg.scan_obi_max_levels = ToInt(v);
         else if(k=="scOBIMinV") cfg.scan_obi_min_tot_vol = ToDouble(v);
         else if(k=="scOBIVWDist") cfg.scan_obi_vwap_dist_atr = ToDouble(v);
-
+        
+        else if(k=="scOBIMode") cfg.scan_obi_mode = ToInt(v);
+        else if(k=="scOBITop")  cfg.scan_obi_top_levels = ToInt(v);
+        else if(k=="scOBIWOn")  cfg.scan_obi_weighted_enable = ToBool(v);
+        else if(k=="scOBIWHL")  cfg.scan_obi_weight_half_life_points = ToDouble(v);
+        else if(k=="scOBIEMA")  cfg.scan_obi_ema_len = ToInt(v);
+        else if(k=="scOBIWRef") cfg.scan_obi_weight_ref = ToInt(v);
+        
         else if(k=="scFootOn")  cfg.scan_foot_enable = ToBool(v);
         else if(k=="scFootATR") cfg.scan_foot_use_atr_proxy = ToBool(v);
         else if(k=="scFootZs")  cfg.scan_foot_zstrong = ToDouble(v);
         else if(k=="scFootZa")  cfg.scan_foot_zabsorb = ToDouble(v);
         else if(k=="scFootZd")  cfg.scan_foot_zdiverge = ToDouble(v);
 
+        // OFIS
+        else if(k=="scOFdE")  cfg.scan_of_delta_ema_len = ToInt(v);
+        else if(k=="scOFcE")  cfg.scan_of_cvd_ema_len   = ToInt(v);
+        else if(k=="scOFzL")  cfg.scan_of_z_len         = ToInt(v);
+
+        else if(k=="scOFthr") cfg.scan_of_ofpi_thr      = ToDouble(v);
+        else if(k=="scOFk")   cfg.scan_of_absorb_k_sigma= ToDouble(v);
+        else if(k=="scOFm")   cfg.scan_of_absorb_m_atr  = ToDouble(v);
+
+        else if(k=="scOFex")  cfg.scan_of_exhaust_lb    = ToInt(v);
+        else if(k=="scOFhtf") cfg.scan_of_htf_mult      = ToInt(v);
+        
         else if(k=="scFTickOn")  cfg.scan_foot_allow_ticks = ToBool(v);
         else if(k=="scFTickMax") cfg.scan_foot_ticks_max_tf_sec = ToInt(v);
         else if(k=="scFMinTk")   cfg.scan_foot_min_ticks = ToInt(v);
 
+        // Tick classification (FootprintProxy)
+        else if(k=="scFBA")    cfg.scan_foot_use_bidask_rule   = ToBool(v);
+        else if(k=="scFBAeps") cfg.scan_foot_bidask_eps_points = ToDouble(v);
+        
         else if(k=="scFBin")   cfg.scan_foot_bin_points = ToInt(v);
         else if(k=="scFMaxL")  cfg.scan_foot_max_levels = ToInt(v);
         else if(k=="scFVA")    cfg.scan_foot_value_area_pct = ToDouble(v);
@@ -7408,6 +7562,19 @@ namespace Config
         else if(k=="scCorrThr") cfg.scan_corr_threshold = ToDouble(v);
         else if(k=="scCorrRec") cfg.scan_corr_recover   = ToDouble(v);
         else if(k=="scCorrLen") cfg.scan_corr_len       = ToInt(v);
+        
+        #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
+           else if(k=="scCorrSym")  cfg.scan_corr_secondary_symbol = v;
+           else if(k=="scCorrPx")   cfg.scan_corr_price            = (ENUM_APPLIED_PRICE)ToInt(v);
+           else if(k=="scCorrLog")  cfg.scan_corr_use_log_returns  = ToBool(v);
+           else if(k=="scCorrSm")   cfg.scan_corr_smooth_len       = ToInt(v);
+           else if(k=="scCorrSens") cfg.scan_corr_div_sensitivity  = ToDouble(v);
+           else if(k=="scCorrZL")   cfg.scan_corr_z_len            = ToInt(v);
+           else if(k=="scCorrZt")   cfg.scan_corr_z_thr            = ToDouble(v);
+           else if(k=="scCorrMk")   cfg.scan_corr_mom_k            = ToInt(v);
+           else if(k=="scCorrMt")   cfg.scan_corr_mom_thr          = ToDouble(v);
+           else if(k=="scCorrML")   cfg.scan_corr_mtf_len_enable   = ToBool(v);
+        #endif
 
         else if(k=="scNewsOn")   cfg.scan_news_enable = ToBool(v);
         else if(k=="scNewsSoon") cfg.scan_news_soon_sec = ToInt(v);
@@ -8036,6 +8203,7 @@ struct Settings
    bool scan_liq_emit_sweeps;
 
    bool scan_wyck_enable;
+   
    // Optional TF override (0 = use defaults in Confluence: H4/D1)
    int scan_wyck_tf_h4;
    int scan_wyck_tf_d1;
@@ -8048,29 +8216,63 @@ struct Settings
    int    scan_wyck_lb_d1;             // lookback bars for D1 phase detect (WyckoffCycle)
 
    bool scan_obi_enable;
+   
    // OBI scanner (config-driven)
    int    scan_obi_depth_points;   // DOM band depth in points (e.g. 25)
    double scan_obi_threshold;      // imbalance threshold (e.g. 0.30)
    bool   scan_obi_vwap_enable;    // enable VWAP-filtered OBI emits
    double scan_obi_keylevel_atr;   // gating distance: within X * ATR of key level
+   
    // OBI compute tuning (wired into OrderBookImbalance::Settings)
    int    scan_obi_cache_ms;
    int    scan_obi_max_levels;
    double scan_obi_min_tot_vol;
+   
    // Optional VWAP distance gating (ATR multiples; 0 disables)
    double scan_obi_vwap_dist_atr;
 
+   // OBI advanced metric mode / aggregation (Option A: explicit, clean)
+   int    scan_obi_mode;                    // 0=symmetric, 1=ratio-1, 2=log-ratio, 3=proxy-footprint fallback
+   int    scan_obi_top_levels;              // 0=disabled; else true Top-N price levels per side
+   bool   scan_obi_weighted_enable;         // enable near-price weighted aggregation
+   double scan_obi_weight_half_life_points; // half-life for exp weighting in points
+   int    scan_obi_ema_len;                 // 0/1=disabled; >=2 enables EMA over selected OBI metric
+   int    scan_obi_weight_ref;              // 0=MID, 1=CENTER, 2=BEST (default 0)
    bool scan_foot_enable;
+   
    // Footprint / delta (orderflow-lite) tuning
    bool   scan_foot_use_atr_proxy;  // use ATR proxy when session delta isn't reliable
    double scan_foot_zstrong;        // strong delta threshold (|z|)
    double scan_foot_zabsorb;        // absorption threshold (|z|)
    double scan_foot_zdiverge;       // divergence threshold (|z|)
 
+   // ---------------- OFIS (Order Flow Imbalance System) tuning ----------------
+   int    scan_of_delta_ema_len;       // delta smoothing EMA length (spec: 14)
+   int    scan_of_cvd_ema_len;         // CVD EMA length (spec: 20)
+   int    scan_of_z_len;               // z-score window for OFIS (spec: 50)
+   double scan_of_ofpi_thr;            // OFPI threshold in [-100..+100] (spec: 40)
+
+   double scan_of_absorb_k_sigma;      // k * sigma threshold (spec: 1.5)
+   double scan_of_absorb_m_atr;        // price move < m * ATR (spec: 0.5)
+
+   int    scan_of_exhaust_lb;          // exhaustion lookback (spec: 5)
+   int    scan_of_htf_mult;            // HTF multiplier (spec: 4)
+    
    bool scan_corr_enable;
    double scan_corr_threshold;   // abs(corr) threshold to classify "strong"
    double scan_corr_recover;     // abs(corr) <= this => "weak" (hysteresis)
    int    scan_corr_len;         // lookback bars for Pearson returns + zscore sample
+   
+   string            scan_corr_secondary_symbol; // optional hard override; else uses corrRef/auto basket
+   ENUM_APPLIED_PRICE scan_corr_price;           // PRICE_CLOSE / PRICE_OPEN / PRICE_MEDIAN / PRICE_TYPICAL / PRICE_WEIGHTED
+   bool              scan_corr_use_log_returns;  // default true
+   int               scan_corr_smooth_len;       // default 5 (EMA on corr stream)
+   double            scan_corr_div_sensitivity;  // default 0.30
+   int               scan_corr_z_len;            // default 200 (rolling window for corr-z)
+   int               scan_corr_mom_k;            // default 5
+   double            scan_corr_z_thr;            // default 2.0  (|z| trigger)
+   double            scan_corr_mom_thr;          // default 0.20 (|mom| trigger)
+   bool              scan_corr_mtf_len_enable;   // optional: enable multi-length check
 
    bool scan_news_enable;
    int scan_news_soon_sec;
@@ -8087,6 +8289,10 @@ struct Settings
     int    scan_foot_ticks_max_tf_sec;
     int    scan_foot_min_ticks;
 
+    // Tick classification (OFIS preferred path)
+    bool   scan_foot_use_bidask_rule;     // prefer last>=ask / last<=bid classification when quotes exist
+    double scan_foot_bidask_eps_points;   // eps in POINTS for bid/ask rule comparisons (0..5 typical)
+     
     int    scan_foot_bin_points;
     int    scan_foot_max_levels;
 

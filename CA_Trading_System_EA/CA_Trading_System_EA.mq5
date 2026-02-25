@@ -317,6 +317,7 @@ input Config::DirectionBiasMode InpDirectionBiasMode = Config::DIRM_AUTO_SMARTMO
 // Risk core
 input double           InpRiskPct               = 0.40; // Risk Percentage
 input double           InpRiskCapPct            = 1.00; // Risk Cap Percentage
+input double           InpChallengeInitEquity   = 0.0;  // Challenge Baseline: 0=auto capture; else force initial equity baseline
 input double           InpMinSL_Pips            = 10.0; // Min SL (Pips)
 input double           InpMinTP_Pips            = 15.0; // Min TP (Pips)
 input double           InpMaxSLCeiling_Pips     = 2500.0; // Max Ceiling (Pips)
@@ -371,6 +372,9 @@ input int              InpStreakWinsToDouble    = 2;       // Streak-based Lot S
 input int              InpStreakLossesToHalve   = 2;       // Streak-based Lot Scaling: Loose Streaks to Halves 0=off
 input double           InpStreakMaxBoost        = 2.0;     // Streak-based Lot Scaling: Max Boost Streaks cap multiplier (>=1)
 input double           InpStreakMinScale        = 0.5;     // Streak-based Lot Scaling: Min Scale Streaksfloor multiplier (<=1)
+
+// ---- Global cap for any risk multiplier scaling (streak/strategy/ML) ----
+input double           InpRiskMultMax          = 2.0;     // Risk Mult Cap: 1=disable boosts; >1 allows boosts up to this cap
 
 // ---- Streak hard reset triggers ----
 // When News derisks or blocks entries, reset streak counters so boosts cannot "undo" derisking.
@@ -1040,6 +1044,28 @@ string _GateReasonStr(const int c)
    }
 }
 
+bool _IsKnownGateReason(const int c)
+{
+  switch(c)
+  {
+    case GATE_POLICIES:
+    case GATE_SESSION:
+    case GATE_TIMEWINDOW:
+    case GATE_PRICE_ARM:
+    case GATE_PRICE_STOP:
+    case GATE_NEWS:
+    case GATE_EXEC_LOCK:
+    case GATE_TRADE_DISABLED:
+    case GATE_WARMUP:
+    case GATE_INHIBIT:
+    case GATE_NONE:
+    case GATE_STRATMODE_PATH_BUG:
+      return true;
+    default:
+      return false;
+  }
+}
+
 string _TraceDirStr(const Direction d)
 {
    return (d==DIR_BUY ? "BUY" : (d==DIR_SELL ? "SELL" : "NA"));
@@ -1275,6 +1301,7 @@ bool   TryMinimalPathIntent(const string sym, const Settings &cfg,
 double StreakRiskScale();
 void   ResetStreakCounters();
 bool   AllowStreakScalingNow(const double news_risk_mult, const bool news_skip);
+double _RiskMultMaxCapFromInputs();
 
 inline bool NewsDefensiveStateAtBarClose(const Settings &cfg,
                                         const string sym,
@@ -1512,6 +1539,17 @@ void MirrorInputsToSettings(Settings &cfg)
 
   // ---- Risk core ----
   cfg.risk_pct = InpRiskPct; cfg.risk_cap_pct = InpRiskCapPct;
+  
+  #ifdef CFG_HAS_RISK_MULT_MAX
+    cfg.risk_mult_max = _RiskMultMaxCapFromInputs();
+  #endif
+  
+  // ---- Optional hard baseline override (Policies uses this for initial equity baseline) ----
+  #ifdef CFG_HAS_CHALLENGE_INIT_EQUITY
+    // Optional hard baseline override (Policies uses this for initial equity baseline)
+    cfg.challenge_init_equity = MathMax(0.0, InpChallengeInitEquity);
+  #endif
+  
   cfg.min_sl_pips = InpMinSL_Pips; cfg.min_tp_pips = InpMinTP_Pips; cfg.max_sl_ceiling_pips = InpMaxSLCeiling_Pips;
   #ifdef CFG_HAS_DAY_DD_LIMIT_PCT
     cfg.day_dd_limit_pct = InpDayDD_LimitPct;
@@ -2519,7 +2557,17 @@ void BuildSettingsFromInputs(Settings &cfg)
    cfg.risk_mult_po3          = InpRiskMult_PO3;
    cfg.risk_mult_cont         = InpRiskMult_Continuation;
    cfg.risk_mult_wyck         = InpRiskMult_WyckoffTurn;
+   
+   // Keep baseline override deterministic even when profiles are applied
+   #ifdef CFG_HAS_CHALLENGE_INIT_EQUITY
+     // Keep baseline override deterministic even when profiles are applied
+     cfg.challenge_init_equity = MathMax(0.0, InpChallengeInitEquity);
+   #endif
 
+   #ifdef CFG_HAS_RISK_MULT_MAX
+     cfg.risk_mult_max = _RiskMultMaxCapFromInputs();
+   #endif
+   
    // Router will override these two per strategy before Evaluate():
    cfg.magic_base             = cfg.magic_main_base;
    cfg.risk_mult_current      = cfg.risk_mult_main;
@@ -3815,8 +3863,19 @@ bool AllowStreakScalingNow(const double news_risk_mult, const bool news_skip)
 {
    // Optional: big-loss latch from Policies (requires implementation in Policies.mqh)
    #ifdef POLICIES_HAS_SIZING_RESET_ACTIVE
-      if(Policies::SizingResetActive())
+     {
+       static bool s_was_active = false;
+       const bool active = Policies::SizingResetActive();
+
+       if(active)
+       {
+         if(!s_was_active)
+            ResetStreakCounters();   // true reset once per latch activation
+         s_was_active = true;
          return false;
+       }
+       s_was_active = false;
+     }
    #endif
 
    if(!InpResetStreakOnNewsDerisk)
@@ -3829,6 +3888,30 @@ bool AllowStreakScalingNow(const double news_risk_mult, const bool news_skip)
       return false;
 
    return true;
+}
+
+double _RiskMultMaxCapFromInputs()
+{
+  // User cap: 1.0 disables boosts entirely.
+  double cap = MathMax(1.0, InpRiskMultMax);
+  if(cap <= 1.0)
+    return 1.0;
+
+  // Required minimum so configured multipliers don’t get silently clamped by RiskEngine.
+  double req = 1.0;
+  req = MathMax(req, MathMax(1.0, InpStreakMaxBoost));
+  req = MathMax(req, InpRiskMult_Main);
+  req = MathMax(req, InpRiskMult_SilverBullet);
+  req = MathMax(req, InpRiskMult_PO3);
+  req = MathMax(req, InpRiskMult_Continuation);
+  req = MathMax(req, InpRiskMult_WyckoffTurn);
+
+  if(cap < req)
+    cap = req;
+
+  // Keep in sync with Config::Normalize defensive clamp
+  cap = MathMax(1.0, MathMin(5.0, cap));
+  return cap;
 }
 
 double StreakRiskScale()
@@ -4088,14 +4171,17 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
    {
-      gate_reason_out = GATE_POLICIES;
+      const int mapped = (_IsKnownGateReason(pol_reason) ? pol_reason : GATE_POLICIES);
+      gate_reason_out = mapped;
       Panel::SetGate(gate_reason_out);
-
+      
       _LogGateBlocked("router_gate", sym, gate_reason_out,
-                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
-
+                      StringFormat("Policies::Check failed (pol_reason=%d/%s)",
+                                   pol_reason, _GateReasonStr(pol_reason)));
+      
       TraceNoTrade(sym, TS_GATE, gate_reason_out,
-                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+                   StringFormat("Policies::Check failed (pol_reason=%d/%s)",
+                                pol_reason, _GateReasonStr(pol_reason)));
 
       return false;
    }
@@ -4151,22 +4237,6 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
       return false;
    }
       
-   // 5) News hard block (uses cfg.* copied from inputs into g_cfg)
-   if(cfg.news_on)
-   {
-      int mins_left = 0;
-      if(News::IsBlocked(now_srv, sym, cfg.news_impact_mask, cfg.block_pre_m, cfg.block_post_m, mins_left))
-      {
-         gate_reason_out = GATE_NEWS;
-         Panel::SetGate(gate_reason_out);
-         _LogGateBlocked("router_gate", sym, gate_reason_out,
-                         StringFormat("News hard block (%d mins left)", mins_left));
-         TraceNoTrade(sym, TS_GATE, GATE_NEWS,
-                      StringFormat("News blocked (%d mins left)", mins_left));
-         return false;
-      }
-   }
-
    // 6) Execution lock (async send guard)
    if(Exec::IsLocked(sym))
    {

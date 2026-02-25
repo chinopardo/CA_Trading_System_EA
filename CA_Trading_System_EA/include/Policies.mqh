@@ -1643,11 +1643,15 @@ namespace Policies
       }
     }
 
-    // For logs/diagnostics: report the stricter of the two current drawdown percents
-    dd_pct_out = MathMax(fixed_pct, adaptive_now_pct);
-
-    // Trip if either guardrail trips
-    return (fixed_hit || adaptive_hit);
+   // For logs/diagnostics: report the ACTIVE mode (adaptive when enabled, else fixed)
+   dd_pct_out = (adaptive_on ? adaptive_now_pct : fixed_pct);
+   
+   // (Optional) strictest dd% (debug/telemetry only)
+   const double dd_pct_strict = MathMax(fixed_pct, adaptive_now_pct);
+   if(false) { Print(dd_pct_strict); } // placeholder to silence unused warnings if you later log it
+   
+   // Option B: when adaptive is enabled, it REPLACES fixed-base DD for the daily equity stop.
+   return (adaptive_on ? adaptive_hit : fixed_hit);
   }
   
   // ----------------------------------------------------------------------------
