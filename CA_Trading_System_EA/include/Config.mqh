@@ -1125,6 +1125,17 @@ namespace Config
      #endif
      double orderflow_th;
      bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
+     
+     // VSA exact-spec / hybrid mode settings
+     int    vsa_mode;               // 0=legacy, 1=classical, 2=hybrid
+     int    vsa_vol_lb;             // N_v
+     int    vsa_spread_lb;          // N_s
+     int    vsa_trend_lb;           // N_t
+     double vsa_strength_k;         // k (volume spike factor)
+     bool   vsa_mtf_confirm;        // optional MTF trend confirmation
+     ENUM_TIMEFRAMES vsa_mtf_tf;    // higher TF for MTF confirmation
+     double vsa_normscore_abs_th;   // optional configurable norm-score gate (default 0.30)
+     
      ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
      
      // Strategy pack registration (runtime replacement for ENABLE_LEGACY_STRATEGIES)
@@ -2099,6 +2110,17 @@ namespace Config
      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
        cfg.vsa_allow_tick_volume = x.vsa_allow_tick_volume;
      #endif
+     
+      // VSA exact-spec / hybrid settings
+      cfg.vsa_mode             = x.vsa_mode;
+      cfg.vsa_vol_lb           = x.vsa_vol_lb;
+      cfg.vsa_spread_lb        = x.vsa_spread_lb;
+      cfg.vsa_trend_lb         = x.vsa_trend_lb;
+      cfg.vsa_strength_k       = x.vsa_strength_k;
+      cfg.vsa_mtf_confirm      = x.vsa_mtf_confirm;
+      cfg.vsa_mtf_tf           = x.vsa_mtf_tf;
+      cfg.vsa_normscore_abs_th = x.vsa_normscore_abs_th;
+      
      #ifdef CFG_HAS_TF_TREND_HTF
        cfg.tf_trend_htf = x.tf_trend_htf;
      #endif
@@ -2531,6 +2553,16 @@ namespace Config
      #endif
      x.orderflow_th           = 0.60;          // FX-friendly default threshold
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
+     
+     // VSA exact-spec defaults (formal layer)
+     x.vsa_mode             = 0;           // default legacy (non-breaking rollout)
+     x.vsa_vol_lb           = 20;          // N_v
+     x.vsa_spread_lb        = 20;          // N_s
+     x.vsa_trend_lb         = 50;          // N_t
+     x.vsa_strength_k       = 1.5;         // k
+     x.vsa_mtf_confirm      = false;       // optional enhancement OFF by default
+     x.vsa_mtf_tf           = PERIOD_H1;   // sensible default when enabled later
+     x.vsa_normscore_abs_th = 0.30;        // exact-spec final gate default
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
      
      // Baseline weights for extras (features OFF by default; weights ready when enabled)
@@ -2961,8 +2993,33 @@ namespace Config
    
       cfg.scan_foot_poc_approach_atr   = 0.10;
    
+      // Advanced footprint engine defaults (preserve current behavior)
+      cfg.scan_foot_imb_mode                 = 0;     // same-cell (current behavior)
+      cfg.scan_foot_imb_diag_offset_levels   = 1;     // spec default offset
+
+      cfg.scan_foot_strict_trade_ticks_only  = false; // preserve proxy-capable behavior
+      cfg.scan_foot_allow_quote_proxy_ticks  = true;  // preserve current fallback behavior
+
+      cfg.scan_foot_absorb_mode              = 0;     // heuristic (current behavior)
+      cfg.scan_foot_absorb_k_avg_lvl         = 2.0;
+      cfg.scan_foot_absorb_small_rng_atr     = 0.25;
+      cfg.scan_foot_absorb_low_delta_frac    = 0.15;
+
+      cfg.scan_foot_cluster_mult             = 2.0;
+      cfg.scan_foot_cluster_min_vol          = 0.0;
+
+      // Emits remain OFF by default to preserve current scanner output behavior
+      cfg.scan_foot_emit_unfinished_auctions = false;
+      cfg.scan_foot_emit_clusters            = false;
       cfg.scan_foot_use_atr_proxy      = true;
 
+      // Footprint extreme exhaustion emit + thresholds (Confluence -> FootprintProxy wiring)
+      // Keep emits OFF by default to preserve existing scanner behavior.
+      cfg.scan_foot_emit_exhaust_extremes   = false;
+      cfg.scan_foot_exhaust_low_vol_frac_avg= 0.50;
+      cfg.scan_foot_exhaust_prior_levels    = 3;
+      cfg.scan_foot_exhaust_min_aggr_hits   = 1;
+      
       // --- Wyckoff tuning (phase + manipulation + VSA confirmation)
       cfg.scan_wyck_emit_phase     = true;
       cfg.scan_wyck_phase_zvol_min = 0.50;
@@ -3005,6 +3062,13 @@ namespace Config
 
       cfg.scan_of_exhaust_lb        = 5;
       cfg.scan_of_htf_mult          = 4;
+
+      // OFIS optional extensions (disabled by default to preserve current behavior)
+      cfg.scan_of_mom_enable              = false;
+      cfg.scan_of_mom_ema_len             = 14;
+      cfg.scan_of_mom_thr                 = 10.0;
+      cfg.scan_of_liqsweep_confirm_enable = false;
+      cfg.scan_of_cvd_reset_mode          = 0;   // 0=broker-day (matches current Confluence behavior)
       
       // --- Correlation tuning
       cfg.scan_corr_threshold = 0.70;
@@ -3045,6 +3109,43 @@ namespace Config
       cfg.scan_vp_poc_shift_atr    = 0.25;
       cfg.scan_vp_stale_sec        = 900;
       cfg.scan_vp_distribute_range = false;
+
+      // Advanced VP engine defaults (preserve current behavior)
+      cfg.scan_vp_profile_mode        = 0;   // rolling (legacy/default)
+      cfg.scan_vp_session_mode        = 0;   // broker-day
+      cfg.scan_vp_anchor_minute_utc   = 0;   // midnight anchor
+      cfg.scan_vp_composite_sessions  = 3;   // sane default for composite mode
+      cfg.scan_vp_visible_range_sec   = 0;   // placeholder disabled
+
+      cfg.scan_vp_bin_mode            = 0;   // bin_points (legacy)
+      cfg.scan_vp_bin_count           = 64;  // used only when bin_mode=1
+
+      // IMPORTANT:
+      // 0 = AUTO preserves legacy behavior in VolumeProfile.mqh:
+      //   distribute_range=true  -> proportional
+      //   distribute_range=false -> typical (legacy path)
+      cfg.scan_vp_alloc_mode          = 0;   // auto
+
+      cfg.scan_vp_volume_mode         = 0;   // total volume (same semantic as requested "volume_type")
+      cfg.scan_vp_delta_mode          = false;
+      cfg.scan_vp_use_footprint_ticks = false;
+      cfg.scan_vp_footprint_build_mode= 0;   // auto
+      cfg.scan_vp_footprint_min_bars  = 20;
+
+      cfg.scan_vp_compute_vwap        = true;   // cheap and useful
+      cfg.scan_vp_compute_dev_poc     = false;  // off by default (can grow memory/cpu)
+      cfg.scan_vp_dev_poc_max_points  = 512;
+      cfg.scan_vp_compute_nodes_full  = true;
+      cfg.scan_vp_compute_shape       = false;  // keep light by default
+
+      cfg.scan_vp_smoothing_enable       = false;
+      cfg.scan_vp_smoothing_sigma_bins   = 1.25;
+      cfg.scan_vp_smoothing_radius       = 2;
+      cfg.scan_vp_node_detect_on_smoothed= false;
+
+      // Heuristic thresholds (placeholders until stricter node filters are used)
+      cfg.scan_vp_hvn_min_frac        = 0.20;
+      cfg.scan_vp_lvn_max_frac        = 0.15;
     #endif
 
     // --- Liquidity pool thresholds (fields exist regardless of CFG_HAS_SCAN_EXTRA_SETTINGS)
@@ -4086,6 +4187,27 @@ namespace Config
           // Tick classification clamps (eps in POINTS)
           cfg.scan_foot_bidask_eps_points = MathMin(5.0, MathMax(0.0, cfg.scan_foot_bidask_eps_points));
 
+          // Advanced footprint engine clamps
+          cfg.scan_foot_imb_mode               = MathMin(1, MathMax(0, cfg.scan_foot_imb_mode));
+          cfg.scan_foot_imb_diag_offset_levels = MathMin(10, MathMax(1, cfg.scan_foot_imb_diag_offset_levels));
+
+          cfg.scan_foot_absorb_mode            = MathMin(2, MathMax(0, cfg.scan_foot_absorb_mode));
+          cfg.scan_foot_absorb_k_avg_lvl       = MathMin(50.0, MathMax(0.5,  cfg.scan_foot_absorb_k_avg_lvl));
+          cfg.scan_foot_absorb_small_rng_atr   = MathMin(2.0,  MathMax(0.01, cfg.scan_foot_absorb_small_rng_atr));
+          cfg.scan_foot_absorb_low_delta_frac  = MathMin(1.0,  MathMax(0.0,  cfg.scan_foot_absorb_low_delta_frac));
+
+          cfg.scan_foot_cluster_mult           = MathMin(50.0, MathMax(1.0,  cfg.scan_foot_cluster_mult));
+          cfg.scan_foot_cluster_min_vol        = MathMax(0.0,  cfg.scan_foot_cluster_min_vol);
+
+          // Extreme exhaustion clamps (footprint-level)
+          cfg.scan_foot_exhaust_low_vol_frac_avg = MathMin(5.0, MathMax(0.01, cfg.scan_foot_exhaust_low_vol_frac_avg));
+          cfg.scan_foot_exhaust_prior_levels     = MathMin(10,  MathMax(1,    cfg.scan_foot_exhaust_prior_levels));
+          cfg.scan_foot_exhaust_min_aggr_hits    = MathMin(10,  MathMax(1,    cfg.scan_foot_exhaust_min_aggr_hits));
+          
+          // Consistency: if quote-proxy ticks are disabled, strict trade-only mode must be true
+          if(!cfg.scan_foot_allow_quote_proxy_ticks)
+            cfg.scan_foot_strict_trade_ticks_only = true;
+            
           // OFIS clamps (defensive)
           cfg.scan_of_delta_ema_len  = MathMin(200, MathMax(2,  cfg.scan_of_delta_ema_len));   // EMA lens 2..200
           cfg.scan_of_cvd_ema_len    = MathMin(200, MathMax(2,  cfg.scan_of_cvd_ema_len));     // EMA lens 2..200
@@ -4098,6 +4220,11 @@ namespace Config
 
           cfg.scan_of_exhaust_lb     = MathMin(50, MathMax(2, cfg.scan_of_exhaust_lb));        // 2..50
           cfg.scan_of_htf_mult       = MathMin(24, MathMax(1, cfg.scan_of_htf_mult));          // practical cap
+
+          // OFIS optional extension clamps
+          cfg.scan_of_mom_ema_len    = MathMin(200, MathMax(2,  cfg.scan_of_mom_ema_len));  // 2..200
+          cfg.scan_of_mom_thr        = MathMin(100.0, MathMax(0.0, cfg.scan_of_mom_thr));    // conservative 0..100
+          cfg.scan_of_cvd_reset_mode = MathMin(2,   MathMax(0,  cfg.scan_of_cvd_reset_mode)); // 0..2
       #endif
 
       // --- Liquidity pool clamps (always-present fields)
@@ -4144,6 +4271,33 @@ namespace Config
         cfg.scan_vp_poc_shift_atr    = MathMin(MathMax(cfg.scan_vp_poc_shift_atr,    0.01), 5.0);
 
         cfg.scan_vp_stale_sec        = MathMin(MathMax(cfg.scan_vp_stale_sec,        60),  86400);
+
+        // Advanced VP engine clamps (keep numeric to avoid Config<->VP include coupling)
+        cfg.scan_vp_profile_mode       = MathMin(MathMax(cfg.scan_vp_profile_mode,       0), 7);
+        cfg.scan_vp_session_mode       = MathMin(MathMax(cfg.scan_vp_session_mode,       0), 1);
+        cfg.scan_vp_anchor_minute_utc  = MathMin(MathMax(cfg.scan_vp_anchor_minute_utc,  0), 1439);
+        cfg.scan_vp_composite_sessions = MathMin(MathMax(cfg.scan_vp_composite_sessions, 1), 100);
+
+        // Visible range placeholder (seconds); 0 keeps it disabled / caller-driven
+        cfg.scan_vp_visible_range_sec  = MathMin(MathMax(cfg.scan_vp_visible_range_sec,  0), 31536000);
+
+        cfg.scan_vp_bin_mode           = MathMin(MathMax(cfg.scan_vp_bin_mode,           0), 1);
+        cfg.scan_vp_bin_count          = MathMin(MathMax(cfg.scan_vp_bin_count,          5), 2000);
+        cfg.scan_vp_alloc_mode         = MathMin(MathMax(cfg.scan_vp_alloc_mode,         0), 4);
+
+        cfg.scan_vp_volume_mode        = MathMin(MathMax(cfg.scan_vp_volume_mode,        0), 3);
+
+        cfg.scan_vp_footprint_build_mode = MathMin(MathMax(cfg.scan_vp_footprint_build_mode, 0), 2);
+        cfg.scan_vp_footprint_min_bars   = MathMin(MathMax(cfg.scan_vp_footprint_min_bars,   1), 50000);
+
+        cfg.scan_vp_dev_poc_max_points = MathMin(MathMax(cfg.scan_vp_dev_poc_max_points, 0), 100000);
+
+        cfg.scan_vp_smoothing_sigma_bins = MathMin(MathMax(cfg.scan_vp_smoothing_sigma_bins, 0.05), 20.0);
+        cfg.scan_vp_smoothing_radius     = MathMin(MathMax(cfg.scan_vp_smoothing_radius,     0), 100);
+
+        // Node heuristic fractions in [0..1] (with practical floors where applicable)
+        cfg.scan_vp_hvn_min_frac       = MathMin(MathMax(cfg.scan_vp_hvn_min_frac, 0.0), 1.0);
+        cfg.scan_vp_lvn_max_frac       = MathMin(MathMax(cfg.scan_vp_lvn_max_frac, 0.01), 1.0);
       #endif
 
       #ifdef CFG_HAS_FVG_LOOKBACK_BARS
@@ -4491,6 +4645,30 @@ namespace Config
     if(cfg.vsa_lookback < 10)  cfg.vsa_lookback = 60;   // default lookback
     if(cfg.vsa_lookback > 500) cfg.vsa_lookback = 500;  // safety ceiling
 
+    // VSA exact-spec / hybrid bounds (formal layer)
+    if(cfg.vsa_mode < 0) cfg.vsa_mode = 0;
+    if(cfg.vsa_mode > 2) cfg.vsa_mode = 2;   // 0=legacy,1=classical,2=hybrid
+
+    if(cfg.vsa_vol_lb < 5)   cfg.vsa_vol_lb = 20;
+    if(cfg.vsa_vol_lb > 500) cfg.vsa_vol_lb = 500;
+
+    if(cfg.vsa_spread_lb < 5)   cfg.vsa_spread_lb = 20;
+    if(cfg.vsa_spread_lb > 500) cfg.vsa_spread_lb = 500;
+
+    if(cfg.vsa_trend_lb < 5)   cfg.vsa_trend_lb = 50;
+    if(cfg.vsa_trend_lb > 500) cfg.vsa_trend_lb = 500;
+
+    if(cfg.vsa_strength_k < 0.5)  cfg.vsa_strength_k = 0.5;
+    if(cfg.vsa_strength_k > 10.0) cfg.vsa_strength_k = 10.0;
+
+    if(cfg.vsa_normscore_abs_th < 0.0)  cfg.vsa_normscore_abs_th = 0.0;
+    if(cfg.vsa_normscore_abs_th > 0.95) cfg.vsa_normscore_abs_th = 0.95;
+    if(cfg.vsa_normscore_abs_th == 0.0) cfg.vsa_normscore_abs_th = 0.30;
+
+    // MTF confirm safety (fallback TF)
+    if(cfg.vsa_mtf_tf == PERIOD_CURRENT || cfg.vsa_mtf_tf < PERIOD_M1)
+      cfg.vsa_mtf_tf = PERIOD_H1;
+      
     // Carry knobs (compile-safe)
     #ifdef CFG_HAS_CARRY_ENABLE
       // keep as-is (bool)
@@ -5859,9 +6037,21 @@ namespace Config
 
     s+=",vsa="+BoolStr(c.vsa_enable);
     s+=",vsaMax="+DoubleToString(c.vsa_penalty_max,3);
+    
     #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
       s+=",vsaTick="+BoolStr(c.vsa_allow_tick_volume);
     #endif
+    
+    s+=",vsaMode="+IntegerToString(c.vsa_mode);
+    s+=",vsaNv="+IntegerToString(c.vsa_vol_lb);
+    s+=",vsaNs="+IntegerToString(c.vsa_spread_lb);
+    s+=",vsaNt="+IntegerToString(c.vsa_trend_lb);
+    s+=",vsaK="+DoubleToString(c.vsa_strength_k,3);
+
+    s+=",vsaMtf="+BoolStr(c.vsa_mtf_confirm);
+    s+=",vsaMtfTf="+IntegerToString((int)c.vsa_mtf_tf);
+    s+=",vsaNorm="+DoubleToString(c.vsa_normscore_abs_th,3);
+    
     s+=",struct="+BoolStr(c.structure_enable);
     s+=",liq="+BoolStr(c.liquidity_enable);
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
@@ -6042,6 +6232,13 @@ namespace Config
 
       s+=",scOFex="+IntegerToString(c.scan_of_exhaust_lb);
       s+=",scOFhtf="+IntegerToString(c.scan_of_htf_mult);
+
+      // OFIS optional extensions
+      s+=",scOFMomOn="+BoolStr(c.scan_of_mom_enable);
+      s+=",scOFMomE="+IntegerToString(c.scan_of_mom_ema_len);
+      s+=",scOFMomT="+DoubleToString(c.scan_of_mom_thr,2);
+      s+=",scOFSwpC="+BoolStr(c.scan_of_liqsweep_confirm_enable);
+      s+=",scOFCvdR="+IntegerToString(c.scan_of_cvd_reset_mode);
       
       s+=",scFTickOn="+BoolStr(c.scan_foot_allow_ticks);
       s+=",scFTickMax="+IntegerToString(c.scan_foot_ticks_max_tf_sec);
@@ -6063,6 +6260,29 @@ namespace Config
       s+=",scFAbsR="+DoubleToString(c.scan_foot_absorb_min_ratio,3);
       s+=",scFPOCap="+DoubleToString(c.scan_foot_poc_approach_atr,3);
 
+      // Advanced footprint engine
+      s+=",scFImbM="+IntegerToString(c.scan_foot_imb_mode);
+      s+=",scFImbOff="+IntegerToString(c.scan_foot_imb_diag_offset_levels);
+
+      s+=",scFStrict="+BoolStr(c.scan_foot_strict_trade_ticks_only);
+      s+=",scFQPx="+BoolStr(c.scan_foot_allow_quote_proxy_ticks);
+
+      s+=",scFAbM="+IntegerToString(c.scan_foot_absorb_mode);
+      s+=",scFAbK="+DoubleToString(c.scan_foot_absorb_k_avg_lvl,3);
+      s+=",scFAbRA="+DoubleToString(c.scan_foot_absorb_small_rng_atr,3);
+      s+=",scFAbDF="+DoubleToString(c.scan_foot_absorb_low_delta_frac,3);
+
+      s+=",scFClM="+DoubleToString(c.scan_foot_cluster_mult,3);
+      s+=",scFClV="+DoubleToString(c.scan_foot_cluster_min_vol,2);
+
+      s+=",scFEUA="+BoolStr(c.scan_foot_emit_unfinished_auctions);
+      s+=",scFECl="+BoolStr(c.scan_foot_emit_clusters);
+
+      s+=",scFEEx="+BoolStr(c.scan_foot_emit_exhaust_extremes);
+      s+=",scFExLV="+DoubleToString(c.scan_foot_exhaust_low_vol_frac_avg,3);
+      s+=",scFExPL="+IntegerToString(c.scan_foot_exhaust_prior_levels);
+      s+=",scFExAH="+IntegerToString(c.scan_foot_exhaust_min_aggr_hits);
+      
       // Correlation scan (existing keys preserved)
       s+=",scCorrOn="+BoolStr(c.scan_corr_enable);
       s+=",scCorrThr="+DoubleToString(c.scan_corr_threshold,3);
@@ -6104,6 +6324,37 @@ namespace Config
       s+=",scVPPoc="+DoubleToString(c.scan_vp_poc_shift_atr,3);
       s+=",scVPStale="+IntegerToString(c.scan_vp_stale_sec);
       s+=",scVPDist="+BoolStr(c.scan_vp_distribute_range);
+      
+      // Advanced VP engine
+      s+=",scVPM="+IntegerToString(c.scan_vp_profile_mode);
+      s+=",scVPSm="+IntegerToString(c.scan_vp_session_mode);
+      s+=",scVPAU="+IntegerToString(c.scan_vp_anchor_minute_utc);
+      s+=",scVPCmp="+IntegerToString(c.scan_vp_composite_sessions);
+      s+=",scVPVis="+IntegerToString(c.scan_vp_visible_range_sec);
+
+      s+=",scVPBM="+IntegerToString(c.scan_vp_bin_mode);
+      s+=",scVPBC="+IntegerToString(c.scan_vp_bin_count);
+      s+=",scVPAlc="+IntegerToString(c.scan_vp_alloc_mode);
+
+      s+=",scVPVol="+IntegerToString(c.scan_vp_volume_mode);
+      s+=",scVPDlt="+BoolStr(c.scan_vp_delta_mode);
+      s+=",scVPFT="+BoolStr(c.scan_vp_use_footprint_ticks);
+      s+=",scVPFBM="+IntegerToString(c.scan_vp_footprint_build_mode);
+      s+=",scVPFMB="+IntegerToString(c.scan_vp_footprint_min_bars);
+
+      s+=",scVPVW="+BoolStr(c.scan_vp_compute_vwap);
+      s+=",scVPDP="+BoolStr(c.scan_vp_compute_dev_poc);
+      s+=",scVPDPM="+IntegerToString(c.scan_vp_dev_poc_max_points);
+      s+=",scVPNF="+BoolStr(c.scan_vp_compute_nodes_full);
+      s+=",scVPShp="+BoolStr(c.scan_vp_compute_shape);
+
+      s+=",scVPSmOn="+BoolStr(c.scan_vp_smoothing_enable);
+      s+=",scVPSmS="+DoubleToString(c.scan_vp_smoothing_sigma_bins,3);
+      s+=",scVPSmR="+IntegerToString(c.scan_vp_smoothing_radius);
+      s+=",scVPNSm="+BoolStr(c.scan_vp_node_detect_on_smoothed);
+
+      s+=",scVPHvn="+DoubleToString(c.scan_vp_hvn_min_frac,3);
+      s+=",scVPLvn="+DoubleToString(c.scan_vp_lvn_max_frac,3);
     #endif
 
     // Liquidity pool thresholds (scanner behavior tuning)
@@ -6950,6 +7201,9 @@ namespace Config
     // tokenization by ','
     string tok[]; int n=StringSplit(best, ',', tok);
     bool seenMainReq=false, seenMainAny3=false, seenMainCls=false, seenVsaTick=false;
+    bool seenVsaMode=false, seenVsaNv=false, seenVsaNs=false, seenVsaNt=false;
+    bool seenVsaK=false, seenVsaMtf=false, seenVsaMtfTf=false, seenVsaNorm=false;
+    
     for(int i=0;i<n;i++)
     {
       string k,v; if(!SplitKV(tok[i],k,v)) continue;
@@ -7390,6 +7644,17 @@ namespace Config
       #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
         else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
       #endif
+
+      else if(k=="vsaMode"){ cfg.vsa_mode = ToInt(v); seenVsaMode=true; }
+      else if(k=="vsaNv")  { cfg.vsa_vol_lb = ToInt(v); seenVsaNv=true; }
+      else if(k=="vsaNs")  { cfg.vsa_spread_lb = ToInt(v); seenVsaNs=true; }
+      else if(k=="vsaNt")  { cfg.vsa_trend_lb = ToInt(v); seenVsaNt=true; }
+      else if(k=="vsaK")   { cfg.vsa_strength_k = ToDouble(v); seenVsaK=true; }
+
+      else if(k=="vsaMtf")   { cfg.vsa_mtf_confirm = ToBool(v); seenVsaMtf=true; }
+      else if(k=="vsaMtfTf") { cfg.vsa_mtf_tf = (ENUM_TIMEFRAMES)ToInt(v); seenVsaMtfTf=true; }
+      else if(k=="vsaNorm")  { cfg.vsa_normscore_abs_th = ToDouble(v); seenVsaNorm=true; }
+      
       else if(k=="struct") cfg.structure_enable = ToBool(v);
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
       else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
@@ -7536,6 +7801,13 @@ namespace Config
 
         else if(k=="scOFex")  cfg.scan_of_exhaust_lb    = ToInt(v);
         else if(k=="scOFhtf") cfg.scan_of_htf_mult      = ToInt(v);
+
+        // OFIS optional extensions
+        else if(k=="scOFMomOn") cfg.scan_of_mom_enable = ToBool(v);
+        else if(k=="scOFMomE")  cfg.scan_of_mom_ema_len = ToInt(v);
+        else if(k=="scOFMomT")  cfg.scan_of_mom_thr = ToDouble(v);
+        else if(k=="scOFSwpC")  cfg.scan_of_liqsweep_confirm_enable = ToBool(v);
+        else if(k=="scOFCvdR")  cfg.scan_of_cvd_reset_mode = ToInt(v);
         
         else if(k=="scFTickOn")  cfg.scan_foot_allow_ticks = ToBool(v);
         else if(k=="scFTickMax") cfg.scan_foot_ticks_max_tf_sec = ToInt(v);
@@ -7557,6 +7829,29 @@ namespace Config
         else if(k=="scFAbsR")  cfg.scan_foot_absorb_min_ratio = ToDouble(v);
         else if(k=="scFPOCap") cfg.scan_foot_poc_approach_atr = ToDouble(v);
 
+        // Advanced footprint engine
+        else if(k=="scFImbM")   cfg.scan_foot_imb_mode = ToInt(v);
+        else if(k=="scFImbOff") cfg.scan_foot_imb_diag_offset_levels = ToInt(v);
+
+        else if(k=="scFStrict") cfg.scan_foot_strict_trade_ticks_only = ToBool(v);
+        else if(k=="scFQPx")    cfg.scan_foot_allow_quote_proxy_ticks = ToBool(v);
+
+        else if(k=="scFAbM")    cfg.scan_foot_absorb_mode = ToInt(v);
+        else if(k=="scFAbK")    cfg.scan_foot_absorb_k_avg_lvl = ToDouble(v);
+        else if(k=="scFAbRA")   cfg.scan_foot_absorb_small_rng_atr = ToDouble(v);
+        else if(k=="scFAbDF")   cfg.scan_foot_absorb_low_delta_frac = ToDouble(v);
+
+        else if(k=="scFClM")    cfg.scan_foot_cluster_mult = ToDouble(v);
+        else if(k=="scFClV")    cfg.scan_foot_cluster_min_vol = ToDouble(v);
+
+        else if(k=="scFEUA")    cfg.scan_foot_emit_unfinished_auctions = ToBool(v);
+        else if(k=="scFECl")    cfg.scan_foot_emit_clusters = ToBool(v);
+
+        else if(k=="scFEEx")    cfg.scan_foot_emit_exhaust_extremes = ToBool(v);
+        else if(k=="scFExLV")   cfg.scan_foot_exhaust_low_vol_frac_avg = ToDouble(v);
+        else if(k=="scFExPL")   cfg.scan_foot_exhaust_prior_levels = ToInt(v);
+        else if(k=="scFExAH")   cfg.scan_foot_exhaust_min_aggr_hits = ToInt(v);
+        
         // Correlation (existing)
         else if(k=="scCorrOn")  cfg.scan_corr_enable    = ToBool(v);
         else if(k=="scCorrThr") cfg.scan_corr_threshold = ToDouble(v);
@@ -7596,6 +7891,37 @@ namespace Config
         else if(k=="scVPPoc")   cfg.scan_vp_poc_shift_atr = ToDouble(v);
         else if(k=="scVPStale") cfg.scan_vp_stale_sec = ToInt(v);
         else if(k=="scVPDist")  cfg.scan_vp_distribute_range = ToBool(v);
+
+        // Advanced VP engine
+        else if(k=="scVPM")    cfg.scan_vp_profile_mode = ToInt(v);
+        else if(k=="scVPSm")   cfg.scan_vp_session_mode = ToInt(v);
+        else if(k=="scVPAU")   cfg.scan_vp_anchor_minute_utc = ToInt(v);
+        else if(k=="scVPCmp")  cfg.scan_vp_composite_sessions = ToInt(v);
+        else if(k=="scVPVis")  cfg.scan_vp_visible_range_sec = ToInt(v);
+
+        else if(k=="scVPBM")   cfg.scan_vp_bin_mode = ToInt(v);
+        else if(k=="scVPBC")   cfg.scan_vp_bin_count = ToInt(v);
+        else if(k=="scVPAlc")  cfg.scan_vp_alloc_mode = ToInt(v);
+
+        else if(k=="scVPVol")  cfg.scan_vp_volume_mode = ToInt(v);
+        else if(k=="scVPDlt")  cfg.scan_vp_delta_mode = ToBool(v);
+        else if(k=="scVPFT")   cfg.scan_vp_use_footprint_ticks = ToBool(v);
+        else if(k=="scVPFBM")  cfg.scan_vp_footprint_build_mode = ToInt(v);
+        else if(k=="scVPFMB")  cfg.scan_vp_footprint_min_bars = ToInt(v);
+
+        else if(k=="scVPVW")   cfg.scan_vp_compute_vwap = ToBool(v);
+        else if(k=="scVPDP")   cfg.scan_vp_compute_dev_poc = ToBool(v);
+        else if(k=="scVPDPM")  cfg.scan_vp_dev_poc_max_points = ToInt(v);
+        else if(k=="scVPNF")   cfg.scan_vp_compute_nodes_full = ToBool(v);
+        else if(k=="scVPShp")  cfg.scan_vp_compute_shape = ToBool(v);
+
+        else if(k=="scVPSmOn") cfg.scan_vp_smoothing_enable = ToBool(v);
+        else if(k=="scVPSmS")  cfg.scan_vp_smoothing_sigma_bins = ToDouble(v);
+        else if(k=="scVPSmR")  cfg.scan_vp_smoothing_radius = ToInt(v);
+        else if(k=="scVPNSm")  cfg.scan_vp_node_detect_on_smoothed = ToBool(v);
+
+        else if(k=="scVPHvn")  cfg.scan_vp_hvn_min_frac = ToDouble(v);
+        else if(k=="scVPLvn")  cfg.scan_vp_lvn_max_frac = ToDouble(v);
       #endif
 
       else if(k=="scLPAppr") cfg.scan_liq_pool_approach_atr = ToDouble(v);
@@ -7789,6 +8115,16 @@ namespace Config
     #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
       if(!seenVsaTick) cfg.vsa_allow_tick_volume = true;
     #endif
+    
+    if(!seenVsaMode) cfg.vsa_mode = 0;
+    if(!seenVsaNv)   cfg.vsa_vol_lb = 20;
+    if(!seenVsaNs)   cfg.vsa_spread_lb = 20;
+    if(!seenVsaNt)   cfg.vsa_trend_lb = 50;
+    if(!seenVsaK)    cfg.vsa_strength_k = 1.5;
+
+    if(!seenVsaMtf)   cfg.vsa_mtf_confirm = false;
+    if(!seenVsaMtfTf) cfg.vsa_mtf_tf = PERIOD_H1;
+    if(!seenVsaNorm)  cfg.vsa_normscore_abs_th = 0.30;
 
     Normalize(cfg);
     _SyncRouterFallbackAlias(cfg);
@@ -8257,7 +8593,14 @@ struct Settings
 
    int    scan_of_exhaust_lb;          // exhaustion lookback (spec: 5)
    int    scan_of_htf_mult;            // HTF multiplier (spec: 4)
-    
+
+   // OFIS optional extensions (backend-only / future Confluence wiring)
+   bool   scan_of_mom_enable;              // emit/cache OFM (order flow momentum) signals
+   int    scan_of_mom_ema_len;             // OFM smoothing EMA length
+   double scan_of_mom_thr;                 // OFM threshold (implementation-defined; keep conservative)
+   bool   scan_of_liqsweep_confirm_enable; // fuse liquidity sweep + opposite delta confirmation
+   int    scan_of_cvd_reset_mode;          // 0=broker-day (current), 1=session, 2=continuous
+   
    bool scan_corr_enable;
    double scan_corr_threshold;   // abs(corr) threshold to classify "strong"
    double scan_corr_recover;     // abs(corr) <= this => "weak" (hysteresis)
@@ -8284,29 +8627,58 @@ struct Settings
    double scan_news_breakout_squeeze_ratio;
    int scan_news_breakout_lookback_bars;
 
-    // --- Footprint proxy (backend-only) ---
-    bool   scan_foot_allow_ticks;
-    int    scan_foot_ticks_max_tf_sec;
-    int    scan_foot_min_ticks;
+   // --- Footprint / order-flow backend controls (backend-only) ---
+   bool   scan_foot_allow_ticks;
+   int    scan_foot_ticks_max_tf_sec;
+   int    scan_foot_min_ticks;
 
-    // Tick classification (OFIS preferred path)
-    bool   scan_foot_use_bidask_rule;     // prefer last>=ask / last<=bid classification when quotes exist
-    double scan_foot_bidask_eps_points;   // eps in POINTS for bid/ask rule comparisons (0..5 typical)
+   // Tick classification (OFIS preferred path)
+   bool   scan_foot_use_bidask_rule;     // prefer last>=ask / last<=bid classification when quotes exist
+   double scan_foot_bidask_eps_points;   // eps in POINTS for bid/ask rule comparisons (0..5 typical)
      
-    int    scan_foot_bin_points;
-    int    scan_foot_max_levels;
+   int    scan_foot_bin_points;
+   int    scan_foot_max_levels;
 
-    double scan_foot_value_area_pct;
+   double scan_foot_value_area_pct;
 
-    double scan_foot_imb_ratio;
-    double scan_foot_imb_min_vol;
-    int    scan_foot_stacked_levels;
+   double scan_foot_imb_ratio;
+   double scan_foot_imb_min_vol;
+   int    scan_foot_stacked_levels;
 
-    int    scan_foot_absorb_depth_levels;
-    double scan_foot_absorb_min_ratio;
+   int    scan_foot_absorb_depth_levels;
+   double scan_foot_absorb_min_ratio;
+   double scan_foot_poc_approach_atr;
 
-    double scan_foot_poc_approach_atr;
+   // Advanced footprint engine controls (backend-only; optional)
+   // Imbalance mode
+   int    scan_foot_imb_mode;                // 0=same-cell (current), 1=diagonal-1tick (spec)
+   int    scan_foot_imb_diag_offset_levels;  // default 1
 
+   // Tick source strictness
+   bool   scan_foot_strict_trade_ticks_only; // true = trade prints only
+   bool   scan_foot_allow_quote_proxy_ticks; // false = no synthetic quote-derived proxy ticks
+
+   // Absorption spec/hybrid controls
+   int    scan_foot_absorb_mode;             // 0=heuristic, 1=spec, 2=hybrid
+   double scan_foot_absorb_k_avg_lvl;        // k * avgVolPerLevel
+   double scan_foot_absorb_small_rng_atr;    // range <= frac * ATRproxy
+   double scan_foot_absorb_low_delta_frac;   // |delta(P)| <= frac * total(P)
+
+   // Cluster detection
+   double scan_foot_cluster_mult;            // total(P) >= mult * avgVolPerLevel
+   double scan_foot_cluster_min_vol;         // absolute floor
+
+   // Optional scanner emit controls (Confluence-side)
+   bool   scan_foot_emit_unfinished_auctions;
+   bool   scan_foot_emit_clusters;
+
+   // Extreme exhaustion (footprint-level low-volume extreme + prior aggression)
+   // Note: threshold semantics mirror FootprintProxy::FPConfig for direct wiring.
+   bool   scan_foot_emit_exhaust_extremes;    // Confluence emit gate (default OFF)
+   double scan_foot_exhaust_low_vol_frac_avg; // extreme total <= frac * avgVolPerLevel
+   int    scan_foot_exhaust_prior_levels;     // inward levels to inspect for prior aggression
+   int    scan_foot_exhaust_min_aggr_hits;    // required aggressive-imbalance hits
+   
    // Volume Profile scanner
    bool   scan_vp_enable;
    int    scan_vp_lookback_bars;       // histogram build lookback (closed bars)
@@ -8317,6 +8689,43 @@ struct Settings
    double scan_vp_poc_shift_atr;       // emit POC shift if moves > X * ATR
    int    scan_vp_stale_sec;           // rebuild if cache older than this
    bool   scan_vp_distribute_range;    // distribute bar weight over range (slower)
+
+   // --- Advanced Volume Profile engine settings (backend / Confluence wiring) ---
+   // Mode / Range
+   int    scan_vp_profile_mode;        // 0=rolling, 1=time-range, 2=fixed, 3=session, 4=visible, 5=composite, 6=anchored, 7=rolling-window
+   int    scan_vp_session_mode;        // 0=broker-day, 1=anchored session
+   int    scan_vp_anchor_minute_utc;   // 0..1439 (minute-of-day anchor for anchored/session modes)
+   int    scan_vp_composite_sessions;  // number of sessions/days to combine
+   int    scan_vp_visible_range_sec;   // backend placeholder; 0=disabled / caller-supplied range preferred
+
+   // Grid / Allocation
+   int    scan_vp_bin_mode;            // 0=bin_points, 1=bin_count
+   int    scan_vp_bin_count;           // used when bin_mode==1
+   int    scan_vp_alloc_mode;          // 0=auto, 1=close, 2=typical, 3=range-proportional, 4=tick-footprint
+
+   // Volume semantics
+   int    scan_vp_volume_mode;         // 0=total, 1=buy, 2=sell, 3=delta (same semantic as "volume_type")
+   bool   scan_vp_delta_mode;          // compute/store delta bins if available
+   bool   scan_vp_use_footprint_ticks; // enable Method C tick/footprint path (via FootprintProxy)
+   int    scan_vp_footprint_build_mode;// 0=auto, 1=ticks-only, 2=model-only
+   int    scan_vp_footprint_min_bars;  // minimum bars before attempting footprint range build
+
+   // Derived outputs
+   bool   scan_vp_compute_vwap;        // compute profile VWAP
+   bool   scan_vp_compute_dev_poc;     // compute developing POC series
+   int    scan_vp_dev_poc_max_points;  // cap stored dev-POC points
+   bool   scan_vp_compute_nodes_full;  // compute full HVN/LVN node lists
+   bool   scan_vp_compute_shape;       // compute D/P/b/double-distribution shape classification
+
+   // Smoothing / node basis
+   bool   scan_vp_smoothing_enable;       // gaussian smoothing on/off
+   double scan_vp_smoothing_sigma_bins;   // sigma in bin units
+   int    scan_vp_smoothing_radius;       // kernel radius in bins
+   bool   scan_vp_node_detect_on_smoothed;// detect nodes on smoothed histogram instead of raw
+
+   // Node thresholds / heuristics (backend tuning)
+   double scan_vp_hvn_min_frac;        // optional HVN threshold fraction of max bin vol (0..1)
+   double scan_vp_lvn_max_frac;        // optional LVN threshold fraction of max bin vol (0..1)
 #endif
    
    double scan_liq_pool_approach_atr;      // e.g. 0.35
@@ -8858,6 +9267,18 @@ struct Settings
   bool              vsa_enable;
   double            vsa_penalty_max;
   int               vsa_lookback;     // VSA scan lookback bars (0/<=0 => fall back to internal default)
+  
+  // VSA exact-spec / hybrid mode settings (formal VSA layer)
+  int               vsa_mode;              // 0=legacy, 1=classical exact-spec, 2=hybrid union
+  int               vsa_vol_lb;            // N_v (volume lookback)
+  int               vsa_spread_lb;         // N_s (spread lookback)
+  int               vsa_trend_lb;          // N_t (MA trend lookback)
+  double            vsa_strength_k;        // k (volume spike factor)
+
+  bool              vsa_mtf_confirm;       // optional: require HTF trend alignment
+  ENUM_TIMEFRAMES   vsa_mtf_tf;            // HTF used for confirmation (e.g., PERIOD_H1)
+  double            vsa_normscore_abs_th;  // optional configurable |NormScore| gate (default 0.30)
+  
   #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
     bool              vsa_allow_tick_volume; // allow tick volume in VSA when real volume unavailable
   #endif
