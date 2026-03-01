@@ -1125,6 +1125,7 @@ namespace Config
      #endif
      double orderflow_th;
      bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
+     int    vsa_lookback;          // VSA scan lookback bars (0/<=0 => internal fallback / Normalize() default)
      
      // VSA exact-spec / hybrid mode settings
      int    vsa_mode;               // 0=legacy, 1=classical, 2=hybrid
@@ -1135,6 +1136,56 @@ namespace Config
      bool   vsa_mtf_confirm;        // optional MTF trend confirmation
      ENUM_TIMEFRAMES vsa_mtf_tf;    // higher TF for MTF confirmation
      double vsa_normscore_abs_th;   // optional configurable norm-score gate (default 0.30)
+
+     // Exact-spec thresholds / behavior knobs (new)
+     double vsa_rv_low_th;          // RV low threshold (default 0.8)
+     double vsa_rv_high_th;         // RV high threshold (default 1.2)
+     double vsa_rv_very_high_th;    // RV very-high threshold (default 1.5)
+     double vsa_rv_ultra_high_th;   // RV ultra-high threshold (default 2.0)
+
+     double vsa_rs_narrow_th;       // RS narrow threshold (default 0.7)
+     double vsa_rs_wide_th;         // RS wide threshold (default 1.3)
+
+     double vsa_clv_strong_up_th;   // CLV strong-up threshold (default +0.6)
+     double vsa_clv_strong_dn_th;   // CLV strong-down threshold (default -0.6)
+
+     int    vsa_abs_lb;             // absorption MA lookback (default 20)
+     double vsa_norm_abs_high_th;   // normalized absorption high threshold (default 1.5)
+
+     double vsa_score_strong_th;    // exact composite score strong threshold (default 5.0)
+
+     bool   vsa_use_true_range;                 // use TR instead of spread for RS baseline
+     bool   vsa_trend_use_ema_pair;             // use EMA fast/slow trend filter (default true)
+     int    vsa_ema_fast;                       // default 50
+     int    vsa_ema_slow;                       // default 200
+     bool   vsa_use_normscore_gate_on_final;    // keep BC-style norm gate on final signal
+     bool   vsa_require_prev_hhll_ut_shake;     // require HH/LL vs prev bar for UT/Shakeout
+
+     // Universal VSA (multi-market adaptive) controls
+     int    vsa_market_mode;              // 0=auto, 1=forex, 2=exchange-volume
+     int    vsa_vol_class_mode;           // 0=RV, 1=ZV, 2=adaptive
+
+     bool   vsa_use_session_vol_norm;     // enable session-relative volume (SessRV)
+     int    vsa_session_vol_lb;           // session volume lookback / sample cap
+
+     bool   vsa_use_vol_percent_rank;     // enable percentile-rank volume adaptation
+     int    vsa_percent_rank_lb;          // percentile lookback
+     double vsa_percent_rank_high_th;     // e.g. 0.90
+     double vsa_percent_rank_low_th;      // e.g. 0.20
+
+     bool   vsa_spread_zscore_enable;     // enable spread z-score metric
+     int    vsa_spread_z_lb;              // spread z-score lookback
+
+     bool   vsa_absorption_zscore_enable; // use absorption z-score for absorptionHigh
+     double vsa_absorption_z_high_th;     // z-score threshold (default 2.0)
+
+     int    vsa_er_lb;                    // effort/result ER/NER lookback
+
+     // Optional exact rule threshold overrides (literal-spec tuning)
+     double vsa_stopvol_zv_th;            // stopping volume ZV threshold (default 1.5)
+     double vsa_stopvol_rs_th;            // stopping volume RS threshold (default 1.2)
+     double vsa_utso_zv_th;               // upthrust/shakeout ZV threshold (default 1.0)
+     double vsa_utso_rs_th;               // upthrust/shakeout RS threshold (default 1.2)
      
      ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
      
@@ -2110,7 +2161,8 @@ namespace Config
      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
        cfg.vsa_allow_tick_volume = x.vsa_allow_tick_volume;
      #endif
-     
+      cfg.vsa_lookback         = x.vsa_lookback;
+      
       // VSA exact-spec / hybrid settings
       cfg.vsa_mode             = x.vsa_mode;
       cfg.vsa_vol_lb           = x.vsa_vol_lb;
@@ -2120,6 +2172,53 @@ namespace Config
       cfg.vsa_mtf_confirm      = x.vsa_mtf_confirm;
       cfg.vsa_mtf_tf           = x.vsa_mtf_tf;
       cfg.vsa_normscore_abs_th = x.vsa_normscore_abs_th;
+
+      cfg.vsa_rv_low_th        = x.vsa_rv_low_th;
+      cfg.vsa_rv_high_th       = x.vsa_rv_high_th;
+      cfg.vsa_rv_very_high_th  = x.vsa_rv_very_high_th;
+      cfg.vsa_rv_ultra_high_th = x.vsa_rv_ultra_high_th;
+
+      cfg.vsa_rs_narrow_th     = x.vsa_rs_narrow_th;
+      cfg.vsa_rs_wide_th       = x.vsa_rs_wide_th;
+
+      cfg.vsa_clv_strong_up_th = x.vsa_clv_strong_up_th;
+      cfg.vsa_clv_strong_dn_th = x.vsa_clv_strong_dn_th;
+
+      cfg.vsa_abs_lb           = x.vsa_abs_lb;
+      cfg.vsa_norm_abs_high_th = x.vsa_norm_abs_high_th;
+
+      cfg.vsa_score_strong_th  = x.vsa_score_strong_th;
+
+      cfg.vsa_use_true_range              = x.vsa_use_true_range;
+      cfg.vsa_trend_use_ema_pair          = x.vsa_trend_use_ema_pair;
+      cfg.vsa_ema_fast                    = x.vsa_ema_fast;
+      cfg.vsa_ema_slow                    = x.vsa_ema_slow;
+      cfg.vsa_use_normscore_gate_on_final = x.vsa_use_normscore_gate_on_final;
+      cfg.vsa_require_prev_hhll_ut_shake  = x.vsa_require_prev_hhll_ut_shake;
+
+      cfg.vsa_market_mode                 = x.vsa_market_mode;
+      cfg.vsa_vol_class_mode              = x.vsa_vol_class_mode;
+
+      cfg.vsa_use_session_vol_norm        = x.vsa_use_session_vol_norm;
+      cfg.vsa_session_vol_lb              = x.vsa_session_vol_lb;
+
+      cfg.vsa_use_vol_percent_rank        = x.vsa_use_vol_percent_rank;
+      cfg.vsa_percent_rank_lb             = x.vsa_percent_rank_lb;
+      cfg.vsa_percent_rank_high_th        = x.vsa_percent_rank_high_th;
+      cfg.vsa_percent_rank_low_th         = x.vsa_percent_rank_low_th;
+
+      cfg.vsa_spread_zscore_enable        = x.vsa_spread_zscore_enable;
+      cfg.vsa_spread_z_lb                 = x.vsa_spread_z_lb;
+
+      cfg.vsa_absorption_zscore_enable    = x.vsa_absorption_zscore_enable;
+      cfg.vsa_absorption_z_high_th        = x.vsa_absorption_z_high_th;
+
+      cfg.vsa_er_lb                       = x.vsa_er_lb;
+
+      cfg.vsa_stopvol_zv_th               = x.vsa_stopvol_zv_th;
+      cfg.vsa_stopvol_rs_th               = x.vsa_stopvol_rs_th;
+      cfg.vsa_utso_zv_th                  = x.vsa_utso_zv_th;
+      cfg.vsa_utso_rs_th                  = x.vsa_utso_rs_th;
       
      #ifdef CFG_HAS_TF_TREND_HTF
        cfg.tf_trend_htf = x.tf_trend_htf;
@@ -2553,9 +2652,10 @@ namespace Config
      #endif
      x.orderflow_th           = 0.60;          // FX-friendly default threshold
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
+     x.vsa_lookback         = 60;           // VSA scan lookback bars (matches Normalize() default)
      
      // VSA exact-spec defaults (formal layer)
-     x.vsa_mode             = 0;           // default legacy (non-breaking rollout)
+     x.vsa_mode             = 2;           // default HYBRID exact-spec (spec-first branch)
      x.vsa_vol_lb           = 20;          // N_v
      x.vsa_spread_lb        = 20;          // N_s
      x.vsa_trend_lb         = 50;          // N_t
@@ -2563,7 +2663,60 @@ namespace Config
      x.vsa_mtf_confirm      = false;       // optional enhancement OFF by default
      x.vsa_mtf_tf           = PERIOD_H1;   // sensible default when enabled later
      x.vsa_normscore_abs_th = 0.30;        // exact-spec final gate default
+
+     // Exact-spec thresholds
+     x.vsa_rv_low_th        = 0.8;
+     x.vsa_rv_high_th       = 1.2;
+     x.vsa_rv_very_high_th  = 1.5;
+     x.vsa_rv_ultra_high_th = 2.0;
+
+     x.vsa_rs_narrow_th     = 0.7;
+     x.vsa_rs_wide_th       = 1.3;
+
+     x.vsa_clv_strong_up_th = 0.6;
+     x.vsa_clv_strong_dn_th = -0.6;
+
+     x.vsa_abs_lb           = 20;
+     x.vsa_norm_abs_high_th = 1.5;
+
+     x.vsa_score_strong_th  = 5.0;
+
+     // Exact-spec behavior toggles (conservative defaults)
+     x.vsa_use_true_range              = false;
+     x.vsa_trend_use_ema_pair          = true;
+     x.vsa_ema_fast                    = 50;
+     x.vsa_ema_slow                    = 200;
+     x.vsa_use_normscore_gate_on_final = true;
+     x.vsa_require_prev_hhll_ut_shake  = true;
+
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
+     
+     // Universal VSA defaults (multi-market adaptive extension)
+     // Spec-first branch: exact/hybrid VSA is enabled by default (see vsa_mode above).
+     x.vsa_market_mode              = 0;      // auto
+     x.vsa_vol_class_mode           = 2;      // adaptive
+
+     x.vsa_use_session_vol_norm     = true;   // spec-first default ON (Forex-friendly session normalization)
+     x.vsa_session_vol_lb           = 60;
+
+     x.vsa_use_vol_percent_rank     = true;   // spec-first default ON (Forex-friendly percentile adaptation)
+     x.vsa_percent_rank_lb          = 30;
+     x.vsa_percent_rank_high_th     = 0.90;
+     x.vsa_percent_rank_low_th      = 0.20;
+
+     x.vsa_spread_zscore_enable     = false;  // optional advanced metric
+     x.vsa_spread_z_lb              = 30;
+
+     x.vsa_absorption_zscore_enable = true;   // exact-spec preferred absorption path
+     x.vsa_absorption_z_high_th     = 2.0;
+
+     x.vsa_er_lb                    = 20;
+
+     // Literal-spec pattern threshold overrides
+     x.vsa_stopvol_zv_th            = 1.5;
+     x.vsa_stopvol_rs_th            = 1.2;
+     x.vsa_utso_zv_th               = 1.0;
+     x.vsa_utso_rs_th               = 1.2;
      
      // Baseline weights for extras (features OFF by default; weights ready when enabled)
      x.w_volume_footprint = 0.05;
@@ -2968,6 +3121,7 @@ namespace Config
       
       cfg.scan_obi_enable  = false;
       cfg.scan_foot_enable = false;
+      cfg.scan_of_enable   = false;
       cfg.scan_corr_enable = false;
       cfg.scan_news_enable = false;
 
@@ -3019,7 +3173,8 @@ namespace Config
       cfg.scan_foot_exhaust_low_vol_frac_avg= 0.50;
       cfg.scan_foot_exhaust_prior_levels    = 3;
       cfg.scan_foot_exhaust_min_aggr_hits   = 1;
-      
+      cfg.scan_foot_exhaust_require_close_near = true;
+
       // --- Wyckoff tuning (phase + manipulation + VSA confirmation)
       cfg.scan_wyck_emit_phase     = true;
       cfg.scan_wyck_phase_zvol_min = 0.50;
@@ -3030,6 +3185,8 @@ namespace Config
       // --- OBI tuning (preserve prior "hardcode-like" behavior)
       cfg.scan_obi_depth_points  = 25;
       cfg.scan_obi_threshold     = 0.30;
+      
+      // NOTE: scan_obi_threshold is symmetric-domain by default; z-score mode should use scan_obi_z_threshold
       cfg.scan_obi_vwap_enable   = true;
       cfg.scan_obi_keylevel_atr  = 0.25;
       cfg.scan_obi_cache_ms      = 250;
@@ -3044,6 +3201,113 @@ namespace Config
       cfg.scan_obi_weight_half_life_points = 0.0;   // flat weights when disabled
       cfg.scan_obi_ema_len                 = 0;     // disabled
       cfg.scan_obi_weight_ref              = 0;     // MID
+
+      // --- OBI pipeline extensions (back-compat defaults: disabled / conservative)
+      cfg.scan_obi_basis_mode         = 0;    // volume
+      cfg.scan_obi_norm_mode          = 0;    // none
+      cfg.scan_obi_z_window           = 0;    // disabled
+      cfg.scan_obi_z_min_samples      = 20;
+      cfg.scan_obi_z_clamp_abs        = 0.0;  // disabled
+      cfg.scan_obi_z_threshold        = 2.0;  // only used when z-score mode active
+
+      cfg.scan_obi_transform_mode     = 0;    // none
+      cfg.scan_obi_logistic_k         = 4.0;
+      cfg.scan_obi_power_gamma        = 2.0;
+
+      cfg.scan_obi_spread_min_points  = 1.0;
+      cfg.scan_obi_spread_adjust_cap  = 0.0;  // disabled
+
+      cfg.scan_obi_ofi_mode           = 0;    // best-quote OFI (preserve current behavior)
+      cfg.scan_obi_ofi_levels         = 10;
+      cfg.scan_obi_ofi_norm_mode      = 0;    // top-book sum / legacy-like normalization
+
+      cfg.scan_obi_div_enable         = false;
+      cfg.scan_obi_div_lookback       = 1;
+      cfg.scan_obi_div_min_price_atr  = 0.0;  // disabled unless >0
+      cfg.scan_obi_div_min_obi_move   = 0.0;  // disabled unless >0
+      cfg.scan_obi_div_cooldown_sec   = 0;    // no cooldown by default
+
+      cfg.scan_obi_retry_cooldown_ms       = 1000;
+      cfg.scan_obi_nodata_cache_ms         = 500;
+      cfg.scan_obi_zone_pad_points         = 0;
+      cfg.scan_obi_min_edge_distance_points= 1;
+      cfg.scan_obi_eps_vol                 = 1e-9;
+      cfg.scan_obi_max_ratio_m1            = 10.0;
+
+      cfg.scan_obi_flip_hysteresis_abs     = 0.0;
+
+      // --- OBI institutional extensions (defaults OFF / neutral to preserve behavior)
+      cfg.scan_obi_weight_mode                 = 0;     // legacy/none (preserve current weighted_enable semantics)
+      cfg.scan_obi_weight_lambda_per_point     = 0.0;   // disabled unless mode 3 is selected
+
+      cfg.scan_obi_ma_window                   = 0;     // disabled
+      cfg.scan_obi_ma_min_samples              = 20;
+      cfg.scan_obi_ma_centering_enable         = false; // preserve raw OBI semantics
+
+      cfg.scan_obi_of_delta_source_mode        = 0;     // disabled/none (OBI core can still use OFI if explicitly selected later)
+      cfg.scan_obi_of_delta_lookback           = 60;
+      cfg.scan_obi_of_delta_use_fp_ticks_preferred = true;
+      cfg.scan_obi_of_delta_min_total          = 1.0;
+
+      cfg.scan_obi_lpi_enable                  = false;
+      cfg.scan_obi_lpi_alpha                   = 0.60;
+      cfg.scan_obi_lpi_beta                    = 0.40;
+      cfg.scan_obi_lpi_threshold               = 0.50;  // direct-domain threshold (used only if signal metric mode=LPI)
+
+      cfg.scan_obi_persistence_mode            = 0;     // off
+      cfg.scan_obi_persistence_len             = 20;
+      cfg.scan_obi_persistence_gamma           = 0.20;
+      cfg.scan_obi_persistence_threshold       = 0.0;   // disabled unless >0
+
+      cfg.scan_obi_absorption_enable           = false;
+      cfg.scan_obi_absorption_lookback         = 30;
+      cfg.scan_obi_absorption_price_eps_points = 0.25;
+      cfg.scan_obi_absorption_z_clamp_abs      = 0.0;   // disabled
+
+      cfg.scan_obi_score_enable                = false;
+      cfg.scan_obi_score_w1_zobi               = 1.0;
+      cfg.scan_obi_score_w2_ndelta             = 1.0;
+      cfg.scan_obi_score_w3_zabs               = 1.0;
+      cfg.scan_obi_score_w4_persistence        = 1.0;
+      cfg.scan_obi_score_z_window              = 50;
+      cfg.scan_obi_score_z_min_samples         = 20;
+      cfg.scan_obi_score_z_clamp_abs           = 0.0;   // disabled
+      cfg.scan_obi_score_z_threshold           = 2.0;   // direct-domain threshold (used only if signal metric mode=SCORE_Z)
+
+      cfg.scan_obi_fx_fxlpi_enable             = false;
+      cfg.scan_obi_fx_spread_z_window          = 50;
+      cfg.scan_obi_fx_spread_z_min_samples     = 20;
+      cfg.scan_obi_fx_obi_weight               = 0.70;
+      cfg.scan_obi_fx_spread_weight            = 0.30;
+      cfg.scan_obi_fxlpi_threshold             = 0.50;  // direct-domain threshold (used only if signal metric mode=FXLPI)
+
+      cfg.scan_obi_signal_metric_mode          = 0;     // base OBI final (preserve current scanner semantics)
+
+      // OBI scanner institutional classification / emit controls (optional; default OFF to preserve behavior)
+      cfg.scan_obi_ndelta_threshold            = 0.50;  // spec-style strong-class gate: |NDelta| >= 0.5
+      cfg.scan_obi_absorption_z_threshold      = 2.0;   // spec-style absorption event gate: |ZAbs| >= 2
+
+      cfg.scan_obi_emit_score_events           = false; // emit OBIX score-z threshold events
+      cfg.scan_obi_emit_persist_events         = false; // emit OBIX persistence threshold events
+      cfg.scan_obi_emit_absorb_events          = false; // emit OBIX absorption z threshold events
+      cfg.scan_obi_emit_fx_events              = false; // emit OBIX FXLPI threshold events
+      cfg.scan_obi_emit_strong_class_events    = false; // emit strong bull/bear class events (multi-condition)
+      
+      // --- VSA background-hook defaults (scanner fusion; OFF by default)
+      // Explicit init avoids zero-value ambiguity when feature is later enabled.
+      cfg.scan_vsa_hook_enable                = false;
+      cfg.scan_vsa_hook_apply_to_obi          = true;
+      cfg.scan_vsa_hook_apply_to_foot         = true;
+      cfg.scan_vsa_hook_apply_to_vp           = true;
+
+      cfg.scan_vsa_hook_min_abs_relvol        = 0.50;
+      cfg.scan_vsa_hook_min_abs_normscore     = 0.15;
+      cfg.scan_vsa_hook_min_spread_ratio      = 0.80;
+
+      cfg.scan_vsa_hook_directional_norm_gate = true;
+      cfg.scan_vsa_hook_use_final_signal_hint = true;
+      cfg.scan_vsa_hook_require_mtf_align     = false;
+      cfg.scan_vsa_hook_boost_max             = 1.20;
       
       // --- Footprint thresholds (z-score based)
       cfg.scan_foot_use_atr_proxy = cfg.scan_fvg_use_atr_proxy;
@@ -3069,6 +3333,12 @@ namespace Config
       cfg.scan_of_mom_thr                 = 10.0;
       cfg.scan_of_liqsweep_confirm_enable = false;
       cfg.scan_of_cvd_reset_mode          = 0;   // 0=broker-day (matches current Confluence behavior)
+
+      // OFR (Order Flow Ratio) optional scanner extensions (disabled by default to preserve behavior)
+      cfg.scan_of_ofr_enable          = false;
+      cfg.scan_of_ofr_buy_share_thr   = 0.60; // buy dominance threshold (sell dominance uses 1-thr)
+      cfg.scan_of_ofr_rebalance_band  = 0.05; // neutral band around 0.50
+      cfg.scan_of_ofr_min_total_vol   = 1.0;  // min aggressive-flow proxy total volume to evaluate OFR
       
       // --- Correlation tuning
       cfg.scan_corr_threshold = 0.70;
@@ -3406,7 +3676,8 @@ namespace Config
 
       if(cfg.scan_obi_threshold < 0.05) cfg.scan_obi_threshold = 0.05;
       if(cfg.scan_obi_threshold > 0.95) cfg.scan_obi_threshold = 0.95;
-
+      
+      // For z-score normalization mode, use scan_obi_z_threshold (clamped below) instead of overloading scan_obi_threshold.
       if(cfg.scan_obi_keylevel_atr < 0.0) cfg.scan_obi_keylevel_atr = 0.0;
       if(cfg.scan_obi_keylevel_atr > 3.0) cfg.scan_obi_keylevel_atr = 3.0;
       
@@ -3424,7 +3695,7 @@ namespace Config
 
       // OBI advanced mode / aggregation clamps
       if(cfg.scan_obi_mode < 0) cfg.scan_obi_mode = 0;
-      if(cfg.scan_obi_mode > 3) cfg.scan_obi_mode = 3; // mode 3 = proxy-footprint fallback
+      if(cfg.scan_obi_mode > 4) cfg.scan_obi_mode = 4; // mode 4 = proxy-delta fallback
 
       if(cfg.scan_obi_top_levels < 0)  cfg.scan_obi_top_levels = 0;
       if(cfg.scan_obi_top_levels > 50) cfg.scan_obi_top_levels = 50;
@@ -3440,6 +3711,201 @@ namespace Config
 
       if(cfg.scan_obi_weight_ref < 0) cfg.scan_obi_weight_ref = 0;
       if(cfg.scan_obi_weight_ref > 2) cfg.scan_obi_weight_ref = 2;
+
+      // OBI pipeline extensions (strict clamps; avoid config drift)
+      if(cfg.scan_obi_basis_mode < 0) cfg.scan_obi_basis_mode = 0;
+      if(cfg.scan_obi_basis_mode > 1) cfg.scan_obi_basis_mode = 1;
+
+      if(cfg.scan_obi_norm_mode < 0) cfg.scan_obi_norm_mode = 0;
+      if(cfg.scan_obi_norm_mode > 2) cfg.scan_obi_norm_mode = 2;
+
+      if(cfg.scan_obi_z_window < 0)   cfg.scan_obi_z_window = 0;
+      if(cfg.scan_obi_z_window > 512) cfg.scan_obi_z_window = 512;
+
+      if(cfg.scan_obi_z_min_samples < 2)   cfg.scan_obi_z_min_samples = 2;
+      if(cfg.scan_obi_z_min_samples > 512) cfg.scan_obi_z_min_samples = 512;
+
+      if(cfg.scan_obi_z_clamp_abs < 0.0)  cfg.scan_obi_z_clamp_abs = 0.0;
+      if(cfg.scan_obi_z_clamp_abs > 50.0) cfg.scan_obi_z_clamp_abs = 50.0;
+
+      if(cfg.scan_obi_z_threshold < 0.05) cfg.scan_obi_z_threshold = 0.05;
+      if(cfg.scan_obi_z_threshold > 20.0) cfg.scan_obi_z_threshold = 20.0;
+
+      if(cfg.scan_obi_transform_mode < 0) cfg.scan_obi_transform_mode = 0;
+      if(cfg.scan_obi_transform_mode > 2) cfg.scan_obi_transform_mode = 2;
+
+      if(cfg.scan_obi_logistic_k <= 0.0) cfg.scan_obi_logistic_k = 4.0;
+      if(cfg.scan_obi_logistic_k > 100.0) cfg.scan_obi_logistic_k = 100.0;
+
+      if(cfg.scan_obi_power_gamma <= 0.0) cfg.scan_obi_power_gamma = 2.0;
+      if(cfg.scan_obi_power_gamma > 10.0) cfg.scan_obi_power_gamma = 10.0;
+
+      if(cfg.scan_obi_spread_min_points <= 0.0) cfg.scan_obi_spread_min_points = 1.0;
+      if(cfg.scan_obi_spread_min_points > 1000.0) cfg.scan_obi_spread_min_points = 1000.0;
+
+      if(cfg.scan_obi_spread_adjust_cap < 0.0) cfg.scan_obi_spread_adjust_cap = 0.0;
+      if(cfg.scan_obi_spread_adjust_cap > 1000.0) cfg.scan_obi_spread_adjust_cap = 1000.0;
+
+      if(cfg.scan_obi_ofi_mode < 0) cfg.scan_obi_ofi_mode = 0;
+      if(cfg.scan_obi_ofi_mode > 1) cfg.scan_obi_ofi_mode = 1;
+
+      if(cfg.scan_obi_ofi_levels < 1)  cfg.scan_obi_ofi_levels = 1;
+      if(cfg.scan_obi_ofi_levels > 32) cfg.scan_obi_ofi_levels = 32;
+
+      if(cfg.scan_obi_ofi_norm_mode < 0) cfg.scan_obi_ofi_norm_mode = 0;
+      if(cfg.scan_obi_ofi_norm_mode > 1) cfg.scan_obi_ofi_norm_mode = 1;
+
+      if(cfg.scan_obi_div_lookback < 1) cfg.scan_obi_div_lookback = 1;
+      if(cfg.scan_obi_div_lookback > 100) cfg.scan_obi_div_lookback = 100;
+
+      if(cfg.scan_obi_div_min_price_atr < 0.0) cfg.scan_obi_div_min_price_atr = 0.0;
+      if(cfg.scan_obi_div_min_price_atr > 10.0) cfg.scan_obi_div_min_price_atr = 10.0;
+
+      if(cfg.scan_obi_div_min_obi_move < 0.0) cfg.scan_obi_div_min_obi_move = 0.0;
+      if(cfg.scan_obi_div_min_obi_move > 10.0) cfg.scan_obi_div_min_obi_move = 10.0;
+
+      if(cfg.scan_obi_div_cooldown_sec < 0) cfg.scan_obi_div_cooldown_sec = 0;
+      if(cfg.scan_obi_div_cooldown_sec > 86400) cfg.scan_obi_div_cooldown_sec = 86400;
+
+      if(cfg.scan_obi_retry_cooldown_ms < 0) cfg.scan_obi_retry_cooldown_ms = 0;
+      if(cfg.scan_obi_retry_cooldown_ms > 600000) cfg.scan_obi_retry_cooldown_ms = 600000;
+
+      if(cfg.scan_obi_nodata_cache_ms < 0) cfg.scan_obi_nodata_cache_ms = 0;
+      if(cfg.scan_obi_nodata_cache_ms > 600000) cfg.scan_obi_nodata_cache_ms = 600000;
+
+      if(cfg.scan_obi_zone_pad_points < 0) cfg.scan_obi_zone_pad_points = 0;
+      if(cfg.scan_obi_zone_pad_points > 500) cfg.scan_obi_zone_pad_points = 500;
+
+      if(cfg.scan_obi_min_edge_distance_points < 0) cfg.scan_obi_min_edge_distance_points = 0;
+      if(cfg.scan_obi_min_edge_distance_points > 500) cfg.scan_obi_min_edge_distance_points = 500;
+
+      if(cfg.scan_obi_eps_vol <= 0.0) cfg.scan_obi_eps_vol = 1e-9;
+      if(cfg.scan_obi_eps_vol > 1.0) cfg.scan_obi_eps_vol = 1.0;
+
+      if(cfg.scan_obi_max_ratio_m1 < 0.0) cfg.scan_obi_max_ratio_m1 = 0.0;
+      if(cfg.scan_obi_max_ratio_m1 > 1000000.0) cfg.scan_obi_max_ratio_m1 = 1000000.0;
+
+      if(cfg.scan_obi_flip_hysteresis_abs < 0.0) cfg.scan_obi_flip_hysteresis_abs = 0.0;
+      if(cfg.scan_obi_flip_hysteresis_abs > 1000.0) cfg.scan_obi_flip_hysteresis_abs = 1000.0;
+
+      // OBI institutional extensions clamps (primary sanitize pass)
+      if(cfg.scan_obi_weight_mode < 0) cfg.scan_obi_weight_mode = 0;
+      if(cfg.scan_obi_weight_mode > 3) cfg.scan_obi_weight_mode = 3;
+
+      if(cfg.scan_obi_weight_lambda_per_point < 0.0) cfg.scan_obi_weight_lambda_per_point = 0.0;
+      if(cfg.scan_obi_weight_lambda_per_point > 1000.0) cfg.scan_obi_weight_lambda_per_point = 1000.0;
+
+      if(cfg.scan_obi_ma_window < 0) cfg.scan_obi_ma_window = 0;
+      if(cfg.scan_obi_ma_window > 4096) cfg.scan_obi_ma_window = 4096;
+
+      if(cfg.scan_obi_ma_min_samples < 2) cfg.scan_obi_ma_min_samples = 2;
+      if(cfg.scan_obi_ma_min_samples > 4096) cfg.scan_obi_ma_min_samples = 4096;
+
+      if(cfg.scan_obi_of_delta_source_mode < 0) cfg.scan_obi_of_delta_source_mode = 0;
+      if(cfg.scan_obi_of_delta_source_mode > 4) cfg.scan_obi_of_delta_source_mode = 4;
+
+      if(cfg.scan_obi_of_delta_lookback < 1) cfg.scan_obi_of_delta_lookback = 1;
+      if(cfg.scan_obi_of_delta_lookback > 5000) cfg.scan_obi_of_delta_lookback = 5000;
+
+      if(cfg.scan_obi_of_delta_min_total < 0.0) cfg.scan_obi_of_delta_min_total = 0.0;
+      if(cfg.scan_obi_of_delta_min_total > 1000000000.0) cfg.scan_obi_of_delta_min_total = 1000000000.0;
+
+      if(cfg.scan_obi_lpi_alpha < 0.0) cfg.scan_obi_lpi_alpha = 0.0;
+      if(cfg.scan_obi_lpi_alpha > 10.0) cfg.scan_obi_lpi_alpha = 10.0;
+      if(cfg.scan_obi_lpi_beta  < 0.0) cfg.scan_obi_lpi_beta  = 0.0;
+      if(cfg.scan_obi_lpi_beta  > 10.0) cfg.scan_obi_lpi_beta  = 10.0;
+
+      if(cfg.scan_obi_lpi_threshold < 0.0) cfg.scan_obi_lpi_threshold = 0.0;
+      if(cfg.scan_obi_lpi_threshold > 10.0) cfg.scan_obi_lpi_threshold = 10.0;
+
+      if(cfg.scan_obi_persistence_mode < 0) cfg.scan_obi_persistence_mode = 0;
+      if(cfg.scan_obi_persistence_mode > 2) cfg.scan_obi_persistence_mode = 2;
+
+      if(cfg.scan_obi_persistence_len < 1) cfg.scan_obi_persistence_len = 1;
+      if(cfg.scan_obi_persistence_len > 4096) cfg.scan_obi_persistence_len = 4096;
+
+      if(cfg.scan_obi_persistence_gamma < 0.0) cfg.scan_obi_persistence_gamma = 0.0;
+      if(cfg.scan_obi_persistence_gamma > 1.0) cfg.scan_obi_persistence_gamma = 1.0;
+
+      if(cfg.scan_obi_persistence_threshold < 0.0) cfg.scan_obi_persistence_threshold = 0.0;
+      if(cfg.scan_obi_persistence_threshold > 1000000.0) cfg.scan_obi_persistence_threshold = 1000000.0;
+
+      if(cfg.scan_obi_absorption_lookback < 2) cfg.scan_obi_absorption_lookback = 2;
+      if(cfg.scan_obi_absorption_lookback > 4096) cfg.scan_obi_absorption_lookback = 4096;
+
+      if(cfg.scan_obi_absorption_price_eps_points <= 0.0) cfg.scan_obi_absorption_price_eps_points = 0.25;
+      if(cfg.scan_obi_absorption_price_eps_points > 1000.0) cfg.scan_obi_absorption_price_eps_points = 1000.0;
+
+      if(cfg.scan_obi_absorption_z_clamp_abs < 0.0) cfg.scan_obi_absorption_z_clamp_abs = 0.0;
+      if(cfg.scan_obi_absorption_z_clamp_abs > 1000.0) cfg.scan_obi_absorption_z_clamp_abs = 1000.0;
+
+      if(cfg.scan_obi_score_w1_zobi < -10.0) cfg.scan_obi_score_w1_zobi = -10.0;
+      if(cfg.scan_obi_score_w1_zobi >  10.0) cfg.scan_obi_score_w1_zobi =  10.0;
+      if(cfg.scan_obi_score_w2_ndelta < -10.0) cfg.scan_obi_score_w2_ndelta = -10.0;
+      if(cfg.scan_obi_score_w2_ndelta >  10.0) cfg.scan_obi_score_w2_ndelta =  10.0;
+      if(cfg.scan_obi_score_w3_zabs < -10.0) cfg.scan_obi_score_w3_zabs = -10.0;
+      if(cfg.scan_obi_score_w3_zabs >  10.0) cfg.scan_obi_score_w3_zabs =  10.0;
+      if(cfg.scan_obi_score_w4_persistence < -10.0) cfg.scan_obi_score_w4_persistence = -10.0;
+      if(cfg.scan_obi_score_w4_persistence >  10.0) cfg.scan_obi_score_w4_persistence =  10.0;
+
+      if(cfg.scan_obi_score_z_window < 2) cfg.scan_obi_score_z_window = 2;
+      if(cfg.scan_obi_score_z_window > 4096) cfg.scan_obi_score_z_window = 4096;
+
+      if(cfg.scan_obi_score_z_min_samples < 2) cfg.scan_obi_score_z_min_samples = 2;
+      if(cfg.scan_obi_score_z_min_samples > 4096) cfg.scan_obi_score_z_min_samples = 4096;
+
+      if(cfg.scan_obi_score_z_clamp_abs < 0.0) cfg.scan_obi_score_z_clamp_abs = 0.0;
+      if(cfg.scan_obi_score_z_clamp_abs > 1000.0) cfg.scan_obi_score_z_clamp_abs = 1000.0;
+
+      if(cfg.scan_obi_score_z_threshold < 0.05) cfg.scan_obi_score_z_threshold = 0.05;
+      if(cfg.scan_obi_score_z_threshold > 20.0) cfg.scan_obi_score_z_threshold = 20.0;
+
+      if(cfg.scan_obi_fx_spread_z_window < 2) cfg.scan_obi_fx_spread_z_window = 2;
+      if(cfg.scan_obi_fx_spread_z_window > 4096) cfg.scan_obi_fx_spread_z_window = 4096;
+
+      if(cfg.scan_obi_fx_spread_z_min_samples < 2) cfg.scan_obi_fx_spread_z_min_samples = 2;
+      if(cfg.scan_obi_fx_spread_z_min_samples > 4096) cfg.scan_obi_fx_spread_z_min_samples = 4096;
+
+      if(cfg.scan_obi_fx_obi_weight < 0.0) cfg.scan_obi_fx_obi_weight = 0.0;
+      if(cfg.scan_obi_fx_obi_weight > 10.0) cfg.scan_obi_fx_obi_weight = 10.0;
+
+      if(cfg.scan_obi_fx_spread_weight < 0.0) cfg.scan_obi_fx_spread_weight = 0.0;
+      if(cfg.scan_obi_fx_spread_weight > 10.0) cfg.scan_obi_fx_spread_weight = 10.0;
+
+      if(cfg.scan_obi_fxlpi_threshold < 0.0) cfg.scan_obi_fxlpi_threshold = 0.0;
+      if(cfg.scan_obi_fxlpi_threshold > 10.0) cfg.scan_obi_fxlpi_threshold = 10.0;
+
+      if(cfg.scan_obi_signal_metric_mode < 0) cfg.scan_obi_signal_metric_mode = 0;
+      if(cfg.scan_obi_signal_metric_mode > 3) cfg.scan_obi_signal_metric_mode = 3;
+
+      // OBI scanner institutional classification / emit control clamps (optional)
+      if(cfg.scan_obi_ndelta_threshold < 0.0) cfg.scan_obi_ndelta_threshold = 0.0;
+      if(cfg.scan_obi_ndelta_threshold > 1.0) cfg.scan_obi_ndelta_threshold = 1.0;
+
+      if(cfg.scan_obi_absorption_z_threshold < 0.05) cfg.scan_obi_absorption_z_threshold = 0.05;
+      if(cfg.scan_obi_absorption_z_threshold > 20.0) cfg.scan_obi_absorption_z_threshold = 20.0;
+
+      // OFR scanner clamps (optional; aggressive-flow proxy via Footprint/OFIS path)
+      if(cfg.scan_of_ofr_buy_share_thr < 0.50) cfg.scan_of_ofr_buy_share_thr = 0.50;
+      if(cfg.scan_of_ofr_buy_share_thr > 0.99) cfg.scan_of_ofr_buy_share_thr = 0.99;
+
+      if(cfg.scan_of_ofr_rebalance_band < 0.0)  cfg.scan_of_ofr_rebalance_band = 0.0;
+      if(cfg.scan_of_ofr_rebalance_band > 0.49) cfg.scan_of_ofr_rebalance_band = 0.49;
+
+      if(cfg.scan_of_ofr_min_total_vol < 0.0) cfg.scan_of_ofr_min_total_vol = 0.0;
+      
+      // VSA background-hook scanner fusion clamps
+      if(cfg.scan_vsa_hook_min_abs_relvol < 0.0)  cfg.scan_vsa_hook_min_abs_relvol = 0.0;
+      if(cfg.scan_vsa_hook_min_abs_relvol > 10.0) cfg.scan_vsa_hook_min_abs_relvol = 10.0;
+
+      if(cfg.scan_vsa_hook_min_abs_normscore < 0.0) cfg.scan_vsa_hook_min_abs_normscore = 0.0;
+      if(cfg.scan_vsa_hook_min_abs_normscore > 1.0) cfg.scan_vsa_hook_min_abs_normscore = 1.0;
+
+      if(cfg.scan_vsa_hook_min_spread_ratio < 0.0)  cfg.scan_vsa_hook_min_spread_ratio = 0.0;
+      if(cfg.scan_vsa_hook_min_spread_ratio > 10.0) cfg.scan_vsa_hook_min_spread_ratio = 10.0;
+
+      if(cfg.scan_vsa_hook_boost_max < 1.0) cfg.scan_vsa_hook_boost_max = 1.0;
+      if(cfg.scan_vsa_hook_boost_max > 5.0) cfg.scan_vsa_hook_boost_max = 5.0;
       
       // Wyckoff TF selector clamps (0 allowed; invalid -> 0)
       if(cfg.scan_wyck_tf_h4 < 0) cfg.scan_wyck_tf_h4 = 0;
@@ -4203,7 +4669,8 @@ namespace Config
           cfg.scan_foot_exhaust_low_vol_frac_avg = MathMin(5.0, MathMax(0.01, cfg.scan_foot_exhaust_low_vol_frac_avg));
           cfg.scan_foot_exhaust_prior_levels     = MathMin(10,  MathMax(1,    cfg.scan_foot_exhaust_prior_levels));
           cfg.scan_foot_exhaust_min_aggr_hits    = MathMin(10,  MathMax(1,    cfg.scan_foot_exhaust_min_aggr_hits));
-          
+          // scan_foot_exhaust_require_close_near is boolean; no numeric clamp required
+
           // Consistency: if quote-proxy ticks are disabled, strict trade-only mode must be true
           if(!cfg.scan_foot_allow_quote_proxy_ticks)
             cfg.scan_foot_strict_trade_ticks_only = true;
@@ -4225,6 +4692,10 @@ namespace Config
           cfg.scan_of_mom_ema_len    = MathMin(200, MathMax(2,  cfg.scan_of_mom_ema_len));  // 2..200
           cfg.scan_of_mom_thr        = MathMin(100.0, MathMax(0.0, cfg.scan_of_mom_thr));    // conservative 0..100
           cfg.scan_of_cvd_reset_mode = MathMin(2,   MathMax(0,  cfg.scan_of_cvd_reset_mode)); // 0..2
+          
+          cfg.scan_of_ofr_buy_share_thr  = MathMin(0.99, MathMax(0.50, cfg.scan_of_ofr_buy_share_thr));   // 0.50..0.99
+          cfg.scan_of_ofr_rebalance_band = MathMin(0.49, MathMax(0.00, cfg.scan_of_ofr_rebalance_band));  // 0.00..0.49
+          cfg.scan_of_ofr_min_total_vol  = MathMax(0.0, cfg.scan_of_ofr_min_total_vol);                    // >= 0
       #endif
 
       // --- Liquidity pool clamps (always-present fields)
@@ -4241,6 +4712,90 @@ namespace Config
         cfg.scan_obi_depth_points = MathMin(MathMax(cfg.scan_obi_depth_points, 1), 250);
         cfg.scan_obi_threshold    = MathMin(MathMax(cfg.scan_obi_threshold,    0.00), 1.00);
         cfg.scan_obi_keylevel_atr = MathMin(MathMax(cfg.scan_obi_keylevel_atr, 0.05), 5.0);
+
+        // --- OBI extended clamps (keep consistent with primary OBI clamp block)
+        cfg.scan_obi_basis_mode         = MathMin(MathMax(cfg.scan_obi_basis_mode,         0), 1);
+        cfg.scan_obi_norm_mode          = MathMin(MathMax(cfg.scan_obi_norm_mode,          0), 2);
+        cfg.scan_obi_z_window           = MathMin(MathMax(cfg.scan_obi_z_window,           0), 512);
+        cfg.scan_obi_z_min_samples      = MathMin(MathMax(cfg.scan_obi_z_min_samples,      2), 512);
+        cfg.scan_obi_z_clamp_abs        = MathMin(MathMax(cfg.scan_obi_z_clamp_abs,      0.0), 50.0);
+        cfg.scan_obi_z_threshold        = MathMin(MathMax(cfg.scan_obi_z_threshold,      0.05), 20.0);
+
+        cfg.scan_obi_transform_mode     = MathMin(MathMax(cfg.scan_obi_transform_mode,     0), 2);
+        cfg.scan_obi_logistic_k         = MathMin(MathMax(cfg.scan_obi_logistic_k,       0.001), 100.0);
+        cfg.scan_obi_power_gamma        = MathMin(MathMax(cfg.scan_obi_power_gamma,      0.001), 10.0);
+
+        cfg.scan_obi_spread_min_points  = MathMin(MathMax(cfg.scan_obi_spread_min_points, 0.001), 1000.0);
+        cfg.scan_obi_spread_adjust_cap  = MathMin(MathMax(cfg.scan_obi_spread_adjust_cap, 0.0),   1000.0);
+
+        cfg.scan_obi_ofi_mode           = MathMin(MathMax(cfg.scan_obi_ofi_mode,           0), 1);
+        cfg.scan_obi_ofi_levels         = MathMin(MathMax(cfg.scan_obi_ofi_levels,         1), 32);
+        cfg.scan_obi_ofi_norm_mode      = MathMin(MathMax(cfg.scan_obi_ofi_norm_mode,      0), 1);
+
+        cfg.scan_obi_div_lookback       = MathMin(MathMax(cfg.scan_obi_div_lookback,       1), 100);
+        cfg.scan_obi_div_min_price_atr  = MathMin(MathMax(cfg.scan_obi_div_min_price_atr,  0.0), 10.0);
+        cfg.scan_obi_div_min_obi_move   = MathMin(MathMax(cfg.scan_obi_div_min_obi_move,   0.0), 10.0);
+        cfg.scan_obi_div_cooldown_sec   = MathMin(MathMax(cfg.scan_obi_div_cooldown_sec,   0), 86400);
+
+        cfg.scan_obi_retry_cooldown_ms       = MathMin(MathMax(cfg.scan_obi_retry_cooldown_ms,       0), 600000);
+        cfg.scan_obi_nodata_cache_ms         = MathMin(MathMax(cfg.scan_obi_nodata_cache_ms,         0), 600000);
+        cfg.scan_obi_zone_pad_points         = MathMin(MathMax(cfg.scan_obi_zone_pad_points,         0), 500);
+        cfg.scan_obi_min_edge_distance_points= MathMin(MathMax(cfg.scan_obi_min_edge_distance_points,0), 500);
+        cfg.scan_obi_eps_vol                 = MathMin(MathMax(cfg.scan_obi_eps_vol,               1e-12), 1.0);
+        cfg.scan_obi_max_ratio_m1            = MathMin(MathMax(cfg.scan_obi_max_ratio_m1,            0.0), 1000000.0);
+        cfg.scan_obi_flip_hysteresis_abs     = MathMin(MathMax(cfg.scan_obi_flip_hysteresis_abs,     0.0), 1000.0);
+
+        // --- OBI institutional extension clamps (secondary sanitize pass; keep in sync)
+        cfg.scan_obi_weight_mode             = MathMin(MathMax(cfg.scan_obi_weight_mode,             0), 3);
+        cfg.scan_obi_weight_lambda_per_point = MathMin(MathMax(cfg.scan_obi_weight_lambda_per_point, 0.0), 1000.0);
+
+        cfg.scan_obi_ma_window               = MathMin(MathMax(cfg.scan_obi_ma_window,               0), 4096);
+        cfg.scan_obi_ma_min_samples          = MathMin(MathMax(cfg.scan_obi_ma_min_samples,          2), 4096);
+
+        cfg.scan_obi_of_delta_source_mode    = MathMin(MathMax(cfg.scan_obi_of_delta_source_mode,    0), 4);
+        cfg.scan_obi_of_delta_lookback       = MathMin(MathMax(cfg.scan_obi_of_delta_lookback,       1), 5000);
+        cfg.scan_obi_of_delta_min_total      = MathMin(MathMax(cfg.scan_obi_of_delta_min_total,      0.0), 1000000000.0);
+
+        cfg.scan_obi_lpi_alpha               = MathMin(MathMax(cfg.scan_obi_lpi_alpha,               0.0), 10.0);
+        cfg.scan_obi_lpi_beta                = MathMin(MathMax(cfg.scan_obi_lpi_beta,                0.0), 10.0);
+        cfg.scan_obi_lpi_threshold           = MathMin(MathMax(cfg.scan_obi_lpi_threshold,           0.0), 10.0);
+
+        cfg.scan_obi_persistence_mode        = MathMin(MathMax(cfg.scan_obi_persistence_mode,        0), 2);
+        cfg.scan_obi_persistence_len         = MathMin(MathMax(cfg.scan_obi_persistence_len,         1), 4096);
+        cfg.scan_obi_persistence_gamma       = MathMin(MathMax(cfg.scan_obi_persistence_gamma,       0.0), 1.0);
+        cfg.scan_obi_persistence_threshold   = MathMin(MathMax(cfg.scan_obi_persistence_threshold,   0.0), 1000000.0);
+
+        cfg.scan_obi_absorption_lookback         = MathMin(MathMax(cfg.scan_obi_absorption_lookback,         2), 4096);
+        cfg.scan_obi_absorption_price_eps_points = MathMin(MathMax(cfg.scan_obi_absorption_price_eps_points, 0.001), 1000.0);
+        cfg.scan_obi_absorption_z_clamp_abs      = MathMin(MathMax(cfg.scan_obi_absorption_z_clamp_abs,      0.0), 1000.0);
+
+        cfg.scan_obi_score_w1_zobi            = MathMin(MathMax(cfg.scan_obi_score_w1_zobi,           -10.0), 10.0);
+        cfg.scan_obi_score_w2_ndelta          = MathMin(MathMax(cfg.scan_obi_score_w2_ndelta,         -10.0), 10.0);
+        cfg.scan_obi_score_w3_zabs            = MathMin(MathMax(cfg.scan_obi_score_w3_zabs,           -10.0), 10.0);
+        cfg.scan_obi_score_w4_persistence     = MathMin(MathMax(cfg.scan_obi_score_w4_persistence,    -10.0), 10.0);
+
+        cfg.scan_obi_score_z_window           = MathMin(MathMax(cfg.scan_obi_score_z_window,           2), 4096);
+        cfg.scan_obi_score_z_min_samples      = MathMin(MathMax(cfg.scan_obi_score_z_min_samples,      2), 4096);
+        cfg.scan_obi_score_z_clamp_abs        = MathMin(MathMax(cfg.scan_obi_score_z_clamp_abs,       0.0), 1000.0);
+        cfg.scan_obi_score_z_threshold        = MathMin(MathMax(cfg.scan_obi_score_z_threshold,      0.05), 20.0);
+
+        cfg.scan_obi_fx_spread_z_window       = MathMin(MathMax(cfg.scan_obi_fx_spread_z_window,       2), 4096);
+        cfg.scan_obi_fx_spread_z_min_samples  = MathMin(MathMax(cfg.scan_obi_fx_spread_z_min_samples,  2), 4096);
+        cfg.scan_obi_fx_obi_weight            = MathMin(MathMax(cfg.scan_obi_fx_obi_weight,           0.0), 10.0);
+        cfg.scan_obi_fx_spread_weight         = MathMin(MathMax(cfg.scan_obi_fx_spread_weight,        0.0), 10.0);
+        cfg.scan_obi_fxlpi_threshold          = MathMin(MathMax(cfg.scan_obi_fxlpi_threshold,         0.0), 10.0);
+
+        cfg.scan_obi_signal_metric_mode       = MathMin(MathMax(cfg.scan_obi_signal_metric_mode,       0), 3);
+
+        // --- OBI scanner institutional classification / emit control clamps (secondary pass; keep in sync)
+        cfg.scan_obi_ndelta_threshold         = MathMin(MathMax(cfg.scan_obi_ndelta_threshold,         0.0), 1.0);
+        cfg.scan_obi_absorption_z_threshold   = MathMin(MathMax(cfg.scan_obi_absorption_z_threshold,   0.05), 20.0);
+        
+        // --- VSA background-hook scanner fusion clamps
+        cfg.scan_vsa_hook_min_abs_relvol    = MathMin(MathMax(cfg.scan_vsa_hook_min_abs_relvol,    0.0), 10.0);
+        cfg.scan_vsa_hook_min_abs_normscore = MathMin(MathMax(cfg.scan_vsa_hook_min_abs_normscore, 0.0), 1.0);
+        cfg.scan_vsa_hook_min_spread_ratio  = MathMin(MathMax(cfg.scan_vsa_hook_min_spread_ratio,  0.0), 10.0);
+        cfg.scan_vsa_hook_boost_max         = MathMin(MathMax(cfg.scan_vsa_hook_boost_max,         1.0), 5.0);
 
         // --- Wyckoff clamps
         cfg.scan_wyck_phase_zvol_min = MathMin(MathMax(cfg.scan_wyck_phase_zvol_min, 0.00), 8.0);
@@ -4665,6 +5220,67 @@ namespace Config
     if(cfg.vsa_normscore_abs_th > 0.95) cfg.vsa_normscore_abs_th = 0.95;
     if(cfg.vsa_normscore_abs_th == 0.0) cfg.vsa_normscore_abs_th = 0.30;
 
+    // Exact-spec thresholds (new)
+    if(cfg.vsa_rv_low_th <= 0.0) cfg.vsa_rv_low_th = 0.8;
+    if(cfg.vsa_rv_high_th <= cfg.vsa_rv_low_th) cfg.vsa_rv_high_th = cfg.vsa_rv_low_th + 0.1;
+    if(cfg.vsa_rv_very_high_th < cfg.vsa_rv_high_th) cfg.vsa_rv_very_high_th = cfg.vsa_rv_high_th;
+    if(cfg.vsa_rv_ultra_high_th < cfg.vsa_rv_very_high_th) cfg.vsa_rv_ultra_high_th = cfg.vsa_rv_very_high_th;
+
+    if(cfg.vsa_rs_narrow_th <= 0.0) cfg.vsa_rs_narrow_th = 0.7;
+    if(cfg.vsa_rs_wide_th <= cfg.vsa_rs_narrow_th) cfg.vsa_rs_wide_th = cfg.vsa_rs_narrow_th + 0.1;
+
+    if(cfg.vsa_clv_strong_up_th <= 0.0 || cfg.vsa_clv_strong_up_th >= 1.0) cfg.vsa_clv_strong_up_th = 0.6;
+    if(cfg.vsa_clv_strong_dn_th >= 0.0 || cfg.vsa_clv_strong_dn_th <= -1.0) cfg.vsa_clv_strong_dn_th = -0.6;
+
+    if(cfg.vsa_abs_lb < 2) cfg.vsa_abs_lb = 20;
+    if(cfg.vsa_abs_lb > 500) cfg.vsa_abs_lb = 500;
+
+    if(cfg.vsa_norm_abs_high_th <= 0.0) cfg.vsa_norm_abs_high_th = 1.5;
+    if(cfg.vsa_score_strong_th <= 0.0) cfg.vsa_score_strong_th = 5.0;
+
+    if(cfg.vsa_ema_fast < 2) cfg.vsa_ema_fast = 50;
+    if(cfg.vsa_ema_slow <= cfg.vsa_ema_fast) cfg.vsa_ema_slow = cfg.vsa_ema_fast + 1;
+    if(cfg.vsa_ema_slow > 10000) cfg.vsa_ema_slow = 10000; // sanity ceiling
+
+    // Universal VSA extension bounds (multi-market adaptive)
+    if(cfg.vsa_market_mode < 0) cfg.vsa_market_mode = 0;
+    if(cfg.vsa_market_mode > 2) cfg.vsa_market_mode = 2;  // 0=auto,1=forex,2=exchange-volume
+
+    if(cfg.vsa_vol_class_mode < 0) cfg.vsa_vol_class_mode = 0;
+    if(cfg.vsa_vol_class_mode > 2) cfg.vsa_vol_class_mode = 2; // 0=RV,1=ZV,2=adaptive
+
+    if(cfg.vsa_session_vol_lb < 5)   cfg.vsa_session_vol_lb = 60;
+    if(cfg.vsa_session_vol_lb > 500) cfg.vsa_session_vol_lb = 500;
+
+    if(cfg.vsa_percent_rank_lb < 5)   cfg.vsa_percent_rank_lb = 30;
+    if(cfg.vsa_percent_rank_lb > 500) cfg.vsa_percent_rank_lb = 500;
+
+    if(cfg.vsa_percent_rank_high_th <= 0.0 || cfg.vsa_percent_rank_high_th > 1.0)
+      cfg.vsa_percent_rank_high_th = 0.90;
+    if(cfg.vsa_percent_rank_low_th < 0.0 || cfg.vsa_percent_rank_low_th >= 1.0)
+      cfg.vsa_percent_rank_low_th = 0.20;
+    if(cfg.vsa_percent_rank_low_th >= cfg.vsa_percent_rank_high_th)
+      cfg.vsa_percent_rank_low_th = MathMax(0.0, cfg.vsa_percent_rank_high_th - 0.10);
+
+    if(cfg.vsa_spread_z_lb < 5)   cfg.vsa_spread_z_lb = 30;
+    if(cfg.vsa_spread_z_lb > 500) cfg.vsa_spread_z_lb = 500;
+
+    if(cfg.vsa_absorption_z_high_th <= 0.0)  cfg.vsa_absorption_z_high_th = 2.0;
+    if(cfg.vsa_absorption_z_high_th > 20.0)  cfg.vsa_absorption_z_high_th = 20.0;
+
+    if(cfg.vsa_er_lb < 5)   cfg.vsa_er_lb = 20;
+    if(cfg.vsa_er_lb > 500) cfg.vsa_er_lb = 500;
+
+    if(cfg.vsa_stopvol_zv_th < 0.0)  cfg.vsa_stopvol_zv_th = 1.5;
+    if(cfg.vsa_stopvol_zv_th > 20.0) cfg.vsa_stopvol_zv_th = 20.0;
+    if(cfg.vsa_stopvol_rs_th <= 0.0) cfg.vsa_stopvol_rs_th = 1.2;
+    if(cfg.vsa_stopvol_rs_th > 20.0) cfg.vsa_stopvol_rs_th = 20.0;
+
+    if(cfg.vsa_utso_zv_th < 0.0)  cfg.vsa_utso_zv_th = 1.0;
+    if(cfg.vsa_utso_zv_th > 20.0) cfg.vsa_utso_zv_th = 20.0;
+    if(cfg.vsa_utso_rs_th <= 0.0) cfg.vsa_utso_rs_th = 1.2;
+    if(cfg.vsa_utso_rs_th > 20.0) cfg.vsa_utso_rs_th = 20.0;
+    
     // MTF confirm safety (fallback TF)
     if(cfg.vsa_mtf_tf == PERIOD_CURRENT || cfg.vsa_mtf_tf < PERIOD_M1)
       cfg.vsa_mtf_tf = PERIOD_H1;
@@ -6026,6 +6642,18 @@ namespace Config
     #ifdef CFG_HAS_EXTRA_PHASE_CTX
       s+=",xPH="+BoolStr(c.extra_phase_ctx);
     #endif
+    
+    s+=",vsaLb="+IntegerToString(c.vsa_lookback);
+
+    s+=",vsaMode="+IntegerToString(c.vsa_mode);
+    s+=",vsaNv="+IntegerToString(c.vsa_vol_lb);
+    s+=",vsaNs="+IntegerToString(c.vsa_spread_lb);
+    s+=",vsaNt="+IntegerToString(c.vsa_trend_lb);
+    s+=",vsaK="+DoubleToString(c.vsa_strength_k,3);
+    s+=",vsaMtf="+BoolStr(c.vsa_mtf_confirm);
+    s+=",vsaMtfTf="+IntegerToString((int)c.vsa_mtf_tf);
+    s+=",vsaNorm="+DoubleToString(c.vsa_normscore_abs_th,3);
+    
     #ifdef CFG_HAS_W_PHASE_CTX
       s+=",wPH="+DoubleToString(c.w_phase_ctx,3);
     #endif
@@ -6042,15 +6670,51 @@ namespace Config
       s+=",vsaTick="+BoolStr(c.vsa_allow_tick_volume);
     #endif
     
-    s+=",vsaMode="+IntegerToString(c.vsa_mode);
-    s+=",vsaNv="+IntegerToString(c.vsa_vol_lb);
-    s+=",vsaNs="+IntegerToString(c.vsa_spread_lb);
-    s+=",vsaNt="+IntegerToString(c.vsa_trend_lb);
-    s+=",vsaK="+DoubleToString(c.vsa_strength_k,3);
+    s+=",vsaRvL="+DoubleToString(c.vsa_rv_low_th,3);
+    s+=",vsaRvH="+DoubleToString(c.vsa_rv_high_th,3);
+    s+=",vsaRvVH="+DoubleToString(c.vsa_rv_very_high_th,3);
+    s+=",vsaRvUH="+DoubleToString(c.vsa_rv_ultra_high_th,3);
 
-    s+=",vsaMtf="+BoolStr(c.vsa_mtf_confirm);
-    s+=",vsaMtfTf="+IntegerToString((int)c.vsa_mtf_tf);
-    s+=",vsaNorm="+DoubleToString(c.vsa_normscore_abs_th,3);
+    s+=",vsaRsN="+DoubleToString(c.vsa_rs_narrow_th,3);
+    s+=",vsaRsW="+DoubleToString(c.vsa_rs_wide_th,3);
+
+    s+=",vsaClvU="+DoubleToString(c.vsa_clv_strong_up_th,3);
+    s+=",vsaClvD="+DoubleToString(c.vsa_clv_strong_dn_th,3);
+
+    s+=",vsaAbsL="+IntegerToString(c.vsa_abs_lb);
+    s+=",vsaAbsN="+DoubleToString(c.vsa_norm_abs_high_th,3);
+    s+=",vsaScT="+DoubleToString(c.vsa_score_strong_th,3);
+
+    s+=",vsaTR="+BoolStr(c.vsa_use_true_range);
+    s+=",vsaEmaPair="+BoolStr(c.vsa_trend_use_ema_pair);
+    s+=",vsaEmaF="+IntegerToString(c.vsa_ema_fast);
+    s+=",vsaEmaS="+IntegerToString(c.vsa_ema_slow);
+    s+=",vsaFinalNorm="+BoolStr(c.vsa_use_normscore_gate_on_final);
+    s+=",vsaUTPrev="+BoolStr(c.vsa_require_prev_hhll_ut_shake);
+
+    s+=",vsaMk="+IntegerToString(c.vsa_market_mode);
+    s+=",vsaVB="+IntegerToString(c.vsa_vol_class_mode);
+
+    s+=",vsaSessV="+BoolStr(c.vsa_use_session_vol_norm);
+    s+=",vsaSessLb="+IntegerToString(c.vsa_session_vol_lb);
+
+    s+=",vsaPR="+BoolStr(c.vsa_use_vol_percent_rank);
+    s+=",vsaPRLb="+IntegerToString(c.vsa_percent_rank_lb);
+    s+=",vsaPRHi="+DoubleToString(c.vsa_percent_rank_high_th,3);
+    s+=",vsaPRLo="+DoubleToString(c.vsa_percent_rank_low_th,3);
+
+    s+=",vsaSprZ="+BoolStr(c.vsa_spread_zscore_enable);
+    s+=",vsaSprZL="+IntegerToString(c.vsa_spread_z_lb);
+
+    s+=",vsaAbsZ="+BoolStr(c.vsa_absorption_zscore_enable);
+    s+=",vsaAbsZH="+DoubleToString(c.vsa_absorption_z_high_th,3);
+
+    s+=",vsaERLb="+IntegerToString(c.vsa_er_lb);
+
+    s+=",vsaSVZ="+DoubleToString(c.vsa_stopvol_zv_th,3);
+    s+=",vsaSVR="+DoubleToString(c.vsa_stopvol_rs_th,3);
+    s+=",vsaUTZ="+DoubleToString(c.vsa_utso_zv_th,3);
+    s+=",vsaUTR="+DoubleToString(c.vsa_utso_rs_th,3);
     
     s+=",struct="+BoolStr(c.structure_enable);
     s+=",liq="+BoolStr(c.liquidity_enable);
@@ -6213,6 +6877,109 @@ namespace Config
       s+=",scOBIWHL="+DoubleToString(c.scan_obi_weight_half_life_points,3);
       s+=",scOBIEMA="+IntegerToString(c.scan_obi_ema_len);
       s+=",scOBIWRef="+IntegerToString(c.scan_obi_weight_ref);
+
+      s+=",scOBIBs="+IntegerToString(c.scan_obi_basis_mode);
+      s+=",scOBINm="+IntegerToString(c.scan_obi_norm_mode);
+      s+=",scOBIZW="+IntegerToString(c.scan_obi_z_window);
+      s+=",scOBIZN="+IntegerToString(c.scan_obi_z_min_samples);
+      s+=",scOBIZC="+DoubleToString(c.scan_obi_z_clamp_abs,3);
+      s+=",scOBIZT="+DoubleToString(c.scan_obi_z_threshold,3);
+
+      s+=",scOBIXf="+IntegerToString(c.scan_obi_transform_mode);
+      s+=",scOBILk="+DoubleToString(c.scan_obi_logistic_k,3);
+      s+=",scOBIPg="+DoubleToString(c.scan_obi_power_gamma,3);
+
+      s+=",scOBISmP="+DoubleToString(c.scan_obi_spread_min_points,3);
+      s+=",scOBISCap="+DoubleToString(c.scan_obi_spread_adjust_cap,3);
+
+      s+=",scOBIOFIM="+IntegerToString(c.scan_obi_ofi_mode);
+      s+=",scOBIOFIN="+IntegerToString(c.scan_obi_ofi_levels);
+      s+=",scOBIOFINm="+IntegerToString(c.scan_obi_ofi_norm_mode);
+
+      s+=",scOBIDivOn="+BoolStr(c.scan_obi_div_enable);
+      s+=",scOBIDivLB="+IntegerToString(c.scan_obi_div_lookback);
+      s+=",scOBIDivPA="+DoubleToString(c.scan_obi_div_min_price_atr,3);
+      s+=",scOBIDivOM="+DoubleToString(c.scan_obi_div_min_obi_move,3);
+      s+=",scOBIDivCd="+IntegerToString(c.scan_obi_div_cooldown_sec);
+
+      s+=",scOBIRtry="+IntegerToString(c.scan_obi_retry_cooldown_ms);
+      s+=",scOBINoDC="+IntegerToString(c.scan_obi_nodata_cache_ms);
+      s+=",scOBIZPad="+IntegerToString(c.scan_obi_zone_pad_points);
+      s+=",scOBIMinEd="+IntegerToString(c.scan_obi_min_edge_distance_points);
+      s+=",scOBIEps="+DoubleToString(c.scan_obi_eps_vol,10);
+      s+=",scOBIMR1="+DoubleToString(c.scan_obi_max_ratio_m1,3);
+      s+=",scOBIFH="+DoubleToString(c.scan_obi_flip_hysteresis_abs,3);
+
+      // OBI institutional extensions
+      s+=",scOBIWM="+IntegerToString(c.scan_obi_weight_mode);
+      s+=",scOBIWL="+DoubleToString(c.scan_obi_weight_lambda_per_point,6);
+
+      s+=",scOBIMAW="+IntegerToString(c.scan_obi_ma_window);
+      s+=",scOBIMAN="+IntegerToString(c.scan_obi_ma_min_samples);
+      s+=",scOBIMAC="+BoolStr(c.scan_obi_ma_centering_enable);
+
+      s+=",scOBIDSrc="+IntegerToString(c.scan_obi_of_delta_source_mode);
+      s+=",scOBIDLb="+IntegerToString(c.scan_obi_of_delta_lookback);
+      s+=",scOBIDFP="+BoolStr(c.scan_obi_of_delta_use_fp_ticks_preferred);
+      s+=",scOBIDMn="+DoubleToString(c.scan_obi_of_delta_min_total,4);
+
+      s+=",scOBILPIOn="+BoolStr(c.scan_obi_lpi_enable);
+      s+=",scOBILPa="+DoubleToString(c.scan_obi_lpi_alpha,4);
+      s+=",scOBILPb="+DoubleToString(c.scan_obi_lpi_beta,4);
+      s+=",scOBILPITh="+DoubleToString(c.scan_obi_lpi_threshold,4);
+
+      s+=",scOBIPm="+IntegerToString(c.scan_obi_persistence_mode);
+      s+=",scOBIPl="+IntegerToString(c.scan_obi_persistence_len);
+      s+=",scOBIPGa="+DoubleToString(c.scan_obi_persistence_gamma,4);
+      s+=",scOBIPTh="+DoubleToString(c.scan_obi_persistence_threshold,4);
+
+      s+=",scOBIAOn="+BoolStr(c.scan_obi_absorption_enable);
+      s+=",scOBIALb="+IntegerToString(c.scan_obi_absorption_lookback);
+      s+=",scOBIAEp="+DoubleToString(c.scan_obi_absorption_price_eps_points,4);
+      s+=",scOBIAZc="+DoubleToString(c.scan_obi_absorption_z_clamp_abs,4);
+
+      s+=",scOBIScOn="+BoolStr(c.scan_obi_score_enable);
+      s+=",scOBIS1="+DoubleToString(c.scan_obi_score_w1_zobi,4);
+      s+=",scOBIS2="+DoubleToString(c.scan_obi_score_w2_ndelta,4);
+      s+=",scOBIS3="+DoubleToString(c.scan_obi_score_w3_zabs,4);
+      s+=",scOBIS4="+DoubleToString(c.scan_obi_score_w4_persistence,4);
+      s+=",scOBISZW="+IntegerToString(c.scan_obi_score_z_window);
+      s+=",scOBISZN="+IntegerToString(c.scan_obi_score_z_min_samples);
+      s+=",scOBISZC="+DoubleToString(c.scan_obi_score_z_clamp_abs,4);
+      s+=",scOBISZT="+DoubleToString(c.scan_obi_score_z_threshold,4);
+
+      s+=",scOBIFXOn="+BoolStr(c.scan_obi_fx_fxlpi_enable);
+      s+=",scOBIFXZW="+IntegerToString(c.scan_obi_fx_spread_z_window);
+      s+=",scOBIFXZN="+IntegerToString(c.scan_obi_fx_spread_z_min_samples);
+      s+=",scOBIFXOW="+DoubleToString(c.scan_obi_fx_obi_weight,4);
+      s+=",scOBIFXSW="+DoubleToString(c.scan_obi_fx_spread_weight,4);
+      s+=",scOBIFXTh="+DoubleToString(c.scan_obi_fxlpi_threshold,4);
+
+      s+=",scOBISigM="+IntegerToString(c.scan_obi_signal_metric_mode);
+
+      s+=",scOBINDT="+DoubleToString(c.scan_obi_ndelta_threshold,4);
+      s+=",scOBIAZT="+DoubleToString(c.scan_obi_absorption_z_threshold,4);
+
+      s+=",scOBIEmSc="+BoolStr(c.scan_obi_emit_score_events);
+      s+=",scOBIEmPs="+BoolStr(c.scan_obi_emit_persist_events);
+      s+=",scOBIEmAb="+BoolStr(c.scan_obi_emit_absorb_events);
+      s+=",scOBIEmFx="+BoolStr(c.scan_obi_emit_fx_events);
+      s+=",scOBIEmSt="+BoolStr(c.scan_obi_emit_strong_class_events);
+      
+      // VSA background-hook scanner fusion (Confluence-side)
+      s+=",scVHOn="+BoolStr(c.scan_vsa_hook_enable);
+      s+=",scVHOBI="+BoolStr(c.scan_vsa_hook_apply_to_obi);
+      s+=",scVHFoot="+BoolStr(c.scan_vsa_hook_apply_to_foot);
+      s+=",scVHVP="+BoolStr(c.scan_vsa_hook_apply_to_vp);
+
+      s+=",scVHRV="+DoubleToString(c.scan_vsa_hook_min_abs_relvol,3);
+      s+=",scVHNS="+DoubleToString(c.scan_vsa_hook_min_abs_normscore,3);
+      s+=",scVHSP="+DoubleToString(c.scan_vsa_hook_min_spread_ratio,3);
+
+      s+=",scVHDN="+BoolStr(c.scan_vsa_hook_directional_norm_gate);
+      s+=",scVHFin="+BoolStr(c.scan_vsa_hook_use_final_signal_hint);
+      s+=",scVHMTF="+BoolStr(c.scan_vsa_hook_require_mtf_align);
+      s+=",scVHBoost="+DoubleToString(c.scan_vsa_hook_boost_max,3);
       
       // Footprint scan
       s+=",scFootOn="+BoolStr(c.scan_foot_enable);
@@ -6222,6 +6989,7 @@ namespace Config
       s+=",scFootZd="+DoubleToString(c.scan_foot_zdiverge,3);
 
       // OFIS
+      s+=",scOFOn="+BoolStr(c.scan_of_enable);
       s+=",scOFdE="+IntegerToString(c.scan_of_delta_ema_len);
       s+=",scOFcE="+IntegerToString(c.scan_of_cvd_ema_len);
       s+=",scOFzL="+IntegerToString(c.scan_of_z_len);
@@ -6239,6 +7007,11 @@ namespace Config
       s+=",scOFMomT="+DoubleToString(c.scan_of_mom_thr,2);
       s+=",scOFSwpC="+BoolStr(c.scan_of_liqsweep_confirm_enable);
       s+=",scOFCvdR="+IntegerToString(c.scan_of_cvd_reset_mode);
+
+      s+=",scOFOfrOn="+BoolStr(c.scan_of_ofr_enable);
+      s+=",scOFOfrT="+DoubleToString(c.scan_of_ofr_buy_share_thr,3);
+      s+=",scOFOfrRb="+DoubleToString(c.scan_of_ofr_rebalance_band,3);
+      s+=",scOFOfrV="+DoubleToString(c.scan_of_ofr_min_total_vol,3);
       
       s+=",scFTickOn="+BoolStr(c.scan_foot_allow_ticks);
       s+=",scFTickMax="+IntegerToString(c.scan_foot_ticks_max_tf_sec);
@@ -6282,7 +7055,8 @@ namespace Config
       s+=",scFExLV="+DoubleToString(c.scan_foot_exhaust_low_vol_frac_avg,3);
       s+=",scFExPL="+IntegerToString(c.scan_foot_exhaust_prior_levels);
       s+=",scFExAH="+IntegerToString(c.scan_foot_exhaust_min_aggr_hits);
-      
+      s+=",scFExCN="+BoolStr(c.scan_foot_exhaust_require_close_near);
+
       // Correlation scan (existing keys preserved)
       s+=",scCorrOn="+BoolStr(c.scan_corr_enable);
       s+=",scCorrThr="+DoubleToString(c.scan_corr_threshold,3);
@@ -7162,6 +7936,90 @@ namespace Config
   }
 
   //──────────────────────────────────────────────────────────────────
+  // Universal VSA activation presets (safe rollout helpers)
+  // - Keeps global defaults legacy-safe.
+  // - Call these explicitly after BuildSettings()/LoadSettingsCSV() when you want
+  //   exact-spec / hybrid Universal VSA behavior enabled.
+  //──────────────────────────────────────────────────────────────────
+  inline void ApplyVSAUniversalForexPreset(Settings &cfg,
+                                           const int exact_mode=2,     // 1=classical, 2=hybrid
+                                           const bool log_summary=true)
+  {
+    #ifdef CFG_HAS_VSA_MODE
+      int m = exact_mode;
+      if(m < 1 || m > 2) m = 2;
+      cfg.vsa_mode = m;
+    #endif
+
+    #ifdef CFG_HAS_VSA_MARKET_MODE
+      cfg.vsa_market_mode = 1; // forex
+    #endif
+
+    #ifdef CFG_HAS_VSA_VOL_CLASS_MODE
+      cfg.vsa_vol_class_mode = 2; // adaptive
+    #endif
+
+    #ifdef CFG_HAS_VSA_USE_SESSION_VOL_NORM
+      cfg.vsa_use_session_vol_norm = true;
+    #endif
+
+    #ifdef CFG_HAS_VSA_USE_VOL_PERCENT_RANK
+      cfg.vsa_use_vol_percent_rank = true;
+    #endif
+
+    #ifdef CFG_HAS_VSA_ABSORPTION_ZSCORE_ENABLE
+      cfg.vsa_absorption_zscore_enable = true;
+    #endif
+
+    #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+      cfg.vsa_allow_tick_volume = true; // FX-friendly
+    #endif
+
+    Normalize(cfg);
+
+    if(log_summary)
+      Print("Config::ApplyVSAUniversalForexPreset | applied (exact/hybrid universal VSA for FX)");
+  }
+
+  inline void ApplyVSAUniversalExchangePreset(Settings &cfg,
+                                              const int exact_mode=2,       // 1=classical, 2=hybrid
+                                              const bool enable_session_norm=false,
+                                              const bool enable_percent_rank=false,
+                                              const bool log_summary=true)
+  {
+    #ifdef CFG_HAS_VSA_MODE
+      int m = exact_mode;
+      if(m < 1 || m > 2) m = 2;
+      cfg.vsa_mode = m;
+    #endif
+
+    #ifdef CFG_HAS_VSA_MARKET_MODE
+      cfg.vsa_market_mode = 2; // exchange-volume market
+    #endif
+
+    #ifdef CFG_HAS_VSA_VOL_CLASS_MODE
+      cfg.vsa_vol_class_mode = 2; // adaptive
+    #endif
+
+    #ifdef CFG_HAS_VSA_USE_SESSION_VOL_NORM
+      cfg.vsa_use_session_vol_norm = enable_session_norm;
+    #endif
+
+    #ifdef CFG_HAS_VSA_USE_VOL_PERCENT_RANK
+      cfg.vsa_use_vol_percent_rank = enable_percent_rank;
+    #endif
+
+    #ifdef CFG_HAS_VSA_ABSORPTION_ZSCORE_ENABLE
+      cfg.vsa_absorption_zscore_enable = true;
+    #endif
+
+    Normalize(cfg);
+
+    if(log_summary)
+      Print("Config::ApplyVSAUniversalExchangePreset | applied (exact/hybrid universal VSA for exchange-volume markets)");
+  }
+  
+  //──────────────────────────────────────────────────────────────────
   // Settings CSV export / import
   //  - Export uses CanonicalCSV (single-line; portable).
   //  - Import is tolerant: only recognized tokens are applied.
@@ -7203,6 +8061,22 @@ namespace Config
     bool seenMainReq=false, seenMainAny3=false, seenMainCls=false, seenVsaTick=false;
     bool seenVsaMode=false, seenVsaNv=false, seenVsaNs=false, seenVsaNt=false;
     bool seenVsaK=false, seenVsaMtf=false, seenVsaMtfTf=false, seenVsaNorm=false;
+    bool seenVsaLb=false;
+    
+    bool seenVsaRvL=false, seenVsaRvH=false, seenVsaRvVH=false, seenVsaRvUH=false;
+    bool seenVsaRsN=false, seenVsaRsW=false;
+    bool seenVsaClvU=false, seenVsaClvD=false;
+    bool seenVsaAbsL=false, seenVsaAbsN=false, seenVsaScT=false;
+    bool seenVsaTR=false, seenVsaEmaPair=false, seenVsaEmaF=false, seenVsaEmaS=false;
+    bool seenVsaFinalNorm=false, seenVsaUTPrev=false;
+
+    bool seenVsaMk=false, seenVsaVB=false;
+    bool seenVsaSessV=false, seenVsaSessLb=false;
+    bool seenVsaPR=false, seenVsaPRLb=false, seenVsaPRHi=false, seenVsaPRLo=false;
+    bool seenVsaSprZ=false, seenVsaSprZL=false;
+    bool seenVsaAbsZ=false, seenVsaAbsZH=false;
+    bool seenVsaERLb=false;
+    bool seenVsaSVZ=false, seenVsaSVR=false, seenVsaUTZ=false, seenVsaUTR=false;
     
     for(int i=0;i<n;i++)
     {
@@ -7645,15 +8519,62 @@ namespace Config
         else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
       #endif
 
-      else if(k=="vsaMode"){ cfg.vsa_mode = ToInt(v); seenVsaMode=true; }
-      else if(k=="vsaNv")  { cfg.vsa_vol_lb = ToInt(v); seenVsaNv=true; }
-      else if(k=="vsaNs")  { cfg.vsa_spread_lb = ToInt(v); seenVsaNs=true; }
-      else if(k=="vsaNt")  { cfg.vsa_trend_lb = ToInt(v); seenVsaNt=true; }
-      else if(k=="vsaK")   { cfg.vsa_strength_k = ToDouble(v); seenVsaK=true; }
+      else if(k=="vsaLb")      { cfg.vsa_lookback = ToInt(v); seenVsaLb=true; }
 
-      else if(k=="vsaMtf")   { cfg.vsa_mtf_confirm = ToBool(v); seenVsaMtf=true; }
-      else if(k=="vsaMtfTf") { cfg.vsa_mtf_tf = (ENUM_TIMEFRAMES)ToInt(v); seenVsaMtfTf=true; }
-      else if(k=="vsaNorm")  { cfg.vsa_normscore_abs_th = ToDouble(v); seenVsaNorm=true; }
+      else if(k=="vsaMode")    { cfg.vsa_mode = ToInt(v); seenVsaMode=true; }
+      else if(k=="vsaNv")      { cfg.vsa_vol_lb = ToInt(v); seenVsaNv=true; }
+      else if(k=="vsaNs")      { cfg.vsa_spread_lb = ToInt(v); seenVsaNs=true; }
+      else if(k=="vsaNt")      { cfg.vsa_trend_lb = ToInt(v); seenVsaNt=true; }
+      else if(k=="vsaK")       { cfg.vsa_strength_k = ToDouble(v); seenVsaK=true; }
+      else if(k=="vsaMtf")     { cfg.vsa_mtf_confirm = ToBool(v); seenVsaMtf=true; }
+      else if(k=="vsaMtfTf")   { cfg.vsa_mtf_tf = (ENUM_TIMEFRAMES)ToInt(v); seenVsaMtfTf=true; }
+      else if(k=="vsaNorm")    { cfg.vsa_normscore_abs_th = ToDouble(v); seenVsaNorm=true; }
+      
+      else if(k=="vsaRvL")    { cfg.vsa_rv_low_th = ToDouble(v); seenVsaRvL=true; }
+      else if(k=="vsaRvH")    { cfg.vsa_rv_high_th = ToDouble(v); seenVsaRvH=true; }
+      else if(k=="vsaRvVH")   { cfg.vsa_rv_very_high_th = ToDouble(v); seenVsaRvVH=true; }
+      else if(k=="vsaRvUH")   { cfg.vsa_rv_ultra_high_th = ToDouble(v); seenVsaRvUH=true; }
+
+      else if(k=="vsaRsN")    { cfg.vsa_rs_narrow_th = ToDouble(v); seenVsaRsN=true; }
+      else if(k=="vsaRsW")    { cfg.vsa_rs_wide_th = ToDouble(v); seenVsaRsW=true; }
+
+      else if(k=="vsaClvU")   { cfg.vsa_clv_strong_up_th = ToDouble(v); seenVsaClvU=true; }
+      else if(k=="vsaClvD")   { cfg.vsa_clv_strong_dn_th = ToDouble(v); seenVsaClvD=true; }
+
+      else if(k=="vsaAbsL")   { cfg.vsa_abs_lb = ToInt(v); seenVsaAbsL=true; }
+      else if(k=="vsaAbsN")   { cfg.vsa_norm_abs_high_th = ToDouble(v); seenVsaAbsN=true; }
+      else if(k=="vsaScT")    { cfg.vsa_score_strong_th = ToDouble(v); seenVsaScT=true; }
+
+      else if(k=="vsaTR")        { cfg.vsa_use_true_range = ToBool(v); seenVsaTR=true; }
+      else if(k=="vsaEmaPair")   { cfg.vsa_trend_use_ema_pair = ToBool(v); seenVsaEmaPair=true; }
+      else if(k=="vsaEmaF")      { cfg.vsa_ema_fast = ToInt(v); seenVsaEmaF=true; }
+      else if(k=="vsaEmaS")      { cfg.vsa_ema_slow = ToInt(v); seenVsaEmaS=true; }
+      else if(k=="vsaFinalNorm") { cfg.vsa_use_normscore_gate_on_final = ToBool(v); seenVsaFinalNorm=true; }
+      else if(k=="vsaUTPrev")    { cfg.vsa_require_prev_hhll_ut_shake = ToBool(v); seenVsaUTPrev=true; }
+
+      else if(k=="vsaMk")      { cfg.vsa_market_mode = ToInt(v); seenVsaMk=true; }
+      else if(k=="vsaVB")      { cfg.vsa_vol_class_mode = ToInt(v); seenVsaVB=true; }
+
+      else if(k=="vsaSessV")   { cfg.vsa_use_session_vol_norm = ToBool(v); seenVsaSessV=true; }
+      else if(k=="vsaSessLb")  { cfg.vsa_session_vol_lb = ToInt(v); seenVsaSessLb=true; }
+
+      else if(k=="vsaPR")      { cfg.vsa_use_vol_percent_rank = ToBool(v); seenVsaPR=true; }
+      else if(k=="vsaPRLb")    { cfg.vsa_percent_rank_lb = ToInt(v); seenVsaPRLb=true; }
+      else if(k=="vsaPRHi")    { cfg.vsa_percent_rank_high_th = ToDouble(v); seenVsaPRHi=true; }
+      else if(k=="vsaPRLo")    { cfg.vsa_percent_rank_low_th = ToDouble(v); seenVsaPRLo=true; }
+
+      else if(k=="vsaSprZ")    { cfg.vsa_spread_zscore_enable = ToBool(v); seenVsaSprZ=true; }
+      else if(k=="vsaSprZL")   { cfg.vsa_spread_z_lb = ToInt(v); seenVsaSprZL=true; }
+
+      else if(k=="vsaAbsZ")    { cfg.vsa_absorption_zscore_enable = ToBool(v); seenVsaAbsZ=true; }
+      else if(k=="vsaAbsZH")   { cfg.vsa_absorption_z_high_th = ToDouble(v); seenVsaAbsZH=true; }
+
+      else if(k=="vsaERLb")    { cfg.vsa_er_lb = ToInt(v); seenVsaERLb=true; }
+
+      else if(k=="vsaSVZ")     { cfg.vsa_stopvol_zv_th = ToDouble(v); seenVsaSVZ=true; }
+      else if(k=="vsaSVR")     { cfg.vsa_stopvol_rs_th = ToDouble(v); seenVsaSVR=true; }
+      else if(k=="vsaUTZ")     { cfg.vsa_utso_zv_th = ToDouble(v); seenVsaUTZ=true; }
+      else if(k=="vsaUTR")     { cfg.vsa_utso_rs_th = ToDouble(v); seenVsaUTR=true; }
       
       else if(k=="struct") cfg.structure_enable = ToBool(v);
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
@@ -7783,6 +8704,109 @@ namespace Config
         else if(k=="scOBIWHL")  cfg.scan_obi_weight_half_life_points = ToDouble(v);
         else if(k=="scOBIEMA")  cfg.scan_obi_ema_len = ToInt(v);
         else if(k=="scOBIWRef") cfg.scan_obi_weight_ref = ToInt(v);
+
+        else if(k=="scOBIBs")    cfg.scan_obi_basis_mode = ToInt(v);
+        else if(k=="scOBINm")    cfg.scan_obi_norm_mode = ToInt(v);
+        else if(k=="scOBIZW")    cfg.scan_obi_z_window = ToInt(v);
+        else if(k=="scOBIZN")    cfg.scan_obi_z_min_samples = ToInt(v);
+        else if(k=="scOBIZC")    cfg.scan_obi_z_clamp_abs = ToDouble(v);
+        else if(k=="scOBIZT")    cfg.scan_obi_z_threshold = ToDouble(v);
+
+        else if(k=="scOBIXf")    cfg.scan_obi_transform_mode = ToInt(v);
+        else if(k=="scOBILk")    cfg.scan_obi_logistic_k = ToDouble(v);
+        else if(k=="scOBIPg")    cfg.scan_obi_power_gamma = ToDouble(v);
+
+        else if(k=="scOBISmP")   cfg.scan_obi_spread_min_points = ToDouble(v);
+        else if(k=="scOBISCap")  cfg.scan_obi_spread_adjust_cap = ToDouble(v);
+
+        else if(k=="scOBIOFIM")  cfg.scan_obi_ofi_mode = ToInt(v);
+        else if(k=="scOBIOFIN")  cfg.scan_obi_ofi_levels = ToInt(v);
+        else if(k=="scOBIOFINm") cfg.scan_obi_ofi_norm_mode = ToInt(v);
+
+        else if(k=="scOBIDivOn") cfg.scan_obi_div_enable = ToBool(v);
+        else if(k=="scOBIDivLB") cfg.scan_obi_div_lookback = ToInt(v);
+        else if(k=="scOBIDivPA") cfg.scan_obi_div_min_price_atr = ToDouble(v);
+        else if(k=="scOBIDivOM") cfg.scan_obi_div_min_obi_move = ToDouble(v);
+        else if(k=="scOBIDivCd") cfg.scan_obi_div_cooldown_sec = ToInt(v);
+
+        else if(k=="scOBIRtry")  cfg.scan_obi_retry_cooldown_ms = ToInt(v);
+        else if(k=="scOBINoDC")  cfg.scan_obi_nodata_cache_ms = ToInt(v);
+        else if(k=="scOBIZPad")  cfg.scan_obi_zone_pad_points = ToInt(v);
+        else if(k=="scOBIMinEd") cfg.scan_obi_min_edge_distance_points = ToInt(v);
+        else if(k=="scOBIEps")   cfg.scan_obi_eps_vol = ToDouble(v);
+        else if(k=="scOBIMR1")   cfg.scan_obi_max_ratio_m1 = ToDouble(v);
+        else if(k=="scOBIFH")    cfg.scan_obi_flip_hysteresis_abs = ToDouble(v);
+
+        // OBI institutional extensions
+        else if(k=="scOBIWM")    cfg.scan_obi_weight_mode = ToInt(v);
+        else if(k=="scOBIWL")    cfg.scan_obi_weight_lambda_per_point = ToDouble(v);
+
+        else if(k=="scOBIMAW")   cfg.scan_obi_ma_window = ToInt(v);
+        else if(k=="scOBIMAN")   cfg.scan_obi_ma_min_samples = ToInt(v);
+        else if(k=="scOBIMAC")   cfg.scan_obi_ma_centering_enable = ToBool(v);
+
+        else if(k=="scOBIDSrc")  cfg.scan_obi_of_delta_source_mode = ToInt(v);
+        else if(k=="scOBIDLb")   cfg.scan_obi_of_delta_lookback = ToInt(v);
+        else if(k=="scOBIDFP")   cfg.scan_obi_of_delta_use_fp_ticks_preferred = ToBool(v);
+        else if(k=="scOBIDMn")   cfg.scan_obi_of_delta_min_total = ToDouble(v);
+
+        else if(k=="scOBILPIOn") cfg.scan_obi_lpi_enable = ToBool(v);
+        else if(k=="scOBILPa")   cfg.scan_obi_lpi_alpha = ToDouble(v);
+        else if(k=="scOBILPb")   cfg.scan_obi_lpi_beta = ToDouble(v);
+        else if(k=="scOBILPITh") cfg.scan_obi_lpi_threshold = ToDouble(v);
+
+        else if(k=="scOBIPm")    cfg.scan_obi_persistence_mode = ToInt(v);
+        else if(k=="scOBIPl")    cfg.scan_obi_persistence_len = ToInt(v);
+        else if(k=="scOBIPGa")   cfg.scan_obi_persistence_gamma = ToDouble(v);
+        else if(k=="scOBIPTh")   cfg.scan_obi_persistence_threshold = ToDouble(v);
+
+        else if(k=="scOBIAOn")   cfg.scan_obi_absorption_enable = ToBool(v);
+        else if(k=="scOBIALb")   cfg.scan_obi_absorption_lookback = ToInt(v);
+        else if(k=="scOBIAEp")   cfg.scan_obi_absorption_price_eps_points = ToDouble(v);
+        else if(k=="scOBIAZc")   cfg.scan_obi_absorption_z_clamp_abs = ToDouble(v);
+
+        else if(k=="scOBIScOn")  cfg.scan_obi_score_enable = ToBool(v);
+        else if(k=="scOBIS1")    cfg.scan_obi_score_w1_zobi = ToDouble(v);
+        else if(k=="scOBIS2")    cfg.scan_obi_score_w2_ndelta = ToDouble(v);
+        else if(k=="scOBIS3")    cfg.scan_obi_score_w3_zabs = ToDouble(v);
+        else if(k=="scOBIS4")    cfg.scan_obi_score_w4_persistence = ToDouble(v);
+        else if(k=="scOBISZW")   cfg.scan_obi_score_z_window = ToInt(v);
+        else if(k=="scOBISZN")   cfg.scan_obi_score_z_min_samples = ToInt(v);
+        else if(k=="scOBISZC")   cfg.scan_obi_score_z_clamp_abs = ToDouble(v);
+        else if(k=="scOBISZT")   cfg.scan_obi_score_z_threshold = ToDouble(v);
+
+        else if(k=="scOBIFXOn")  cfg.scan_obi_fx_fxlpi_enable = ToBool(v);
+        else if(k=="scOBIFXZW")  cfg.scan_obi_fx_spread_z_window = ToInt(v);
+        else if(k=="scOBIFXZN")  cfg.scan_obi_fx_spread_z_min_samples = ToInt(v);
+        else if(k=="scOBIFXOW")  cfg.scan_obi_fx_obi_weight = ToDouble(v);
+        else if(k=="scOBIFXSW")  cfg.scan_obi_fx_spread_weight = ToDouble(v);
+        else if(k=="scOBIFXTh")  cfg.scan_obi_fxlpi_threshold = ToDouble(v);
+
+        else if(k=="scOBISigM")  cfg.scan_obi_signal_metric_mode = ToInt(v);
+
+        else if(k=="scOBINDT")   cfg.scan_obi_ndelta_threshold = ToDouble(v);
+        else if(k=="scOBIAZT")   cfg.scan_obi_absorption_z_threshold = ToDouble(v);
+
+        else if(k=="scOBIEmSc")  cfg.scan_obi_emit_score_events = ToBool(v);
+        else if(k=="scOBIEmPs")  cfg.scan_obi_emit_persist_events = ToBool(v);
+        else if(k=="scOBIEmAb")  cfg.scan_obi_emit_absorb_events = ToBool(v);
+        else if(k=="scOBIEmFx")  cfg.scan_obi_emit_fx_events = ToBool(v);
+        else if(k=="scOBIEmSt")  cfg.scan_obi_emit_strong_class_events = ToBool(v);
+        
+        // VSA background-hook scanner fusion (Confluence-side)
+        else if(k=="scVHOn")    cfg.scan_vsa_hook_enable = ToBool(v);
+        else if(k=="scVHOBI")   cfg.scan_vsa_hook_apply_to_obi = ToBool(v);
+        else if(k=="scVHFoot")  cfg.scan_vsa_hook_apply_to_foot = ToBool(v);
+        else if(k=="scVHVP")    cfg.scan_vsa_hook_apply_to_vp = ToBool(v);
+
+        else if(k=="scVHRV")    cfg.scan_vsa_hook_min_abs_relvol = ToDouble(v);
+        else if(k=="scVHNS")    cfg.scan_vsa_hook_min_abs_normscore = ToDouble(v);
+        else if(k=="scVHSP")    cfg.scan_vsa_hook_min_spread_ratio = ToDouble(v);
+
+        else if(k=="scVHDN")    cfg.scan_vsa_hook_directional_norm_gate = ToBool(v);
+        else if(k=="scVHFin")   cfg.scan_vsa_hook_use_final_signal_hint = ToBool(v);
+        else if(k=="scVHMTF")   cfg.scan_vsa_hook_require_mtf_align = ToBool(v);
+        else if(k=="scVHBoost") cfg.scan_vsa_hook_boost_max = ToDouble(v);
         
         else if(k=="scFootOn")  cfg.scan_foot_enable = ToBool(v);
         else if(k=="scFootATR") cfg.scan_foot_use_atr_proxy = ToBool(v);
@@ -7791,6 +8815,7 @@ namespace Config
         else if(k=="scFootZd")  cfg.scan_foot_zdiverge = ToDouble(v);
 
         // OFIS
+        else if(k=="scOFOn")  cfg.scan_of_enable = ToBool(v);
         else if(k=="scOFdE")  cfg.scan_of_delta_ema_len = ToInt(v);
         else if(k=="scOFcE")  cfg.scan_of_cvd_ema_len   = ToInt(v);
         else if(k=="scOFzL")  cfg.scan_of_z_len         = ToInt(v);
@@ -7808,6 +8833,11 @@ namespace Config
         else if(k=="scOFMomT")  cfg.scan_of_mom_thr = ToDouble(v);
         else if(k=="scOFSwpC")  cfg.scan_of_liqsweep_confirm_enable = ToBool(v);
         else if(k=="scOFCvdR")  cfg.scan_of_cvd_reset_mode = ToInt(v);
+
+        else if(k=="scOFOfrOn") cfg.scan_of_ofr_enable = ToBool(v);
+        else if(k=="scOFOfrT")  cfg.scan_of_ofr_buy_share_thr = ToDouble(v);
+        else if(k=="scOFOfrRb") cfg.scan_of_ofr_rebalance_band = ToDouble(v);
+        else if(k=="scOFOfrV")  cfg.scan_of_ofr_min_total_vol = ToDouble(v);
         
         else if(k=="scFTickOn")  cfg.scan_foot_allow_ticks = ToBool(v);
         else if(k=="scFTickMax") cfg.scan_foot_ticks_max_tf_sec = ToInt(v);
@@ -7851,7 +8881,8 @@ namespace Config
         else if(k=="scFExLV")   cfg.scan_foot_exhaust_low_vol_frac_avg = ToDouble(v);
         else if(k=="scFExPL")   cfg.scan_foot_exhaust_prior_levels = ToInt(v);
         else if(k=="scFExAH")   cfg.scan_foot_exhaust_min_aggr_hits = ToInt(v);
-        
+        else if(k=="scFExCN")   cfg.scan_foot_exhaust_require_close_near = ToBool(v);
+
         // Correlation (existing)
         else if(k=="scCorrOn")  cfg.scan_corr_enable    = ToBool(v);
         else if(k=="scCorrThr") cfg.scan_corr_threshold = ToDouble(v);
@@ -8115,17 +9146,64 @@ namespace Config
     #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
       if(!seenVsaTick) cfg.vsa_allow_tick_volume = true;
     #endif
-    
-    if(!seenVsaMode) cfg.vsa_mode = 0;
-    if(!seenVsaNv)   cfg.vsa_vol_lb = 20;
-    if(!seenVsaNs)   cfg.vsa_spread_lb = 20;
-    if(!seenVsaNt)   cfg.vsa_trend_lb = 50;
-    if(!seenVsaK)    cfg.vsa_strength_k = 1.5;
 
+    if(!seenVsaLb)    cfg.vsa_lookback = 60;
+
+    if(!seenVsaMode)  cfg.vsa_mode = 0;
+    if(!seenVsaNv)    cfg.vsa_vol_lb = 20;
+    if(!seenVsaNs)    cfg.vsa_spread_lb = 20;
+    if(!seenVsaNt)    cfg.vsa_trend_lb = 50;
+    if(!seenVsaK)     cfg.vsa_strength_k = 1.5;
     if(!seenVsaMtf)   cfg.vsa_mtf_confirm = false;
     if(!seenVsaMtfTf) cfg.vsa_mtf_tf = PERIOD_H1;
     if(!seenVsaNorm)  cfg.vsa_normscore_abs_th = 0.30;
+    
+    if(!seenVsaRvL)   cfg.vsa_rv_low_th = 0.8;
+    if(!seenVsaRvH)   cfg.vsa_rv_high_th = 1.2;
+    if(!seenVsaRvVH)  cfg.vsa_rv_very_high_th = 1.5;
+    if(!seenVsaRvUH)  cfg.vsa_rv_ultra_high_th = 2.0;
 
+    if(!seenVsaRsN)   cfg.vsa_rs_narrow_th = 0.7;
+    if(!seenVsaRsW)   cfg.vsa_rs_wide_th = 1.3;
+
+    if(!seenVsaClvU)  cfg.vsa_clv_strong_up_th = 0.6;
+    if(!seenVsaClvD)  cfg.vsa_clv_strong_dn_th = -0.6;
+
+    if(!seenVsaAbsL)  cfg.vsa_abs_lb = 20;
+    if(!seenVsaAbsN)  cfg.vsa_norm_abs_high_th = 1.5;
+    if(!seenVsaScT)   cfg.vsa_score_strong_th = 5.0;
+
+    if(!seenVsaTR)        cfg.vsa_use_true_range = false;
+    if(!seenVsaEmaPair)   cfg.vsa_trend_use_ema_pair = true;
+    if(!seenVsaEmaF)      cfg.vsa_ema_fast = 50;
+    if(!seenVsaEmaS)      cfg.vsa_ema_slow = 200;
+    if(!seenVsaFinalNorm) cfg.vsa_use_normscore_gate_on_final = true;
+    if(!seenVsaUTPrev)    cfg.vsa_require_prev_hhll_ut_shake = true;
+
+    if(!seenVsaMk)      cfg.vsa_market_mode = 0;
+    if(!seenVsaVB)      cfg.vsa_vol_class_mode = 2;
+
+    if(!seenVsaSessV)   cfg.vsa_use_session_vol_norm = false;
+    if(!seenVsaSessLb)  cfg.vsa_session_vol_lb = 60;
+
+    if(!seenVsaPR)      cfg.vsa_use_vol_percent_rank = false;
+    if(!seenVsaPRLb)    cfg.vsa_percent_rank_lb = 30;
+    if(!seenVsaPRHi)    cfg.vsa_percent_rank_high_th = 0.90;
+    if(!seenVsaPRLo)    cfg.vsa_percent_rank_low_th = 0.20;
+
+    if(!seenVsaSprZ)    cfg.vsa_spread_zscore_enable = false;
+    if(!seenVsaSprZL)   cfg.vsa_spread_z_lb = 30;
+
+    if(!seenVsaAbsZ)    cfg.vsa_absorption_zscore_enable = true;
+    if(!seenVsaAbsZH)   cfg.vsa_absorption_z_high_th = 2.0;
+
+    if(!seenVsaERLb)    cfg.vsa_er_lb = 20;
+
+    if(!seenVsaSVZ)     cfg.vsa_stopvol_zv_th = 1.5;
+    if(!seenVsaSVR)     cfg.vsa_stopvol_rs_th = 1.2;
+    if(!seenVsaUTZ)     cfg.vsa_utso_zv_th = 1.0;
+    if(!seenVsaUTR)     cfg.vsa_utso_rs_th = 1.2;
+    
     Normalize(cfg);
     _SyncRouterFallbackAlias(cfg);
     FinalizeThresholds(cfg);
@@ -8568,13 +9646,139 @@ struct Settings
    double scan_obi_vwap_dist_atr;
 
    // OBI advanced metric mode / aggregation (Option A: explicit, clean)
-   int    scan_obi_mode;                    // 0=symmetric, 1=ratio-1, 2=log-ratio, 3=proxy-footprint fallback
+   int    scan_obi_mode;                    // 0=symmetric, 1=ratio-1, 2=log-ratio, 3=proxy-footprint fallback, 4=proxy-delta fallback
    int    scan_obi_top_levels;              // 0=disabled; else true Top-N price levels per side
    bool   scan_obi_weighted_enable;         // enable near-price weighted aggregation
    double scan_obi_weight_half_life_points; // half-life for exp weighting in points
    int    scan_obi_ema_len;                 // 0/1=disabled; >=2 enables EMA over selected OBI metric
    int    scan_obi_weight_ref;              // 0=MID, 1=CENTER, 2=BEST (default 0)
-   bool scan_foot_enable;
+
+   // OBI pipeline extensions (basis / normalization / transform)
+   int    scan_obi_basis_mode;           // 0=volume, 1=notional
+   int    scan_obi_norm_mode;            // 0=none, 1=z-score, 2=spread-adjust
+   int    scan_obi_z_window;             // 0=disabled; else rolling z-score window
+   int    scan_obi_z_min_samples;        // minimum samples before z-score is valid
+   double scan_obi_z_clamp_abs;          // 0=disabled; clamp |z| if >0
+   double scan_obi_z_threshold;          // direct threshold when z-score mode is used
+
+   int    scan_obi_transform_mode;       // 0=none, 1=logistic, 2=power
+   double scan_obi_logistic_k;           // logistic sensitivity (>0)
+   double scan_obi_power_gamma;          // signed power gamma (>0)
+
+   // OBI spread-adjust normalization controls
+   double scan_obi_spread_min_points;    // min spread floor for spread-adjust divide
+   double scan_obi_spread_adjust_cap;    // 0=disabled; clamp abs(adjusted metric)
+
+   // OBI dynamic OFI mode controls
+   int    scan_obi_ofi_mode;             // 0=best-quote (default), 1=full-depth
+   int    scan_obi_ofi_levels;           // top-N levels for full-depth OFI
+   int    scan_obi_ofi_norm_mode;        // 0=topbook sum, 1=full-depth sum
+
+   // OBI divergence / signal extras
+   bool   scan_obi_div_enable;           // emit OBI divergence events (SC_OBI_DIV_*)
+   int    scan_obi_div_lookback;         // reserved / future richer divergence logic
+   double scan_obi_div_min_price_atr;    // min price move in ATR units (scanner converts to points)
+   double scan_obi_div_min_obi_move;     // min OBI metric delta for divergence
+   int    scan_obi_div_cooldown_sec;     // cooldown between repeated divergence emits
+
+   // OBI internal behavior knobs (wired into OrderBookImbalance::Settings)
+   int    scan_obi_retry_cooldown_ms;
+   int    scan_obi_nodata_cache_ms;
+   int    scan_obi_zone_pad_points;
+   int    scan_obi_min_edge_distance_points;
+   double scan_obi_eps_vol;
+   double scan_obi_max_ratio_m1;
+
+   // OBI flip / hysteresis helper
+   double scan_obi_flip_hysteresis_abs;  // deadband for zero-cross/flip marker
+
+    // OBI institutional extensions (advanced / optional; additive only)
+    // Weighting model extensions (beyond legacy weighted_enable + half-life)
+    int    scan_obi_weight_mode;                 // 0=legacy/none, 1=level-inverse(1/i), 2=exp-half-life, 3=exp-lambda
+    double scan_obi_weight_lambda_per_point;     // lambda for exp-distance weighting (mode 3)
+
+    // Optional MA baseline / centering telemetry (OBI core diagnostics)
+    int    scan_obi_ma_window;                   // 0=disabled
+    int    scan_obi_ma_min_samples;              // minimum samples for MA/z telemetry helpers
+    bool   scan_obi_ma_centering_enable;         // subtract MA from raw OBI before normalization telemetry path
+
+    // Order-flow delta source (for NDelta / LPI inputs)
+    int    scan_obi_of_delta_source_mode;        // see OBI::OBIDeltaSourceMode (0..4)
+    int    scan_obi_of_delta_lookback;           // proxy lookback for Footprint/DeltaProxy z-based sources
+    bool   scan_obi_of_delta_use_fp_ticks_preferred; // advisory hint for footprint-proxy tick path
+    double scan_obi_of_delta_min_total;          // minimum denominator / total volume floor
+
+    // Liquidity Pressure Index (LPI = alpha*WOBI + beta*NDelta)
+    bool   scan_obi_lpi_enable;                  // enable LPI computation/selection in OBI core
+    double scan_obi_lpi_alpha;                   // default 0.6
+    double scan_obi_lpi_beta;                    // default 0.4
+    double scan_obi_lpi_threshold;               // scanner threshold when signal metric mode = LPI (direct-domain)
+
+    // Persistence model (mode 0 keeps legacy behavior / disabled)
+    int    scan_obi_persistence_mode;            // 0=off, 1=rolling-sum, 2=ema
+    int    scan_obi_persistence_len;             // window for rolling-sum mode
+    double scan_obi_persistence_gamma;           // EMA coefficient for persistence EMA mode
+    double scan_obi_persistence_threshold;       // optional persistence classification threshold
+
+    // Absorption detection
+    bool   scan_obi_absorption_enable;           // enable absorption ratio + z-score path
+    int    scan_obi_absorption_lookback;         // rolling z window / lookback
+    double scan_obi_absorption_price_eps_points; // epsilon floor for low-price-change denominator
+    double scan_obi_absorption_z_clamp_abs;      // 0=disabled; clamp |ZAbs|
+
+    // Composite score (Score = w1*ZOBI + w2*NDelta + w3*ZAbs + w4*Persistence)
+    bool   scan_obi_score_enable;                // enable composite scoring path
+    double scan_obi_score_w1_zobi;
+    double scan_obi_score_w2_ndelta;
+    double scan_obi_score_w3_zabs;
+    double scan_obi_score_w4_persistence;
+    int    scan_obi_score_z_window;              // z-score window for composite score
+    int    scan_obi_score_z_min_samples;         // min samples before score z-score valid
+    double scan_obi_score_z_clamp_abs;           // 0=disabled; clamp |score z|
+    double scan_obi_score_z_threshold;           // scanner threshold when signal metric mode = SCORE_Z
+
+    // FX proxy enhancement (FXLPI = fx_obi_weight * FX_OBI + fx_spread_weight * SpreadPressureZ)
+    bool   scan_obi_fx_fxlpi_enable;             // enable FXLPI / spread-pressure path in proxy-delta mode
+    int    scan_obi_fx_spread_z_window;          // spread-pressure z-score window
+    int    scan_obi_fx_spread_z_min_samples;     // min samples for spread-pressure z-score
+    double scan_obi_fx_obi_weight;               // default 0.7
+    double scan_obi_fx_spread_weight;            // default 0.3
+    double scan_obi_fxlpi_threshold;             // scanner threshold when signal metric mode = FXLPI
+
+    // Signal metric selector (scanner/confluence should consume OBI core-selected metric)
+    int    scan_obi_signal_metric_mode;          // 0=base OBI final, 1=LPI, 2=ScoreZ, 3=FXLPI
+
+    // OBI scanner institutional classification / emit controls (optional; Confluence OBIX wiring)
+    double scan_obi_ndelta_threshold;            // strong-class gate for |NDelta| (spec-style default 0.5)
+    double scan_obi_absorption_z_threshold;      // OBIX absorption event gate for |ZAbs| (spec-style default 2.0)
+
+    bool   scan_obi_emit_score_events;           // emit OBIX score-z threshold events
+    bool   scan_obi_emit_persist_events;         // emit OBIX persistence threshold events
+    bool   scan_obi_emit_absorb_events;          // emit OBIX absorption z threshold events
+    bool   scan_obi_emit_fx_events;              // emit OBIX FXLPI threshold events
+    bool   scan_obi_emit_strong_class_events;    // emit strong bullish/bearish class events (multi-condition)
+
+   // NOTE:
+   // - scan_obi_* controls DOM/resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
+   // - OFR (order flow ratio) here is a Footprint/OFIS aggressive-flow proxy and belongs under scan_of_* settings
+   //   for Confluence footprint/OFIS event emission (not DOM depth imbalance)
+    
+   // VSA background-hook gating/boost for scanner emits (Confluence-side fusion)
+   // Default OFF to preserve current scanner behavior until explicitly enabled.
+   bool   scan_vsa_hook_enable;                 // master switch for VSA hook on scanner families
+   bool   scan_vsa_hook_apply_to_obi;           // apply hook to OBI directional emits
+   bool   scan_vsa_hook_apply_to_foot;          // apply hook to Footprint / OFIS directional emits
+   bool   scan_vsa_hook_apply_to_vp;            // apply hook to Volume Profile directional emits
+
+   double scan_vsa_hook_min_abs_relvol;         // min |RV| proxy / relVol ratio requirement
+   double scan_vsa_hook_min_abs_normscore;      // min |normScore| requirement
+   double scan_vsa_hook_min_spread_ratio;       // min spread ratio requirement
+
+   bool   scan_vsa_hook_directional_norm_gate;  // require directional norm-score gate
+   bool   scan_vsa_hook_use_final_signal_hint;  // use exact final signal as directional hint
+   bool   scan_vsa_hook_require_mtf_align;      // require MTF alignment when VSA MTF confirm enabled
+   double scan_vsa_hook_boost_max;              // cap for directional boost multiplier
+   bool   scan_foot_enable;
    
    // Footprint / delta (orderflow-lite) tuning
    bool   scan_foot_use_atr_proxy;  // use ATR proxy when session delta isn't reliable
@@ -8583,6 +9787,7 @@ struct Settings
    double scan_foot_zdiverge;       // divergence threshold (|z|)
 
    // ---------------- OFIS (Order Flow Imbalance System) tuning ----------------
+   bool   scan_of_enable;              // master OFIS / order-flow scanner toggle (backend emits)
    int    scan_of_delta_ema_len;       // delta smoothing EMA length (spec: 14)
    int    scan_of_cvd_ema_len;         // CVD EMA length (spec: 20)
    int    scan_of_z_len;               // z-score window for OFIS (spec: 50)
@@ -8600,7 +9805,12 @@ struct Settings
    double scan_of_mom_thr;                 // OFM threshold (implementation-defined; keep conservative)
    bool   scan_of_liqsweep_confirm_enable; // fuse liquidity sweep + opposite delta confirmation
    int    scan_of_cvd_reset_mode;          // 0=broker-day (current), 1=session, 2=continuous
-   
+
+   bool   scan_of_ofr_enable;          // enable OFR dominance/rebalance emits (Footprint/OFIS aggressive-flow proxy)
+   double scan_of_ofr_buy_share_thr;   // buy dominance threshold in [0.50..0.99]; sell dominance uses (1-threshold)
+   double scan_of_ofr_rebalance_band;  // neutral band around 0.50 before emitting rebalance
+   double scan_of_ofr_min_total_vol;   // minimum aggressive-flow proxy total volume to evaluate OFR
+    
    bool scan_corr_enable;
    double scan_corr_threshold;   // abs(corr) threshold to classify "strong"
    double scan_corr_recover;     // abs(corr) <= this => "weak" (hysteresis)
@@ -8678,7 +9888,8 @@ struct Settings
    double scan_foot_exhaust_low_vol_frac_avg; // extreme total <= frac * avgVolPerLevel
    int    scan_foot_exhaust_prior_levels;     // inward levels to inspect for prior aggression
    int    scan_foot_exhaust_min_aggr_hits;    // required aggressive-imbalance hits
-   
+   bool   scan_foot_exhaust_require_close_near; // require close near tested extreme (FPConfig parity)
+
    // Volume Profile scanner
    bool   scan_vp_enable;
    int    scan_vp_lookback_bars;       // histogram build lookback (closed bars)
@@ -9278,6 +10489,56 @@ struct Settings
   bool              vsa_mtf_confirm;       // optional: require HTF trend alignment
   ENUM_TIMEFRAMES   vsa_mtf_tf;            // HTF used for confirmation (e.g., PERIOD_H1)
   double            vsa_normscore_abs_th;  // optional configurable |NormScore| gate (default 0.30)
+
+  // Exact-spec thresholds / behavior knobs (new)
+  double            vsa_rv_low_th;         // RV low threshold (0.8)
+  double            vsa_rv_high_th;        // RV high threshold (1.2)
+  double            vsa_rv_very_high_th;   // RV very-high threshold (1.5)
+  double            vsa_rv_ultra_high_th;  // RV ultra-high threshold (2.0)
+
+  double            vsa_rs_narrow_th;      // RS narrow threshold (0.7)
+  double            vsa_rs_wide_th;        // RS wide threshold (1.3)
+
+  double            vsa_clv_strong_up_th;  // CLV strong-up threshold (+0.6)
+  double            vsa_clv_strong_dn_th;  // CLV strong-down threshold (-0.6)
+
+  int               vsa_abs_lb;            // absorption MA lookback (20)
+  double            vsa_norm_abs_high_th;  // normalized absorption high threshold (1.5)
+
+  double            vsa_score_strong_th;   // exact composite score strong threshold (5.0)
+
+  bool              vsa_use_true_range;                 // use TR instead of spread for RS baseline
+  bool              vsa_trend_use_ema_pair;             // EMA fast/slow trend filter (default true)
+  int               vsa_ema_fast;                       // 50
+  int               vsa_ema_slow;                       // 200
+  bool              vsa_use_normscore_gate_on_final;    // retain BC-style norm gate in final signal
+  bool              vsa_require_prev_hhll_ut_shake;     // HH/LL vs previous bar for UT/Shakeout
+
+  // Universal VSA (multi-market adaptive) controls
+  int               vsa_market_mode;              // 0=auto, 1=forex, 2=exchange-volume
+  int               vsa_vol_class_mode;           // 0=RV, 1=ZV, 2=adaptive
+
+  bool              vsa_use_session_vol_norm;     // enable session-relative volume (SessRV)
+  int               vsa_session_vol_lb;           // session volume lookback / sample cap
+
+  bool              vsa_use_vol_percent_rank;     // enable percentile-rank volume adaptation
+  int               vsa_percent_rank_lb;          // percentile lookback
+  double            vsa_percent_rank_high_th;     // e.g. 0.90
+  double            vsa_percent_rank_low_th;      // e.g. 0.20
+
+  bool              vsa_spread_zscore_enable;     // enable spread z-score metric
+  int               vsa_spread_z_lb;              // spread z-score lookback
+
+  bool              vsa_absorption_zscore_enable; // use absorption z-score for absorptionHigh
+  double            vsa_absorption_z_high_th;     // z-score threshold (default 2.0)
+
+  int               vsa_er_lb;                    // effort/result ER/NER lookback
+
+  // Optional exact rule threshold overrides (literal-spec tuning)
+  double            vsa_stopvol_zv_th;            // stopping volume ZV threshold (default 1.5)
+  double            vsa_stopvol_rs_th;            // stopping volume RS threshold (default 1.2)
+  double            vsa_utso_zv_th;               // upthrust/shakeout ZV threshold (default 1.0)
+  double            vsa_utso_rs_th;               // upthrust/shakeout RS threshold (default 1.2)
   
   #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
     bool              vsa_allow_tick_volume; // allow tick volume in VSA when real volume unavailable
