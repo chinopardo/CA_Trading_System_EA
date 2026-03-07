@@ -56,6 +56,125 @@ struct Settings;
   #define CFG_HAS_AUTOCHARTIST_SETTINGS 1
 #endif
 
+// --- NewsFilter / FNVS extended settings exposure ---
+#ifndef CFG_HAS_NEWS_BACKEND
+  #define CFG_HAS_NEWS_BACKEND 1
+#endif
+#ifndef CFG_HAS_NEWS_PRE_MINS
+  #define CFG_HAS_NEWS_PRE_MINS 1
+#endif
+#ifndef CFG_HAS_NEWS_POST_MINS
+  #define CFG_HAS_NEWS_POST_MINS 1
+#endif
+#ifndef CFG_HAS_NEWS_LOOKBACK_MINS
+  #define CFG_HAS_NEWS_LOOKBACK_MINS 1
+#endif
+#ifndef CFG_HAS_NEWS_SOFT_KNEE
+  #define CFG_HAS_NEWS_SOFT_KNEE 1
+#endif
+#ifndef CFG_HAS_NEWS_HARD_SKIP
+  #define CFG_HAS_NEWS_HARD_SKIP 1
+#endif
+#ifndef CFG_HAS_NEWS_MIN_SCALE
+  #define CFG_HAS_NEWS_MIN_SCALE 1
+#endif
+#ifndef CFG_HAS_NEWS_HALFLIFE
+  #define CFG_HAS_NEWS_HALFLIFE 1
+#endif
+#ifndef CFG_HAS_NEWS_MAX_BLOCK
+  #define CFG_HAS_NEWS_MAX_BLOCK 1
+#endif
+#ifndef CFG_HAS_NEWS_MIN_DECAY_MULT
+  #define CFG_HAS_NEWS_MIN_DECAY_MULT 1
+#endif
+
+#ifndef CFG_HAS_NEWS_CSV_PATH
+  #define CFG_HAS_NEWS_CSV_PATH 1
+#endif
+#ifndef CFG_HAS_NEWS_CSV_RELOAD_MINS
+  #define CFG_HAS_NEWS_CSV_RELOAD_MINS 1
+#endif
+#ifndef CFG_HAS_NEWS_CSV_HAS_HEADER
+  #define CFG_HAS_NEWS_CSV_HAS_HEADER 1
+#endif
+
+#ifndef CFG_HAS_NEWS_FNVS_ENABLE
+  #define CFG_HAS_NEWS_FNVS_ENABLE 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SURPRISE_MODE
+  #define CFG_HAS_NEWS_FNVS_SURPRISE_MODE 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_USE_PREV_NORM
+  #define CFG_HAS_NEWS_FNVS_USE_PREV_NORM 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_USE_CCY_SENS
+  #define CFG_HAS_NEWS_FNVS_USE_CCY_SENS 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY
+  #define CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_USE_SENTIMENT
+  #define CFG_HAS_NEWS_FNVS_USE_SENTIMENT 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+  #define CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_POLARITY_MODE
+  #define CFG_HAS_NEWS_FNVS_POLARITY_MODE 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_HV_MODE
+  #define CFG_HAS_NEWS_FNVS_HV_MODE 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_HV_TF
+  #define CFG_HAS_NEWS_FNVS_HV_TF 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_HV_PERIOD
+  #define CFG_HAS_NEWS_FNVS_HV_PERIOD 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_ADR_DAYS
+  #define CFG_HAS_NEWS_FNVS_ADR_DAYS 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+  #define CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+  #define CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+  #define CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+  #define CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+  #define CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC 1
+#endif
+
+#ifndef CFG_HAS_NEWS_FNVS_SENS_USD
+  #define CFG_HAS_NEWS_FNVS_SENS_USD 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_EUR
+  #define CFG_HAS_NEWS_FNVS_SENS_EUR 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_GBP
+  #define CFG_HAS_NEWS_FNVS_SENS_GBP 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_JPY
+  #define CFG_HAS_NEWS_FNVS_SENS_JPY 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_AUD
+  #define CFG_HAS_NEWS_FNVS_SENS_AUD 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_NZD
+  #define CFG_HAS_NEWS_FNVS_SENS_NZD 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_CAD
+  #define CFG_HAS_NEWS_FNVS_SENS_CAD 1
+#endif
+#ifndef CFG_HAS_NEWS_FNVS_SENS_CHF
+  #define CFG_HAS_NEWS_FNVS_SENS_CHF 1
+#endif
+
 // --- Autochartist patterns export control (single source of truth) ---
 #ifndef CFG_HAS_AUTOC_PATT_SETTINGS
   #define CFG_HAS_AUTOC_PATT_SETTINGS 1
@@ -105,6 +224,47 @@ struct Settings;
   #define CFG_HAS_FVG_MIN_GAP_ATR 1
 #endif
 
+#ifndef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+  #define CFG_HAS_FVG_ZONE_BOUNDS_MODE 1
+#endif
+#ifndef CFG_HAS_FVG_USE_BODY_ONLY
+  #define CFG_HAS_FVG_USE_BODY_ONLY 1
+#endif
+#ifndef CFG_HAS_FVG_MIN_GAP_MODE
+  #define CFG_HAS_FVG_MIN_GAP_MODE 1
+#endif
+#ifndef CFG_HAS_FVG_MIN_GAP_PCT
+  #define CFG_HAS_FVG_MIN_GAP_PCT 1
+#endif
+#ifndef CFG_HAS_FVG_MIN_GAP_PTS
+  #define CFG_HAS_FVG_MIN_GAP_PTS 1
+#endif
+#ifndef CFG_HAS_FVG_DETECT_MODEL
+  #define CFG_HAS_FVG_DETECT_MODEL 1
+#endif
+
+// Lifecycle knobs (used by FVG.mqh opt-aware lifecycle wrappers)
+#ifndef CFG_HAS_FVG_INVALIDATION_MODE
+  #define CFG_HAS_FVG_INVALIDATION_MODE 1
+#endif
+#ifndef CFG_HAS_FVG_PARTIAL_FILL_THR
+  #define CFG_HAS_FVG_PARTIAL_FILL_THR 1
+#endif
+#ifndef CFG_HAS_FVG_MAX_AGE_BARS
+  #define CFG_HAS_FVG_MAX_AGE_BARS 1
+#endif
+
+// Optional exposure (only wire if you want per-FVG overrides instead of global atr_period)
+#ifndef CFG_HAS_FVG_ATR_PERIOD
+  #define CFG_HAS_FVG_ATR_PERIOD 1
+#endif
+#ifndef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+  #define CFG_HAS_FVG_IGNORE_SESSION_GAPS 1
+#endif
+#ifndef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+  #define CFG_HAS_FVG_VOLUME_RATIO_SETTINGS 1
+#endif
+
 // --- Scanner toggles / thresholds (non-Autochartist scanners) ---
 #ifndef CFG_HAS_SCAN_FVG_SETTINGS
   #define CFG_HAS_SCAN_FVG_SETTINGS 1
@@ -117,6 +277,36 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
   #define CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_RETURN_MODE
+  #define CFG_HAS_SCAN_CORR_RETURN_MODE 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_LAG_TEST_BARS
+  #define CFG_HAS_SCAN_CORR_LAG_TEST_BARS 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_MAX_LEADLAG
+  #define CFG_HAS_SCAN_CORR_MAX_LEADLAG 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_LEADLAG_MIN_EDGE
+  #define CFG_HAS_SCAN_CORR_LEADLAG_MIN_EDGE 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_DIV_MODE
+  #define CFG_HAS_SCAN_CORR_DIV_MODE 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_DIV_MIN_ABS_CORR
+  #define CFG_HAS_SCAN_CORR_DIV_MIN_ABS_CORR 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_DIV_PRICE_OPPOSITE_ENABLE
+  #define CFG_HAS_SCAN_CORR_DIV_PRICE_OPPOSITE_ENABLE 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_DIV_ZSPREAD_THR
+  #define CFG_HAS_SCAN_CORR_DIV_ZSPREAD_THR 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_ATR_PERIOD
+  #define CFG_HAS_SCAN_CORR_ATR_PERIOD 1
+#endif
+#ifndef CFG_HAS_SCAN_CORR_VOL_ADJUST_ENABLE
+  #define CFG_HAS_SCAN_CORR_VOL_ADJUST_ENABLE 1
 #endif
 
 // --- StructureSDOB / Supply-Demand (SDOB) / OB knobs -------------------------
@@ -155,6 +345,49 @@ struct Settings;
   #define CFG_HAS_STRUCT_ZONE_MIN_SCORE 1
 #endif
 
+// --- StructureSDOB advanced / selection knobs (used by StructCfg::* wrappers) ---
+#ifndef CFG_HAS_STRUCT_PIVOT_L
+  #define CFG_HAS_STRUCT_PIVOT_L 1
+#endif
+#ifndef CFG_HAS_STRUCT_PIVOT_R
+  #define CFG_HAS_STRUCT_PIVOT_R 1
+#endif
+#ifndef CFG_HAS_STRUCT_BOS_MIN
+  #define CFG_HAS_STRUCT_BOS_MIN 1
+#endif
+#ifndef CFG_HAS_STRUCT_TREND_MIN
+  #define CFG_HAS_STRUCT_TREND_MIN 1
+#endif
+
+#ifndef CFG_HAS_STRUCT_OB_ZONE_MODE
+  #define CFG_HAS_STRUCT_OB_ZONE_MODE 1
+#endif
+#ifndef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+  #define CFG_HAS_STRUCT_OB_CLUSTER_MAX 1
+#endif
+#ifndef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+  #define CFG_HAS_STRUCT_OB_MIN_IMPULSE 1
+#endif
+#ifndef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+  #define CFG_HAS_STRUCT_OB_MIN_DISP_ATR 1
+#endif
+#ifndef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+  #define CFG_HAS_STRUCT_OB_EXPIRE_BARS 1
+#endif
+
+ // --- StructureSDOB institutional SD (base-cluster/spec) settings ---
+ #ifndef CFG_HAS_STRUCT_SD_SETTINGS
+   #define CFG_HAS_STRUCT_SD_SETTINGS 1
+ #endif
+ #ifndef CFG_HAS_STRUCT_SD_SETTINGS_FIELDS
+   // Settings contains struct_sd_* members used by StructureSDOB institutional detector tuning
+   #define CFG_HAS_STRUCT_SD_SETTINGS_FIELDS 1
+   // Ownership rule:
+   //   struct_* / struct_sd_* = StructureSDOB detector + zone-selection settings
+   //   sd_*                   = Patterns classifier / telemetry settings only
+   // Keep detector controls ONLY in struct_sd_* to avoid drift and double-wiring.
+ #endif
+ 
 // --- Patterns: SD base patterns (RBR/DBD/RBD/DBR) settings ---
 #ifndef CFG_HAS_PATTERNS_SD_SETTINGS
   #define CFG_HAS_PATTERNS_SD_SETTINGS 1
@@ -592,6 +825,10 @@ struct Settings;
 #endif
 #ifndef CFG_HAS_W_CORR
   #define CFG_HAS_W_CORR 1
+#endif
+
+#ifndef CFG_HAS_CORR_AUTO_REF_FALLBACK
+  #define CFG_HAS_CORR_AUTO_REF_FALLBACK 1
 #endif
 
 #ifndef CFG_HAS_EXTRA_NEWS
@@ -1153,6 +1390,10 @@ namespace Config
      double vsa_norm_abs_high_th;   // normalized absorption high threshold (default 1.5)
 
      double vsa_score_strong_th;    // exact composite score strong threshold (default 5.0)
+     // Exact-spec weighted score model (Score = w1*RV + w2*RS + w3*CLV)
+     double vsa_score_w_rv;         // default 0.5
+     double vsa_score_w_rs;         // default 0.3
+     double vsa_score_w_clv;        // default 0.2
 
      bool   vsa_use_true_range;                 // use TR instead of spread for RS baseline
      bool   vsa_trend_use_ema_pair;             // use EMA fast/slow trend filter (default true)
@@ -1161,6 +1402,12 @@ namespace Config
      bool   vsa_use_normscore_gate_on_final;    // keep BC-style norm gate on final signal
      bool   vsa_require_prev_hhll_ut_shake;     // require HH/LL vs prev bar for UT/Shakeout
 
+     // Signal confirmation / alert strictness (scanner/event layer uses these)
+     bool   vsa_require_confirm;             // require confirmation policy for emits/finals
+     bool   vsa_followthrough_confirm_enable;// delayed next-bar follow-through confirmation
+     bool   vsa_confirm_volume_up_only;      // immediate confirm = V[i] > V[i-1]
+     bool   vsa_alert_ndns_require_trend;    // ND only in uptrend / NS only in downtrend alerts
+      
      // Universal VSA (multi-market adaptive) controls
      int    vsa_market_mode;              // 0=auto, 1=forex, 2=exchange-volume
      int    vsa_vol_class_mode;           // 0=RV, 1=ZV, 2=adaptive
@@ -1180,13 +1427,19 @@ namespace Config
      double vsa_absorption_z_high_th;     // z-score threshold (default 2.0)
 
      int    vsa_er_lb;                    // effort/result ER/NER lookback
+     int    vsa_utso_breakout_lb;            // UT/Shakeout breakout lookback (previous N bars)
 
      // Optional exact rule threshold overrides (literal-spec tuning)
      double vsa_stopvol_zv_th;            // stopping volume ZV threshold (default 1.5)
      double vsa_stopvol_rs_th;            // stopping volume RS threshold (default 1.2)
      double vsa_utso_zv_th;               // upthrust/shakeout ZV threshold (default 1.0)
      double vsa_utso_rs_th;               // upthrust/shakeout RS threshold (default 1.2)
-     
+
+     // Literal CLV thresholds (strict-spec tuning)
+     double vsa_stopvol_clv_min;             // stopping volume: CLV > this (default -0.3)
+     double vsa_buyclimax_clv_max;           // buying climax: CLV < this (default +0.3)
+     double vsa_sellclimax_clv_min;          // selling climax: CLV > this (default -0.3, "off low")
+      
      ENUM_TIMEFRAMES tf_trend_htf; // 0 (PERIOD_CURRENT) means “use cfg.tf_h4”
      
      // Strategy pack registration (runtime replacement for ENABLE_LEGACY_STRATEGIES)
@@ -1234,7 +1487,94 @@ namespace Config
      bool news_failover_to_csv;     // allow broker->csv fallback
      bool news_neutral_on_no_data;  // missing data => neutral (no block)
      bool news_allow_cached;
-   
+
+     #ifdef CFG_HAS_NEWS_CSV_PATH
+         string news_csv_path;
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_RELOAD_MINS
+         int    news_csv_reload_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_HAS_HEADER
+         bool   news_csv_has_header;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_FNVS_ENABLE
+         bool   news_fnvs_enable;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SURPRISE_MODE
+         int    news_fnvs_surprise_mode;     // 0=abs forecast, 1=signed forecast, 2=forecast-vs-prev
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_PREV_NORM
+         bool   news_fnvs_use_prev_norm;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_CCY_SENS
+         bool   news_fnvs_use_ccy_sens;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY
+         bool   news_fnvs_use_event_polarity;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_SENTIMENT
+         bool   news_fnvs_use_sentiment;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+         double news_fnvs_sentiment_weight;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_POLARITY_MODE
+         int    news_fnvs_polarity_mode;     // 0=auto, 1=direct
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_MODE
+         int    news_fnvs_hv_mode;           // 0=ATR_H1, 1=ATR_D1, 2=ADR_D1, 3=entry TF ATR
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_TF
+         int    news_fnvs_hv_tf;             // reserved/manual TF override
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_PERIOD
+         int    news_fnvs_hv_period;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_ADR_DAYS
+         int    news_fnvs_adr_days;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+         double news_fnvs_signal_buy_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+         double news_fnvs_signal_sell_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+         double news_fnvs_signal_strong_buy_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+         double news_fnvs_signal_strong_sell_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+         double news_fnvs_ev_min_atr_frac;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_USD
+         double news_fnvs_sens_usd;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_EUR
+         double news_fnvs_sens_eur;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_GBP
+         double news_fnvs_sens_gbp;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_JPY
+         double news_fnvs_sens_jpy;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_AUD
+         double news_fnvs_sens_aud;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_NZD
+         double news_fnvs_sens_nzd;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CAD
+         double news_fnvs_sens_cad;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CHF
+         double news_fnvs_sens_chf;
+     #endif
+     
      #ifdef CFG_HAS_ML_SETTINGS
         // --- MLBlender runtime & lifecycle (meta-layer)
         bool   ml_enable;
@@ -1335,8 +1675,55 @@ namespace Config
       
      double struct_zone_margin_pips;
      int    struct_min_touch_count;
-     double struct_zone_min_score;
-   
+     double struct_zone_min_score;     // legacy normalized compat filter [0..1]; prefer struct_sd_min_score_100 as canonical detector threshold
+
+     // Advanced StructureSDOB selection / scoring knobs
+     int    struct_pivot_L;
+     int    struct_pivot_R;
+     double struct_bos_min;
+     double struct_trend_min;
+
+     int    struct_ob_zone_mode;      // 0 wick->open, 1 full, 2 body, 3 SD spec
+     int    struct_ob_cluster_max;    // merge contiguous opposite candles in legacy OB mode
+     double struct_ob_min_impulse;    // min normalized impulse strength [0..1]
+     double struct_ob_min_disp_atr;   // min displacement in ATR
+     int    struct_ob_expire_bars;    // discard too-old zones (0=off)
+
+     // StructureSDOB institutional SD spec tuning (separate from Patterns sd_* to avoid collisions)
+     #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+       int    struct_sd_atr_period;               // ATR lookback for base/impulse sizing
+       int    struct_sd_base_min_bars;            // min base candles
+       int    struct_sd_base_max_bars;            // max base candles
+
+       double struct_sd_base_range_atr_max;       // base range ceiling (ATR multiples)
+       double struct_sd_base_body_ratio_max;      // max mean body/range ratio in base
+
+       double struct_sd_impulse_atr_min;          // min impulse range in ATR
+       double struct_sd_impulse_body_ratio_min;   // min impulse body/range ratio
+
+       bool   struct_sd_use_volume_confirm;       // require volume/tick-volume confirmation
+       int    struct_sd_volume_sma_len;           // volume SMA lookback
+       double struct_sd_volume_ratio_k;           // volume ratio threshold
+
+       bool   struct_sd_require_fvg;              // require imbalance/FVG contribution
+       double struct_sd_merge_overlap_atr;        // overlap merge threshold in ATR
+       int    struct_sd_max_active_zones;         // cap active zones retained
+       bool   struct_sd_enable_mtf_weight;        // apply TF weighting to final score
+       double struct_sd_min_score_100;            // min detector score (0..100)
+
+       double struct_sd_break_body_atr_min;          // break candle body / ATR minimum
+       double struct_sd_break_range_atr_min;         // break candle range / ATR minimum
+       int    struct_sd_displacement_mode;           // must match StructureSDOB displacement-mode enum
+       int    struct_sd_mitigation_mode;             // must match StructureSDOB mitigation-mode enum
+       int    struct_sd_invalidation_mode;           // must match StructureSDOB invalidation-mode enum
+       double struct_sd_invalidation_atr;            // distal invalidation margin in ATR
+
+       double struct_sd_sweep_bonus_weight;          // detector bonus weight for liquidity-sweep context
+       double struct_sd_min_fvg_overlap01;           // minimum accepted FVG overlap [0..1], 0=off
+       bool   struct_sd_require_exact_htf_alignment; // require exact higher-TF alignment, not soft agreement
+       bool   struct_sd_use_autovol_tuning;          // allow AutoVol regime adaptation for detector knobs
+     #endif
+     
      // ATR ST/TP & risk
      bool use_atr_stops_targets; double atr_sl_mult2; double atr_tp_mult2; double risk_per_trade_pct;
    
@@ -2188,6 +2575,9 @@ namespace Config
       cfg.vsa_norm_abs_high_th = x.vsa_norm_abs_high_th;
 
       cfg.vsa_score_strong_th  = x.vsa_score_strong_th;
+      cfg.vsa_score_w_rv      = x.vsa_score_w_rv;
+      cfg.vsa_score_w_rs      = x.vsa_score_w_rs;
+      cfg.vsa_score_w_clv     = x.vsa_score_w_clv;
 
       cfg.vsa_use_true_range              = x.vsa_use_true_range;
       cfg.vsa_trend_use_ema_pair          = x.vsa_trend_use_ema_pair;
@@ -2196,6 +2586,10 @@ namespace Config
       cfg.vsa_use_normscore_gate_on_final = x.vsa_use_normscore_gate_on_final;
       cfg.vsa_require_prev_hhll_ut_shake  = x.vsa_require_prev_hhll_ut_shake;
 
+      cfg.vsa_require_confirm              = x.vsa_require_confirm;
+      cfg.vsa_followthrough_confirm_enable = x.vsa_followthrough_confirm_enable;
+      cfg.vsa_confirm_volume_up_only       = x.vsa_confirm_volume_up_only;
+      cfg.vsa_alert_ndns_require_trend     = x.vsa_alert_ndns_require_trend;
       cfg.vsa_market_mode                 = x.vsa_market_mode;
       cfg.vsa_vol_class_mode              = x.vsa_vol_class_mode;
 
@@ -2214,12 +2608,16 @@ namespace Config
       cfg.vsa_absorption_z_high_th        = x.vsa_absorption_z_high_th;
 
       cfg.vsa_er_lb                       = x.vsa_er_lb;
+      cfg.vsa_utso_breakout_lb             = x.vsa_utso_breakout_lb;
 
       cfg.vsa_stopvol_zv_th               = x.vsa_stopvol_zv_th;
       cfg.vsa_stopvol_rs_th               = x.vsa_stopvol_rs_th;
       cfg.vsa_utso_zv_th                  = x.vsa_utso_zv_th;
       cfg.vsa_utso_rs_th                  = x.vsa_utso_rs_th;
-      
+      cfg.vsa_stopvol_clv_min              = x.vsa_stopvol_clv_min;
+      cfg.vsa_buyclimax_clv_max            = x.vsa_buyclimax_clv_max;
+      cfg.vsa_sellclimax_clv_min           = x.vsa_sellclimax_clv_min;
+
      #ifdef CFG_HAS_TF_TREND_HTF
        cfg.tf_trend_htf = x.tf_trend_htf;
      #endif
@@ -2554,7 +2952,73 @@ namespace Config
      #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
        cfg.struct_zone_min_score = MathMax(0.0, x.struct_zone_min_score);
      #endif
-   
+
+      // Advanced StructureSDOB selection / scoring knobs
+      #ifdef CFG_HAS_STRUCT_PIVOT_L
+        cfg.struct_pivot_L = MathMax(1, x.struct_pivot_L);
+      #endif
+      #ifdef CFG_HAS_STRUCT_PIVOT_R
+        cfg.struct_pivot_R = MathMax(1, x.struct_pivot_R);
+      #endif
+      #ifdef CFG_HAS_STRUCT_BOS_MIN
+        cfg.struct_bos_min = MathMax(0.0, x.struct_bos_min);
+      #endif
+      #ifdef CFG_HAS_STRUCT_TREND_MIN
+        cfg.struct_trend_min = MathMax(0.0, x.struct_trend_min);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+        cfg.struct_ob_zone_mode = x.struct_ob_zone_mode;
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+        cfg.struct_ob_cluster_max = MathMax(1, x.struct_ob_cluster_max);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+        cfg.struct_ob_min_impulse = MathMax(0.0, x.struct_ob_min_impulse);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+        cfg.struct_ob_min_disp_atr = MathMax(0.0, x.struct_ob_min_disp_atr);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+        cfg.struct_ob_expire_bars = MathMax(0, x.struct_ob_expire_bars);
+      #endif
+
+      // StructureSDOB institutional SD spec tuning (separate from Patterns sd_*)
+      #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+        cfg.struct_sd_atr_period             = MathMax(1, x.struct_sd_atr_period);
+        cfg.struct_sd_base_min_bars          = MathMax(1, x.struct_sd_base_min_bars);
+        cfg.struct_sd_base_max_bars          = MathMax(1, x.struct_sd_base_max_bars);
+
+        cfg.struct_sd_base_range_atr_max     = MathMax(0.0, x.struct_sd_base_range_atr_max);
+        cfg.struct_sd_base_body_ratio_max    = MathMax(0.0, x.struct_sd_base_body_ratio_max);
+
+        cfg.struct_sd_impulse_atr_min        = MathMax(0.0, x.struct_sd_impulse_atr_min);
+        cfg.struct_sd_impulse_body_ratio_min = MathMax(0.0, x.struct_sd_impulse_body_ratio_min);
+
+        cfg.struct_sd_use_volume_confirm     = x.struct_sd_use_volume_confirm;
+        cfg.struct_sd_volume_sma_len         = MathMax(1, x.struct_sd_volume_sma_len);
+        cfg.struct_sd_volume_ratio_k         = MathMax(0.0, x.struct_sd_volume_ratio_k);
+
+        cfg.struct_sd_require_fvg            = x.struct_sd_require_fvg;
+        cfg.struct_sd_merge_overlap_atr      = MathMax(0.0, x.struct_sd_merge_overlap_atr);
+        cfg.struct_sd_max_active_zones       = MathMax(1, x.struct_sd_max_active_zones);
+        cfg.struct_sd_enable_mtf_weight      = x.struct_sd_enable_mtf_weight;
+        cfg.struct_sd_min_score_100          = MathMax(0.0, x.struct_sd_min_score_100);
+
+        cfg.struct_sd_break_body_atr_min          = MathMax(0.0, x.struct_sd_break_body_atr_min);
+        cfg.struct_sd_break_range_atr_min         = MathMax(0.0, x.struct_sd_break_range_atr_min);
+
+        cfg.struct_sd_displacement_mode           = x.struct_sd_displacement_mode;
+        cfg.struct_sd_mitigation_mode             = x.struct_sd_mitigation_mode;
+        cfg.struct_sd_invalidation_mode           = x.struct_sd_invalidation_mode;
+        cfg.struct_sd_invalidation_atr            = MathMax(0.0, x.struct_sd_invalidation_atr);
+
+        cfg.struct_sd_sweep_bonus_weight          = MathMax(0.0, x.struct_sd_sweep_bonus_weight);
+        cfg.struct_sd_min_fvg_overlap01           = MathMax(0.0, x.struct_sd_min_fvg_overlap01);
+        cfg.struct_sd_require_exact_htf_alignment = x.struct_sd_require_exact_htf_alignment;
+        cfg.struct_sd_use_autovol_tuning          = x.struct_sd_use_autovol_tuning;
+      #endif
+      
      // ATR stops/targets + risk-per-trade
      #ifdef CFG_HAS_USE_ATR_STOPS
        cfg.use_atr_stops_targets = x.use_atr_stops_targets;
@@ -2680,6 +3144,10 @@ namespace Config
      x.vsa_norm_abs_high_th = 1.5;
 
      x.vsa_score_strong_th  = 5.0;
+     // Spec score weights (default literal spec)
+     x.vsa_score_w_rv        = 0.50;
+     x.vsa_score_w_rs        = 0.30;
+     x.vsa_score_w_clv       = 0.20;
 
      // Exact-spec behavior toggles (conservative defaults)
      x.vsa_use_true_range              = false;
@@ -2689,6 +3157,11 @@ namespace Config
      x.vsa_use_normscore_gate_on_final = true;
      x.vsa_require_prev_hhll_ut_shake  = true;
 
+     // Confirmation / alert policy defaults (conservative rollout)
+     x.vsa_require_confirm              = false; // keep current behavior unless explicitly enabled
+     x.vsa_followthrough_confirm_enable = false; // enable later in Confluence when desired
+     x.vsa_confirm_volume_up_only       = true;  // spec immediate confirmation path
+     x.vsa_alert_ndns_require_trend     = true;  // strict ND/NS alert semantics
      x.tf_trend_htf           = PERIOD_CURRENT; // means “use cfg.tf_h4”
      
      // Universal VSA defaults (multi-market adaptive extension)
@@ -2711,13 +3184,17 @@ namespace Config
      x.vsa_absorption_z_high_th     = 2.0;
 
      x.vsa_er_lb                    = 20;
+     x.vsa_utso_breakout_lb         = 10;    // previous N bars breakout check
 
      // Literal-spec pattern threshold overrides
      x.vsa_stopvol_zv_th            = 1.5;
      x.vsa_stopvol_rs_th            = 1.2;
      x.vsa_utso_zv_th               = 1.0;
      x.vsa_utso_rs_th               = 1.2;
-     
+     x.vsa_stopvol_clv_min          = -0.30; // stopping volume close off low
+     x.vsa_buyclimax_clv_max        =  0.30; // buying climax close off high
+     x.vsa_sellclimax_clv_min       = -0.30; // selling climax close off low (rejection)
+
      // Baseline weights for extras (features OFF by default; weights ready when enabled)
      x.w_volume_footprint = 0.05;
 
@@ -2747,6 +3224,127 @@ namespace Config
          x.news_neutral_on_no_data = true;  // missing data => do not block
          x.news_allow_cached = true;
      #endif
+
+     #ifdef CFG_HAS_NEWS_CSV_PATH
+         x.news_csv_path = "";
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_RELOAD_MINS
+         x.news_csv_reload_mins = 60;
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_HAS_HEADER
+         x.news_csv_has_header = true;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_PRE_MINS
+         x.news_pre_mins = 30;
+     #endif
+     #ifdef CFG_HAS_NEWS_POST_MINS
+         x.news_post_mins = 30;
+     #endif
+     #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
+         x.news_lookback_mins = 240;
+     #endif
+     #ifdef CFG_HAS_NEWS_SOFT_KNEE
+         x.news_soft_knee = 0.30;
+     #endif
+     #ifdef CFG_HAS_NEWS_HARD_SKIP
+         x.news_hard_skip = 0.85;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_SCALE
+         x.news_min_scale = 0.50;
+     #endif
+     #ifdef CFG_HAS_NEWS_HALFLIFE
+         x.news_half_life_mins = 60;
+     #endif
+     #ifdef CFG_HAS_NEWS_MAX_BLOCK
+         x.news_max_block = 120.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_DECAY_MULT
+         x.news_min_decay_mult = 0.65;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_FNVS_ENABLE
+         x.news_fnvs_enable = true;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SURPRISE_MODE
+         x.news_fnvs_surprise_mode = 1;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_PREV_NORM
+         x.news_fnvs_use_prev_norm = false;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_CCY_SENS
+         x.news_fnvs_use_ccy_sens = true;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY
+         x.news_fnvs_use_event_polarity = true;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_SENTIMENT
+         x.news_fnvs_use_sentiment = false;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+         x.news_fnvs_sentiment_weight = 0.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_POLARITY_MODE
+         x.news_fnvs_polarity_mode = 0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_MODE
+         x.news_fnvs_hv_mode = 0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_TF
+         x.news_fnvs_hv_tf = PERIOD_H1;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_PERIOD
+         x.news_fnvs_hv_period = 14;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_ADR_DAYS
+         x.news_fnvs_adr_days = 10;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+         x.news_fnvs_signal_buy_th = 10.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+         x.news_fnvs_signal_sell_th = -10.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+         x.news_fnvs_signal_strong_buy_th = 20.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+         x.news_fnvs_signal_strong_sell_th = -20.0;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+         x.news_fnvs_ev_min_atr_frac = 0.50;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_USD
+         x.news_fnvs_sens_usd = 1.00;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_EUR
+         x.news_fnvs_sens_eur = 0.80;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_GBP
+         x.news_fnvs_sens_gbp = 0.70;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_JPY
+         x.news_fnvs_sens_jpy = 0.60;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_AUD
+         x.news_fnvs_sens_aud = 0.70;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_NZD
+         x.news_fnvs_sens_nzd = 0.65;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CAD
+         x.news_fnvs_sens_cad = 0.70;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CHF
+         x.news_fnvs_sens_chf = 0.65;
+     #endif
+
+     x.news_block_pre_mins  = x.news_pre_mins;
+     x.news_block_post_mins = x.news_post_mins;
+     x.cal_lookback_mins    = x.news_lookback_mins;
+     x.cal_soft_knee        = x.news_soft_knee;
+     x.cal_min_scale        = x.news_min_scale;
      
      x.extra_news = true;
      x.w_news     = 0.50;
@@ -2807,6 +3405,73 @@ namespace Config
        x.struct_zone_min_score = 0.0;
      #endif
 
+      // Advanced StructureSDOB defaults (used by StructCfg::* wrappers)
+      #ifdef CFG_HAS_STRUCT_PIVOT_L
+        x.struct_pivot_L = 2;
+      #endif
+      #ifdef CFG_HAS_STRUCT_PIVOT_R
+        x.struct_pivot_R = 2;
+      #endif
+      #ifdef CFG_HAS_STRUCT_BOS_MIN
+        x.struct_bos_min = 0.35;
+      #endif
+      #ifdef CFG_HAS_STRUCT_TREND_MIN
+        x.struct_trend_min = 0.20;
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+        x.struct_ob_zone_mode = 3; // OBZM_SD_SPEC preferred
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+        x.struct_ob_cluster_max = 1;
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+        x.struct_ob_min_impulse = 0.0; // disabled by default
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+        x.struct_ob_min_disp_atr = 0.0; // disabled by default
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+        x.struct_ob_expire_bars = 0; // disabled by default
+      #endif
+
+      // Institutional SD (base-cluster/spec) defaults — separate from Patterns sd_*
+      #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+        x.struct_sd_atr_period             = 14;
+        x.struct_sd_base_min_bars          = 2;
+        x.struct_sd_base_max_bars          = 6;
+
+        x.struct_sd_base_range_atr_max     = 0.80;
+        x.struct_sd_base_body_ratio_max    = 0.50;
+
+        x.struct_sd_impulse_atr_min        = 1.50;
+        x.struct_sd_impulse_body_ratio_min = 0.70;
+
+        x.struct_sd_use_volume_confirm     = false;
+        x.struct_sd_volume_sma_len         = 20;
+        x.struct_sd_volume_ratio_k         = 1.50;
+
+        x.struct_sd_require_fvg            = false;
+        x.struct_sd_merge_overlap_atr      = 0.10;
+        x.struct_sd_max_active_zones       = 20;
+        x.struct_sd_enable_mtf_weight      = true;
+        x.struct_sd_min_score_100          = 60.0;
+
+        // New detector-facing controls (neutral / migration-safe defaults)
+        x.struct_sd_break_body_atr_min          = 0.0;   // 0 = disabled unless explicitly enabled
+        x.struct_sd_break_range_atr_min         = 0.0;   // 0 = disabled unless explicitly enabled
+
+        x.struct_sd_displacement_mode           = 0;     // 0 = off / legacy-compatible
+        x.struct_sd_mitigation_mode             = 0;     // 0 = touch / proximal
+        x.struct_sd_invalidation_mode           = 3;     // 3 = strongest practical default (any hard invalidation)
+        x.struct_sd_invalidation_atr            = 1.0;   // spec-friendly distal margin
+
+        x.struct_sd_sweep_bonus_weight          = 0.0;   // off until downstream consumers are fully wired
+        x.struct_sd_min_fvg_overlap01           = 0.0;   // 0 = disabled
+        x.struct_sd_require_exact_htf_alignment = false; // soft alignment remains default
+        x.struct_sd_use_autovol_tuning          = false; // opt-in only
+      #endif
+      
      x.weekly_open_spread_ramp=true;
    }
 
@@ -3113,7 +3778,20 @@ namespace Config
       cfg.scan_liq_tf_15m      = true;
       cfg.scan_liq_tf_1h       = true;
       cfg.scan_liq_emit_sweeps = true;
-      
+
+      // LFM scanner (quantitative liquidity flow) - OFF by default to avoid added scan load
+      cfg.scan_lfm_enable                  = false;
+      cfg.scan_lfm_emit_breakout_valid     = true;
+      cfg.scan_lfm_emit_fake_breakout      = true;
+      cfg.scan_lfm_emit_reversal           = true;
+
+      cfg.scan_lfm_use_mtf                 = true;
+      cfg.scan_lfm_use_fx_session_weight   = true;
+      cfg.scan_lfm_use_depth_enhancement   = true;
+
+      cfg.scan_lfm_require_new_bar         = true;
+      cfg.scan_lfm_mtf_require_fresh_neighbors = true;
+      cfg.scan_lfm_mtf_no_recursive_neighbor_mtf = true;
       cfg.scan_wyck_enable = false;
       // 0 means: Confluence will keep defaults (H4/D1)
       cfg.scan_wyck_tf_h4 = 0;
@@ -3182,6 +3860,15 @@ namespace Config
       cfg.scan_wyck_lb_h4          = 300;
       cfg.scan_wyck_lb_d1          = 200;
 
+      // WCI scanner emits / thresholds (keep OFF by default for back-compat)
+      cfg.scan_wyck_emit_wci_strength              = false;
+      cfg.scan_wyck_emit_evr_divergence            = false;
+      cfg.scan_wyck_wci_buy_min                    = 60.0;
+      cfg.scan_wyck_wci_sell_max                   = 40.0;
+      cfg.scan_wyck_composite_min_abs              = 1.0;
+      cfg.scan_wyck_evr_absorption_max             = 0.50;
+      cfg.scan_wyck_require_htf_phase_for_wci_signal = true;
+      
       // --- OBI tuning (preserve prior "hardcode-like" behavior)
       cfg.scan_obi_depth_points  = 25;
       cfg.scan_obi_threshold     = 0.30;
@@ -3194,6 +3881,10 @@ namespace Config
       cfg.scan_obi_min_tot_vol   = 0.0;
       cfg.scan_obi_vwap_dist_atr = 0.0; // disabled by default
 
+      // OBI runtime auto-routing (optional; OFF preserves current behavior)
+      cfg.scan_obi_auto_route_enable   = false;
+      cfg.scan_obi_auto_route_probe_ms = 0;    // 0 = no extra capability probe
+      
       // --- OBI advanced defaults (back-compat: keep OFF / symmetric)
       cfg.scan_obi_mode                    = 0;     // symmetric (mode 3 proxy-footprint exists but remains opt-in)
       cfg.scan_obi_top_levels              = 0;     // disabled
@@ -3237,7 +3928,7 @@ namespace Config
       cfg.scan_obi_flip_hysteresis_abs     = 0.0;
 
       // --- OBI institutional extensions (defaults OFF / neutral to preserve behavior)
-      cfg.scan_obi_weight_mode                 = 0;     // legacy/none (preserve current weighted_enable semantics)
+      cfg.scan_obi_weight_mode                 = 0;     // back-compat sentinel: Confluence maps 0 + weighted_enable=true to legacy exp-half-life
       cfg.scan_obi_weight_lambda_per_point     = 0.0;   // disabled unless mode 3 is selected
 
       cfg.scan_obi_ma_window                   = 0;     // disabled
@@ -3286,6 +3977,7 @@ namespace Config
       // OBI scanner institutional classification / emit controls (optional; default OFF to preserve behavior)
       cfg.scan_obi_ndelta_threshold            = 0.50;  // spec-style strong-class gate: |NDelta| >= 0.5
       cfg.scan_obi_absorption_z_threshold      = 2.0;   // spec-style absorption event gate: |ZAbs| >= 2
+      cfg.scan_obi_strong_class_mode           = 0;     // 0=legacy(score+ndelta+absorb), 1=spec(zobi+ndelta+persistence)
 
       cfg.scan_obi_emit_score_events           = false; // emit OBIX score-z threshold events
       cfg.scan_obi_emit_persist_events         = false; // emit OBIX persistence threshold events
@@ -3304,6 +3996,7 @@ namespace Config
       cfg.scan_vsa_hook_min_abs_normscore     = 0.15;
       cfg.scan_vsa_hook_min_spread_ratio      = 0.80;
 
+      cfg.scan_vsa_hook_relvol_basis          = 2;    // 0=ZV, 1=RV, 2=ADAPTIVE (recommended)
       cfg.scan_vsa_hook_directional_norm_gate = true;
       cfg.scan_vsa_hook_use_final_signal_hint = true;
       cfg.scan_vsa_hook_require_mtf_align     = false;
@@ -3339,6 +4032,9 @@ namespace Config
       cfg.scan_of_ofr_buy_share_thr   = 0.60; // buy dominance threshold (sell dominance uses 1-thr)
       cfg.scan_of_ofr_rebalance_band  = 0.05; // neutral band around 0.50
       cfg.scan_of_ofr_min_total_vol   = 1.0;  // min aggressive-flow proxy total volume to evaluate OFR
+
+      // UI/panel metadata only (no backend signal impact)
+      cfg.scan_of_show_proxy_labels     = false; // preserve current output behavior until UI consumes it
       
       // --- Correlation tuning
       cfg.scan_corr_threshold = 0.70;
@@ -3346,18 +4042,39 @@ namespace Config
       cfg.scan_corr_len       = 90;
 
       #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
-        cfg.scan_corr_secondary_symbol = "";
-        cfg.scan_corr_price            = PRICE_CLOSE;
-        cfg.scan_corr_use_log_returns  = true;
-        cfg.scan_corr_smooth_len       = 5;
-        cfg.scan_corr_div_sensitivity  = 0.30;
-        cfg.scan_corr_z_len            = 200;
-        cfg.scan_corr_mom_k            = 5;
-        cfg.scan_corr_z_thr            = 2.0;
-        cfg.scan_corr_mom_thr          = 0.20;
-        cfg.scan_corr_mtf_len_enable   = false;
+        cfg.scan_corr_secondary_symbol        = "";
+        cfg.scan_corr_price                   = PRICE_CLOSE;
+
+        cfg.scan_corr_return_mode             = 1;     // LOG_RETURN
+        cfg.scan_corr_use_log_returns         = true;  // legacy alias
+
+        cfg.scan_corr_smooth_len              = 5;
+        cfg.scan_corr_div_sensitivity         = 0.30;
+        cfg.scan_corr_z_len                   = 200;
+        cfg.scan_corr_mom_k                   = 5;
+        cfg.scan_corr_z_thr                   = 2.0;
+        cfg.scan_corr_mom_thr                 = 0.20;
+        cfg.scan_corr_mtf_len_enable          = false;
+
+        cfg.scan_corr_lag_test_bars           = 0;
+        cfg.scan_corr_max_leadlag             = 0;
+        cfg.scan_corr_leadlag_min_edge        = 0.15;
+
+        cfg.scan_corr_div_mode                = 1;
+        cfg.scan_corr_div_min_abs_corr        = 0.80;
+        cfg.scan_corr_div_price_opposite_enable = true;
+        cfg.scan_corr_div_zspread_thr         = 1.50;
+
+        cfg.scan_corr_atr_period              = 14;
+        cfg.scan_corr_vol_adjust_enable       = false;
       #endif
 
+      // --- Correlation gate policy / legacy alias defaults
+      cfg.corr_auto_ref_fallback = true;
+      cfg.corr_ema_tf            = PERIOD_CURRENT;
+      cfg.corr_ema_fast          = 21;
+      cfg.corr_ema_slow          = 50;
+      
       // --- News timing + optional strategy windows (scanner emits only)
       cfg.scan_news_soon_sec           = 2700; // 45 minutes
       cfg.scan_news_block_sec          = 5400; // 90 minutes
@@ -3369,6 +4086,9 @@ namespace Config
       cfg.scan_news_breakout_squeeze_ratio  = 0.80;
       cfg.scan_news_breakout_lookback_bars  = 20;
 
+      // FNVS scanner-adjacent defaults (consumer side can ignore until wired)
+      // No dedicated scan_news_fnvs_* settings yet; main FNVS thresholds come from core news settings.
+      
       // --- Volume Profile defaults
       cfg.scan_vp_enable           = false;
       cfg.scan_vp_lookback_bars    = 200;
@@ -3387,6 +4107,19 @@ namespace Config
       cfg.scan_vp_composite_sessions  = 3;   // sane default for composite mode
       cfg.scan_vp_visible_range_sec   = 0;   // placeholder disabled
 
+      // Explicit range inputs for TIME_RANGE / FIXED_RANGE (epoch seconds; 0 = unset)
+      cfg.scan_vp_range_from_ts      = 0;
+      cfg.scan_vp_range_to_ts        = 0;
+
+      // Additional profile semantics
+      cfg.scan_vp_value_area_method  = 0;   // 0=POC-outward (legacy-compatible)
+      cfg.scan_vp_vwap_source_mode   = 0;   // 0=HLC3
+
+      // Optional row-height model (disabled by default; existing bin_* controls remain active)
+      cfg.scan_vp_row_height_mode       = 0;    // disabled
+      cfg.scan_vp_row_height_atr_period = 14;
+      cfg.scan_vp_row_height_atr_mult   = 1.0;
+      
       cfg.scan_vp_bin_mode            = 0;   // bin_points (legacy)
       cfg.scan_vp_bin_count           = 64;  // used only when bin_mode=1
 
@@ -3401,6 +4134,7 @@ namespace Config
       cfg.scan_vp_use_footprint_ticks = false;
       cfg.scan_vp_footprint_build_mode= 0;   // auto
       cfg.scan_vp_footprint_min_bars  = 20;
+      cfg.scan_vp_force_tick_volume  = false;
 
       cfg.scan_vp_compute_vwap        = true;   // cheap and useful
       cfg.scan_vp_compute_dev_poc     = false;  // off by default (can grow memory/cpu)
@@ -3408,12 +4142,25 @@ namespace Config
       cfg.scan_vp_compute_nodes_full  = true;
       cfg.scan_vp_compute_shape       = false;  // keep light by default
 
+      // Optional VP extension (VPX) emits (Confluence wiring required)
+      cfg.scan_vpx_enable                = true;
+      cfg.scan_vpx_emit_vwap_touch       = true;
+      cfg.scan_vpx_emit_vwap_cross       = true;
+      cfg.scan_vpx_emit_dev_poc_shift    = true;
+      cfg.scan_vpx_emit_delta_poc_retest = true;
+      cfg.scan_vpx_emit_shape_transition = true;
+
+      cfg.scan_vpx_vwap_touch_atr        = 0.10;
+      cfg.scan_vpx_vwap_cross_margin_atr = 0.03;
+      cfg.scan_vpx_dev_poc_shift_atr     = 0.10;
+      cfg.scan_vpx_delta_poc_retest_atr  = 0.10;
+      
       cfg.scan_vp_smoothing_enable       = false;
       cfg.scan_vp_smoothing_sigma_bins   = 1.25;
       cfg.scan_vp_smoothing_radius       = 2;
       cfg.scan_vp_node_detect_on_smoothed= false;
 
-      // Heuristic thresholds (placeholders until stricter node filters are used)
+      // Node thresholds / heuristics (wired through Confluence -> VolumeProfile params)
       cfg.scan_vp_hvn_min_frac        = 0.20;
       cfg.scan_vp_lvn_max_frac        = 0.15;
     #endif
@@ -3426,7 +4173,64 @@ namespace Config
     cfg.scan_liq_reject_margin_atr    = 0.10;
     cfg.scan_liq_struct_break_eps_atr = 0.05;
     cfg.scan_liq_min_zvol             = 1.00;
-   
+
+    // --- LFM scanner thresholds / runtime defaults
+    cfg.scan_lfm_score_breakout_min = 65.0;
+    cfg.scan_lfm_score_fake_max     = 45.0;
+    cfg.scan_lfm_per_breakout_min   = 0.60;
+    cfg.scan_lfm_vci_breakout_min   = 0.00;
+    cfg.scan_lfm_ar_fake_min        = 1.30;
+
+    cfg.scan_lfm_reversal_ar_min    = 1.30;
+    cfg.scan_lfm_reversal_per_max   = 0.35;
+    cfg.scan_lfm_divergence_min_abs = 0.20;
+
+    cfg.scan_lfm_emit_cooldown_sec  = 0;
+    cfg.scan_lfm_hysteresis_score   = 2.0;
+
+    cfg.scan_lfm_mtf_w_htf          = 0.50;
+    cfg.scan_lfm_mtf_w_mtf          = 0.30;
+    cfg.scan_lfm_mtf_w_ltf          = 0.20;
+
+    // LFM payload quality gates (Confluence runtime hardening)
+    cfg.scan_lfm_obi_flow_quality_min  = 0.20;
+    cfg.scan_lfm_obi_depth_quality_min = 0.20;
+    cfg.scan_lfm_dp_flow_quality_min   = 0.15;
+    
+    // --- Confluence-side LFM gate defaults (read by Confluence when LFM liquidity gates are enabled)
+    cfg.cf_lfm_min_score_soft      = 55.0;
+    cfg.cf_lfm_min_score_strong    = 65.0;
+
+    cfg.cf_lfm_min_imb_soft        = 0.05;
+    cfg.cf_lfm_min_imb_strong      = -0.05;
+
+    cfg.cf_lfm_contra_imb_floor    = -0.25;
+    cfg.cf_lfm_tight_score_min     = 60.0;
+    cfg.cf_lfm_tight_imb_min       = 0.10;
+
+    // --- LFM core math / weighting defaults (used by LiquidityCues / scanner / future modules)
+    cfg.lfm_atr_period              = 14;
+    cfg.lfm_vol_ema                 = 20;
+    cfg.lfm_per_ema                 = 10;
+    cfg.lfm_ar_ema                  = 20;
+    cfg.lfm_spread_ema              = 20;
+    cfg.lfm_epsilon                 = 1e-5;
+
+    cfg.lfm_w_per                   = 0.25;
+    cfg.lfm_w_vci                   = 0.20;
+    cfg.lfm_w_spi                   = 0.15;
+    cfg.lfm_w_vnf                   = 0.20;
+    cfg.lfm_w_ar                    = 0.20;
+
+    cfg.lfm_fx_session_weight_on    = true;
+    cfg.lfm_fx_weight_overlap       = 1.20;
+    cfg.lfm_fx_weight_london_or_ny  = 1.00;
+    cfg.lfm_fx_weight_asia          = 0.70;
+
+    cfg.lfm_depth_enhance_on        = true;
+    cfg.lfm_depth_weight            = 0.15;
+    cfg.lfm_base_weight_after_depth = 0.85;
+    
     #ifdef CFG_HAS_FVG_MIN_SCORE
      cfg.fvg_min_score = 0.55;
     #endif
@@ -3443,6 +4247,56 @@ namespace Config
      cfg.fvg_min_gap_atr = 0.25;
     #endif
 
+    #ifdef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+     cfg.fvg_zone_bounds_mode = 0;  // default: strict C1<->C3 bounds (matches current canonical FVG behavior)
+    #endif
+
+    #ifdef CFG_HAS_FVG_USE_BODY_ONLY
+     cfg.fvg_use_body_only = false; // default: use wick highs/lows
+    #endif
+
+    #ifdef CFG_HAS_FVG_MIN_GAP_MODE
+     cfg.fvg_min_gap_mode = 0;      // default: ATR mode (current effective behavior)
+    #endif
+
+    #ifdef CFG_HAS_FVG_MIN_GAP_PCT
+     cfg.fvg_min_gap_pct = 0.0;     // inactive until min-gap mode = %
+    #endif
+
+    #ifdef CFG_HAS_FVG_MIN_GAP_PTS
+     cfg.fvg_min_gap_pts = 0.0;     // inactive until min-gap mode = points
+    #endif
+
+    #ifdef CFG_HAS_FVG_DETECT_MODEL
+     cfg.fvg_detect_model = 1;      // default: ICT strict triad (preserve current behavior)
+    #endif
+
+    #ifdef CFG_HAS_FVG_INVALIDATION_MODE
+     cfg.fvg_invalidation_mode = 0; // default: wick breach (legacy behavior)
+    #endif
+
+    #ifdef CFG_HAS_FVG_PARTIAL_FILL_THR
+     cfg.fvg_partial_fill_thr = 0.0; // default: legacy "any fill => partial"
+     // For spec-default behavior, set to 0.50 instead.
+    #endif
+
+    #ifdef CFG_HAS_FVG_MAX_AGE_BARS
+     cfg.fvg_max_age_bars = 0;      // disabled
+    #endif
+
+    #ifdef CFG_HAS_FVG_ATR_PERIOD
+     cfg.fvg_atr_period = 14;       // optional FVG-specific ATR period override
+    #endif
+
+    #ifdef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+     cfg.fvg_ignore_session_gaps = false;
+    #endif
+
+    #ifdef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+     cfg.fvg_volume_ratio_len = 20;
+     cfg.fvg_volume_ratio_min = 0.0; // off by default
+    #endif
+    
     // Chart patterns (local)
     cfg.auto_chart_min_quality  = 0.60;
     cfg.auto_chart_pivot_L      = 3;
@@ -3543,6 +4397,30 @@ namespace Config
     cfg.auto_risk_scale_floor  = 0.70;
     cfg.auto_risk_scale_cap    = 1.20;
 
+    // UMVI (Universal Market Volatility Indicator)
+    cfg.umvi_enable         = false;
+
+    cfg.umvi_n              = 14;
+    cfg.umvi_m              = 20;
+    cfg.umvi_r              = 10;
+    cfg.umvi_s              = 5;
+    cfg.umvi_N              = 100;
+
+    cfg.umvi_w_atr          = 0.30;
+    cfg.umvi_w_ret          = 0.25;
+    cfg.umvi_w_re           = 0.20;
+    cfg.umvi_w_va           = 0.15;
+    cfg.umvi_w_vm           = 0.10;
+
+    cfg.umvi_breakout_th    = 65.0;
+    cfg.umvi_breakout_re_th = 1.50;
+    cfg.umvi_meanrev_th     = 35.0;
+
+    // UMVI as Extra confluence (OFF by default)
+    cfg.extra_umvi          = false;
+    cfg.w_umvi              = 0.80;
+    cfg.umvi_extra_mode     = 1;   // breakout
+    
      // If user left thresholds unset/zero, apply sane baselines
      if(cfg.cf_min_needed <= 0) cfg.cf_min_needed = 5;
      if(cfg.cf_min_score  <= 0) cfg.cf_min_score  = 0.55;
@@ -3605,6 +4483,46 @@ namespace Config
     ConfigCore::Normalize(cfg);
     // Ensure Main confluence toggles/weights are not left uninitialized
     SeedMainConfluenceDefaults(cfg);
+
+    // ---------------- UTD defaults + sanity (safe, non-breaking) ----------------
+    // Do NOT auto-enable by default (legacy-safe)
+    // (If cfg.utd_enable is uninitialized, it will typically be false already.)
+
+    if(cfg.utd_eff_period < 2) cfg.utd_eff_period = 10;
+    if(cfg.utd_mom_period < 2) cfg.utd_mom_period = 14;
+
+    if(cfg.utd_atr_short < 1) cfg.utd_atr_short = 7;
+    if(cfg.utd_atr_long  < 2) cfg.utd_atr_long  = 50;
+
+    // Ensure long > short (hard requirement for VE ratio stability)
+    if(cfg.utd_atr_long <= cfg.utd_atr_short)
+      cfg.utd_atr_long = 50;
+
+    // FDI needs enough samples to be meaningful
+    if(cfg.utd_fdi_period < 10) cfg.utd_fdi_period = 30;
+
+    // Threshold defaults if unset/zero
+    if(cfg.utd_buy_th    <= 0.0) cfg.utd_buy_th    = 0.40;
+    if(cfg.utd_sell_th   <= 0.0) cfg.utd_sell_th   = cfg.utd_buy_th;
+    if(cfg.utd_strong_th <= 0.0) cfg.utd_strong_th = 0.60;
+    if(cfg.utd_exit_th   <= 0.0) cfg.utd_exit_th   = 0.20;
+
+    // Clamp thresholds into sane ranges
+    if(cfg.utd_buy_th    < 0.0) cfg.utd_buy_th    = 0.0;
+    if(cfg.utd_buy_th    > 1.0) cfg.utd_buy_th    = 1.0;
+
+    if(cfg.utd_sell_th   < 0.0) cfg.utd_sell_th   = 0.0;
+    if(cfg.utd_sell_th   > 1.0) cfg.utd_sell_th   = 1.0;
+
+    if(cfg.utd_strong_th < 0.0) cfg.utd_strong_th = 0.0;
+    if(cfg.utd_strong_th > 1.0) cfg.utd_strong_th = 1.0;
+
+    if(cfg.utd_exit_th   < 0.0) cfg.utd_exit_th   = 0.0;
+    if(cfg.utd_exit_th   > 1.0) cfg.utd_exit_th   = 1.0;
+
+    // MTF defaults
+    // (If cfg.utd_mtf_confirm is uninitialized, it will typically be false already.)
+    if((int)cfg.utd_mtf_tf <= 0) cfg.utd_mtf_tf = PERIOD_H1;
     
     // WyckoffCycle sanity + defaults
     #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
@@ -3641,6 +4559,53 @@ namespace Config
       if(cfg.wyck_vol_len<=0)        cfg.wyck_vol_len        = 20;
       if(cfg.wyck_vol_mult<=0.0)     cfg.wyck_vol_mult       = 1.5;
 
+      // WCI default recovery (covers zeroed structs / partial CSV loads)
+      if(cfg.wyck_wci_atr_period<=0)           cfg.wyck_wci_atr_period = 14;
+      if(cfg.wyck_wci_vol_ma_period<=0)        cfg.wyck_wci_vol_ma_period = 20;
+      if(cfg.wyck_wci_range_lookback<=0)       cfg.wyck_wci_range_lookback = 50;
+      if(cfg.wyck_wci_trend_ema_fast<=0)       cfg.wyck_wci_trend_ema_fast = 20;
+      if(cfg.wyck_wci_trend_ema_slow<=0)       cfg.wyck_wci_trend_ema_slow = 50;
+      if(cfg.wyck_wci_momentum_lookback<=0)    cfg.wyck_wci_momentum_lookback = 10;
+      if(cfg.wyck_wci_np_norm_lookback<=0)     cfg.wyck_wci_np_norm_lookback = 50;
+      if(cfg.wyck_wci_fx_atr_sma_period<=0)    cfg.wyck_wci_fx_atr_sma_period = 50;
+
+      if(cfg.wyck_wci_rv_climax<=0.0)          cfg.wyck_wci_rv_climax = 1.5;
+      if(cfg.wyck_wci_rv_low<=0.0)             cfg.wyck_wci_rv_low = 0.7;
+      if(cfg.wyck_wci_evr_absorption_max<=0.0) cfg.wyck_wci_evr_absorption_max = 0.5;
+      if(cfg.wyck_wci_evr_trend_min<=0.0)      cfg.wyck_wci_evr_trend_min = 1.5;
+      if(cfg.wyck_wci_spring_cpv_min<=0.0)     cfg.wyck_wci_spring_cpv_min = 0.6;
+      if(cfg.wyck_wci_upthrust_cpv_max<=0.0)   cfg.wyck_wci_upthrust_cpv_max = 0.4;
+
+      // phase composite markers can be zero intentionally, so only recover if both are zero
+      if(cfg.wyck_wci_phase_comp_mark_up==0.0 && cfg.wyck_wci_phase_comp_mark_dn==0.0)
+        {
+         cfg.wyck_wci_phase_comp_mark_up = 1.0;
+         cfg.wyck_wci_phase_comp_mark_dn = -1.0;
+        }
+
+      // weights: recover if all-zero groups
+      if(cfg.wyck_wci_a_np==0.0 && cfg.wyck_wci_a_evr==0.0 && cfg.wyck_wci_a_trend==0.0 && cfg.wyck_wci_a_momo==0.0)
+        {
+         cfg.wyck_wci_a_np = 1.0;
+         cfg.wyck_wci_a_evr = 1.0;
+         cfg.wyck_wci_a_trend = 1.0;
+         cfg.wyck_wci_a_momo = 1.0;
+        }
+
+      if(cfg.wyck_wci_as_w1_prox==0.0 && cfg.wyck_wci_as_w2_rv==0.0 && cfg.wyck_wci_as_w3_evr==0.0)
+        {
+         cfg.wyck_wci_as_w1_prox = 1.0;
+         cfg.wyck_wci_as_w2_rv = 1.0;
+         cfg.wyck_wci_as_w3_evr = 1.0;
+        }
+
+      if(cfg.wyck_wci_ds_w1_prox==0.0 && cfg.wyck_wci_ds_w2_rv==0.0 && cfg.wyck_wci_ds_w3_evr==0.0)
+        {
+         cfg.wyck_wci_ds_w1_prox = 1.0;
+         cfg.wyck_wci_ds_w2_rv = 1.0;
+         cfg.wyck_wci_ds_w3_evr = 1.0;
+        }
+        
       // clamps (keep bounded; prevent accidental nonsense)
       cfg.wyck_range_lookback      = MathMin(MathMax(cfg.wyck_range_lookback,      50), 200);
       cfg.wyck_min_range_bars      = MathMin(MathMax(cfg.wyck_min_range_bars,      10), 120);
@@ -3667,6 +4632,55 @@ namespace Config
       cfg.wyck_ar_window_bars      = MathMin(MathMax(cfg.wyck_ar_window_bars,      40), 120);
       cfg.wyck_vol_len             = MathMin(MathMax(cfg.wyck_vol_len,             10), 50);
       cfg.wyck_vol_mult            = MathMin(MathMax(cfg.wyck_vol_mult,            1.2), 3.0);
+
+      // WCI window clamps
+      cfg.wyck_wci_atr_period        = MathMin(MathMax(cfg.wyck_wci_atr_period,        5), 100);
+      cfg.wyck_wci_vol_ma_period     = MathMin(MathMax(cfg.wyck_wci_vol_ma_period,     5), 200);
+      cfg.wyck_wci_range_lookback    = MathMin(MathMax(cfg.wyck_wci_range_lookback,   10), 500);
+      cfg.wyck_wci_trend_ema_fast    = MathMin(MathMax(cfg.wyck_wci_trend_ema_fast,    2), 200);
+      cfg.wyck_wci_trend_ema_slow    = MathMin(MathMax(cfg.wyck_wci_trend_ema_slow,    3), 500);
+      cfg.wyck_wci_momentum_lookback = MathMin(MathMax(cfg.wyck_wci_momentum_lookback, 1), 200);
+      cfg.wyck_wci_np_norm_lookback  = MathMin(MathMax(cfg.wyck_wci_np_norm_lookback,  5), 500);
+      cfg.wyck_wci_fx_atr_sma_period = MathMin(MathMax(cfg.wyck_wci_fx_atr_sma_period, 5), 500);
+
+      // Maintain EMA ordering sanity
+      if(cfg.wyck_wci_trend_ema_slow <= cfg.wyck_wci_trend_ema_fast)
+         cfg.wyck_wci_trend_ema_slow = MathMin(500, cfg.wyck_wci_trend_ema_fast + 1);
+
+      // WCI threshold clamps
+      cfg.wyck_wci_rv_climax            = MathMin(MathMax(cfg.wyck_wci_rv_climax,          0.50), 10.0);
+      cfg.wyck_wci_rv_low               = MathMin(MathMax(cfg.wyck_wci_rv_low,             0.10),  5.0);
+      cfg.wyck_wci_evr_absorption_max   = MathMin(MathMax(cfg.wyck_wci_evr_absorption_max, 0.05),  5.0);
+      cfg.wyck_wci_evr_trend_min        = MathMin(MathMax(cfg.wyck_wci_evr_trend_min,      0.10), 10.0);
+      cfg.wyck_wci_spring_cpv_min       = MathMin(MathMax(cfg.wyck_wci_spring_cpv_min,     0.00),  1.0);
+      cfg.wyck_wci_upthrust_cpv_max     = MathMin(MathMax(cfg.wyck_wci_upthrust_cpv_max,   0.00),  1.0);
+      cfg.wyck_wci_phase_comp_mark_up   = MathMin(MathMax(cfg.wyck_wci_phase_comp_mark_up, -10.0), 10.0);
+      cfg.wyck_wci_phase_comp_mark_dn   = MathMin(MathMax(cfg.wyck_wci_phase_comp_mark_dn, -10.0), 10.0);
+
+      // Keep the low/climax relationship sensible
+      if(cfg.wyck_wci_rv_low >= cfg.wyck_wci_rv_climax)
+         cfg.wyck_wci_rv_low = MathMax(0.10, cfg.wyck_wci_rv_climax * 0.5);
+
+      // Keep phase thresholds ordered
+      if(cfg.wyck_wci_phase_comp_mark_dn >= cfg.wyck_wci_phase_comp_mark_up)
+        {
+         cfg.wyck_wci_phase_comp_mark_up = 1.0;
+         cfg.wyck_wci_phase_comp_mark_dn = -1.0;
+        }
+
+      // Weight clamps (non-negative keeps intent clear)
+      cfg.wyck_wci_a_np    = MathMin(MathMax(cfg.wyck_wci_a_np,    0.0), 10.0);
+      cfg.wyck_wci_a_evr   = MathMin(MathMax(cfg.wyck_wci_a_evr,   0.0), 10.0);
+      cfg.wyck_wci_a_trend = MathMin(MathMax(cfg.wyck_wci_a_trend, 0.0), 10.0);
+      cfg.wyck_wci_a_momo  = MathMin(MathMax(cfg.wyck_wci_a_momo,  0.0), 10.0);
+
+      cfg.wyck_wci_as_w1_prox = MathMin(MathMax(cfg.wyck_wci_as_w1_prox, 0.0), 10.0);
+      cfg.wyck_wci_as_w2_rv   = MathMin(MathMax(cfg.wyck_wci_as_w2_rv,   0.0), 10.0);
+      cfg.wyck_wci_as_w3_evr  = MathMin(MathMax(cfg.wyck_wci_as_w3_evr,  0.0), 10.0);
+
+      cfg.wyck_wci_ds_w1_prox = MathMin(MathMax(cfg.wyck_wci_ds_w1_prox, 0.0), 10.0);
+      cfg.wyck_wci_ds_w2_rv   = MathMin(MathMax(cfg.wyck_wci_ds_w2_rv,   0.0), 10.0);
+      cfg.wyck_wci_ds_w3_evr  = MathMin(MathMax(cfg.wyck_wci_ds_w3_evr,  0.0), 10.0);
     #endif
 
     #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
@@ -3884,6 +4898,8 @@ namespace Config
 
       if(cfg.scan_obi_absorption_z_threshold < 0.05) cfg.scan_obi_absorption_z_threshold = 0.05;
       if(cfg.scan_obi_absorption_z_threshold > 20.0) cfg.scan_obi_absorption_z_threshold = 20.0;
+      if(cfg.scan_obi_strong_class_mode < 0) cfg.scan_obi_strong_class_mode = 0;
+      if(cfg.scan_obi_strong_class_mode > 1) cfg.scan_obi_strong_class_mode = 1;
 
       // OFR scanner clamps (optional; aggressive-flow proxy via Footprint/OFIS path)
       if(cfg.scan_of_ofr_buy_share_thr < 0.50) cfg.scan_of_ofr_buy_share_thr = 0.50;
@@ -3904,6 +4920,9 @@ namespace Config
       if(cfg.scan_vsa_hook_min_spread_ratio < 0.0)  cfg.scan_vsa_hook_min_spread_ratio = 0.0;
       if(cfg.scan_vsa_hook_min_spread_ratio > 10.0) cfg.scan_vsa_hook_min_spread_ratio = 10.0;
 
+      if(cfg.scan_vsa_hook_relvol_basis < 0) cfg.scan_vsa_hook_relvol_basis = 0;
+      if(cfg.scan_vsa_hook_relvol_basis > 2) cfg.scan_vsa_hook_relvol_basis = 2;
+      
       if(cfg.scan_vsa_hook_boost_max < 1.0) cfg.scan_vsa_hook_boost_max = 1.0;
       if(cfg.scan_vsa_hook_boost_max > 5.0) cfg.scan_vsa_hook_boost_max = 5.0;
       
@@ -3941,36 +4960,88 @@ namespace Config
     // Correlation scanner thresholds
     if(cfg.scan_corr_threshold <= 0.0) cfg.scan_corr_threshold = 0.75;
     if(cfg.scan_corr_threshold > 0.99) cfg.scan_corr_threshold = 0.99;
-   
+
     if(cfg.scan_corr_recover <= 0.0) cfg.scan_corr_recover = 0.55;
     if(cfg.scan_corr_recover < 0.0)  cfg.scan_corr_recover = 0.0;
-   
+
     // enforce hysteresis: recover must be below threshold
     if(cfg.scan_corr_recover >= cfg.scan_corr_threshold)
       cfg.scan_corr_recover = cfg.scan_corr_threshold * 0.80;
-   
+
     if(cfg.scan_corr_len < 20)  cfg.scan_corr_len = 20;
     if(cfg.scan_corr_len > 500) cfg.scan_corr_len = 500;
-    
+
     #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
-     if(cfg.scan_corr_smooth_len < 1)  cfg.scan_corr_smooth_len = 1;
-     if(cfg.scan_corr_smooth_len > 50) cfg.scan_corr_smooth_len = 50;
-   
-     if(cfg.scan_corr_div_sensitivity <= 0.0) cfg.scan_corr_div_sensitivity = 0.30;
-     if(cfg.scan_corr_div_sensitivity > 2.0)  cfg.scan_corr_div_sensitivity = 2.0;
-   
-     if(cfg.scan_corr_z_len < 20)  cfg.scan_corr_z_len = 20;
-     if(cfg.scan_corr_z_len > 600) cfg.scan_corr_z_len = 600;
-   
-     if(cfg.scan_corr_mom_k < 1) cfg.scan_corr_mom_k = 1;
-     if(cfg.scan_corr_mom_k >= cfg.scan_corr_z_len) cfg.scan_corr_mom_k = MathMax(1, cfg.scan_corr_z_len/4);
-   
-     if(cfg.scan_corr_z_thr <= 0.0) cfg.scan_corr_z_thr = 2.0;
-     if(cfg.scan_corr_z_thr > 10.0) cfg.scan_corr_z_thr = 10.0;
-   
-     if(cfg.scan_corr_mom_thr <= 0.0) cfg.scan_corr_mom_thr = 0.20;
-     if(cfg.scan_corr_mom_thr > 1.0)  cfg.scan_corr_mom_thr = 1.0;
+      if(cfg.scan_corr_return_mode < 0 || cfg.scan_corr_return_mode > 4)
+        cfg.scan_corr_return_mode = (cfg.scan_corr_use_log_returns ? 1 : 0);
+
+      if(cfg.scan_corr_smooth_len < 1)  cfg.scan_corr_smooth_len = 1;
+      if(cfg.scan_corr_smooth_len > 50) cfg.scan_corr_smooth_len = 50;
+
+      if(cfg.scan_corr_div_sensitivity <= 0.0) cfg.scan_corr_div_sensitivity = 0.30;
+      if(cfg.scan_corr_div_sensitivity > 2.0)  cfg.scan_corr_div_sensitivity = 2.0;
+
+      if(cfg.scan_corr_z_len < 20)  cfg.scan_corr_z_len = 20;
+      if(cfg.scan_corr_z_len > 600) cfg.scan_corr_z_len = 600;
+
+      if(cfg.scan_corr_mom_k < 1) cfg.scan_corr_mom_k = 1;
+      if(cfg.scan_corr_mom_k >= cfg.scan_corr_z_len) cfg.scan_corr_mom_k = MathMax(1, cfg.scan_corr_z_len / 4);
+
+      if(cfg.scan_corr_z_thr <= 0.0) cfg.scan_corr_z_thr = 2.0;
+      if(cfg.scan_corr_z_thr > 10.0) cfg.scan_corr_z_thr = 10.0;
+
+      if(cfg.scan_corr_mom_thr <= 0.0) cfg.scan_corr_mom_thr = 0.20;
+      if(cfg.scan_corr_mom_thr > 1.0)  cfg.scan_corr_mom_thr = 1.0;
+
+      if(cfg.scan_corr_lag_test_bars < 0)  cfg.scan_corr_lag_test_bars = 0;
+      if(cfg.scan_corr_lag_test_bars > 50) cfg.scan_corr_lag_test_bars = 50;
+
+      if(cfg.scan_corr_max_leadlag < 0)  cfg.scan_corr_max_leadlag = 0;
+      if(cfg.scan_corr_max_leadlag > 50) cfg.scan_corr_max_leadlag = 50;
+
+      if(cfg.scan_corr_leadlag_min_edge < 0.0) cfg.scan_corr_leadlag_min_edge = 0.0;
+      if(cfg.scan_corr_leadlag_min_edge > 1.0) cfg.scan_corr_leadlag_min_edge = 1.0;
+
+      if(cfg.scan_corr_div_mode < 0) cfg.scan_corr_div_mode = 1;
+      if(cfg.scan_corr_div_mode > 2) cfg.scan_corr_div_mode = 2;
+
+      if(cfg.scan_corr_div_min_abs_corr < 0.0) cfg.scan_corr_div_min_abs_corr = 0.0;
+      if(cfg.scan_corr_div_min_abs_corr > 1.0) cfg.scan_corr_div_min_abs_corr = 1.0;
+
+      if(cfg.scan_corr_div_zspread_thr <= 0.0) cfg.scan_corr_div_zspread_thr = 1.50;
+      if(cfg.scan_corr_div_zspread_thr > 10.0) cfg.scan_corr_div_zspread_thr = 10.0;
+
+      if(cfg.scan_corr_atr_period < 2)   cfg.scan_corr_atr_period = 14;
+      if(cfg.scan_corr_atr_period > 200) cfg.scan_corr_atr_period = 200;
+
+      // Compatibility sync:
+      // if vol-adjust is toggled on, upgrade plain return modes into ATR-adjusted return modes.
+      if(cfg.scan_corr_vol_adjust_enable)
+      {
+        if(cfg.scan_corr_return_mode == 0)      cfg.scan_corr_return_mode = 3;
+        else if(cfg.scan_corr_return_mode == 1) cfg.scan_corr_return_mode = 3;
+        else if(cfg.scan_corr_return_mode == 2) cfg.scan_corr_return_mode = 4;
+      }
+      else if(cfg.scan_corr_return_mode == 3 || cfg.scan_corr_return_mode == 4)
+      {
+        cfg.scan_corr_vol_adjust_enable = true;
+      }
+
+      // Legacy alias sync for old bool-only callers / old serialized strings.
+      cfg.scan_corr_use_log_returns = (cfg.scan_corr_return_mode == 1 || cfg.scan_corr_return_mode == 3);
     #endif
+
+    // Correlation gate / fallback policy
+    if(cfg.corr_lookback < 20)  cfg.corr_lookback = 20;
+    if(cfg.corr_lookback > 600) cfg.corr_lookback = 600;
+
+    if(cfg.corr_min_abs < 0.0) cfg.corr_min_abs = 0.0;
+    if(cfg.corr_min_abs > 1.0) cfg.corr_min_abs = 1.0;
+
+    // Legacy alias fields: keep sane until they are fully renamed / repurposed.
+    if(cfg.corr_ema_fast < 1) cfg.corr_ema_fast = 21;
+    if(cfg.corr_ema_slow <= cfg.corr_ema_fast)
+      cfg.corr_ema_slow = MathMax(cfg.corr_ema_fast + 1, 50);
    
     #ifdef CFG_HAS_ML_THRESHOLD
       if(cfg.ml_threshold <= 0.0) cfg.ml_threshold = 0.55;  // keep existing fallback behavior
@@ -4211,11 +5282,148 @@ namespace Config
     cfg.newsFilterEnabled = (cfg.news_on && (NEWSFILTER_AVAILABLE != 0));
     
     #ifdef CFG_HAS_NEWS_BACKEND
-      // Keep within NewsFilter's expected range (0..3)
+      // Keep within NewsFilter backend enum range: 0=disabled, 1=broker, 2=csv, 3=auto
        if(cfg.news_backend_mode < 0) cfg.news_backend_mode = 0;
       if(cfg.news_backend_mode > 3) cfg.news_backend_mode = 3;
     #endif
 
+    // --- News / FNVS normalization ------------------------------------------
+    // Canonical timing fields are news_pre_mins / news_post_mins.
+    // Legacy news_block_pre_mins / news_block_post_mins are synchronized from them.
+
+    if(cfg.news_impact_mask <= 0)
+      cfg.news_impact_mask = 7; // low|med|high
+
+    #ifdef CFG_HAS_NEWS_PRE_MINS
+      if(cfg.news_pre_mins < 0) cfg.news_pre_mins = 0;
+      if(cfg.news_pre_mins > 1440) cfg.news_pre_mins = 1440;
+      cfg.news_block_pre_mins = cfg.news_pre_mins;
+    #else
+      if(cfg.news_block_pre_mins < 0) cfg.news_block_pre_mins = 0;
+      if(cfg.news_block_pre_mins > 1440) cfg.news_block_pre_mins = 1440;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_POST_MINS
+      if(cfg.news_post_mins < 0) cfg.news_post_mins = 0;
+      if(cfg.news_post_mins > 1440) cfg.news_post_mins = 1440;
+      cfg.news_block_post_mins = cfg.news_post_mins;
+    #else
+      if(cfg.news_block_post_mins < 0) cfg.news_block_post_mins = 0;
+      if(cfg.news_block_post_mins > 1440) cfg.news_block_post_mins = 1440;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
+      if(cfg.news_lookback_mins < 1) cfg.news_lookback_mins = 240;
+      if(cfg.news_lookback_mins > 10080) cfg.news_lookback_mins = 10080;
+      cfg.cal_lookback_mins = cfg.news_lookback_mins;
+    #else
+      if(cfg.cal_lookback_mins < 1) cfg.cal_lookback_mins = 240;
+      if(cfg.cal_lookback_mins > 10080) cfg.cal_lookback_mins = 10080;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_SOFT_KNEE
+      if(cfg.news_soft_knee < 0.0) cfg.news_soft_knee = 0.0;
+      if(cfg.news_soft_knee > 1.0) cfg.news_soft_knee = 1.0;
+      cfg.cal_soft_knee = cfg.news_soft_knee;
+    #else
+      if(cfg.cal_soft_knee < 0.0) cfg.cal_soft_knee = 0.0;
+      if(cfg.cal_soft_knee > 1.0) cfg.cal_soft_knee = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_HARD_SKIP
+      if(cfg.news_hard_skip < 0.0) cfg.news_hard_skip = 0.0;
+      if(cfg.news_hard_skip > 1.0) cfg.news_hard_skip = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_MIN_SCALE
+      if(cfg.news_min_scale < 0.0) cfg.news_min_scale = 0.0;
+      if(cfg.news_min_scale > 1.0) cfg.news_min_scale = 1.0;
+      cfg.cal_min_scale = cfg.news_min_scale;
+    #else
+      if(cfg.cal_min_scale < 0.0) cfg.cal_min_scale = 0.0;
+      if(cfg.cal_min_scale > 1.0) cfg.cal_min_scale = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_HALFLIFE
+      if(cfg.news_half_life_mins < 1) cfg.news_half_life_mins = 60;
+      if(cfg.news_half_life_mins > 10080) cfg.news_half_life_mins = 10080;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_MAX_BLOCK
+      if(cfg.news_max_block < 0.0) cfg.news_max_block = 0.0;
+      if(cfg.news_max_block > 10080.0) cfg.news_max_block = 10080.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_MIN_DECAY_MULT
+      if(cfg.news_min_decay_mult < 0.0) cfg.news_min_decay_mult = 0.0;
+      if(cfg.news_min_decay_mult > 1.0) cfg.news_min_decay_mult = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_CSV_RELOAD_MINS
+      if(cfg.news_csv_reload_mins < 1) cfg.news_csv_reload_mins = 1;
+      if(cfg.news_csv_reload_mins > 10080) cfg.news_csv_reload_mins = 10080;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_HV_PERIOD
+      if(cfg.news_fnvs_hv_period < 2) cfg.news_fnvs_hv_period = 14;
+      if(cfg.news_fnvs_hv_period > 500) cfg.news_fnvs_hv_period = 500;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_ADR_DAYS
+      if(cfg.news_fnvs_adr_days < 2) cfg.news_fnvs_adr_days = 10;
+      if(cfg.news_fnvs_adr_days > 200) cfg.news_fnvs_adr_days = 200;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+      if(cfg.news_fnvs_sentiment_weight < -1.0) cfg.news_fnvs_sentiment_weight = -1.0;
+      if(cfg.news_fnvs_sentiment_weight >  1.0) cfg.news_fnvs_sentiment_weight =  1.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+      if(cfg.news_fnvs_signal_buy_th < 0.0) cfg.news_fnvs_signal_buy_th = 10.0;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+      if(cfg.news_fnvs_signal_sell_th > 0.0) cfg.news_fnvs_signal_sell_th = -10.0;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+      if(cfg.news_fnvs_signal_strong_buy_th < cfg.news_fnvs_signal_buy_th)
+        cfg.news_fnvs_signal_strong_buy_th = cfg.news_fnvs_signal_buy_th;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+      if(cfg.news_fnvs_signal_strong_sell_th > cfg.news_fnvs_signal_sell_th)
+        cfg.news_fnvs_signal_strong_sell_th = cfg.news_fnvs_signal_sell_th;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+      if(cfg.news_fnvs_ev_min_atr_frac < 0.0) cfg.news_fnvs_ev_min_atr_frac = 0.0;
+      if(cfg.news_fnvs_ev_min_atr_frac > 10.0) cfg.news_fnvs_ev_min_atr_frac = 10.0;
+    #endif
+
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_USD
+      if(cfg.news_fnvs_sens_usd <= 0.0) cfg.news_fnvs_sens_usd = 1.00;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_EUR
+      if(cfg.news_fnvs_sens_eur <= 0.0) cfg.news_fnvs_sens_eur = 0.80;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_GBP
+      if(cfg.news_fnvs_sens_gbp <= 0.0) cfg.news_fnvs_sens_gbp = 0.70;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_JPY
+      if(cfg.news_fnvs_sens_jpy <= 0.0) cfg.news_fnvs_sens_jpy = 0.60;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_AUD
+      if(cfg.news_fnvs_sens_aud <= 0.0) cfg.news_fnvs_sens_aud = 0.70;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_NZD
+      if(cfg.news_fnvs_sens_nzd <= 0.0) cfg.news_fnvs_sens_nzd = 0.65;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_CAD
+      if(cfg.news_fnvs_sens_cad <= 0.0) cfg.news_fnvs_sens_cad = 0.70;
+    #endif
+    #ifdef CFG_HAS_NEWS_FNVS_SENS_CHF
+      if(cfg.news_fnvs_sens_chf <= 0.0) cfg.news_fnvs_sens_chf = 0.65;
+    #endif
+    
     if(cfg.max_losses_day<0) cfg.max_losses_day=0;
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
@@ -4697,6 +5905,7 @@ namespace Config
           cfg.scan_of_ofr_rebalance_band = MathMin(0.49, MathMax(0.00, cfg.scan_of_ofr_rebalance_band));  // 0.00..0.49
           cfg.scan_of_ofr_min_total_vol  = MathMax(0.0, cfg.scan_of_ofr_min_total_vol);                    // >= 0
       #endif
+          // scan_of_show_proxy_labels is boolean; no numeric clamp required
 
       // --- Liquidity pool clamps (always-present fields)
       cfg.scan_liq_pool_approach_atr    = MathMin(MathMax(cfg.scan_liq_pool_approach_atr,    0.05), 5.0);
@@ -4707,12 +5916,129 @@ namespace Config
       cfg.scan_liq_struct_break_eps_atr = MathMin(MathMax(cfg.scan_liq_struct_break_eps_atr, 0.00), 1.0);
       cfg.scan_liq_min_zvol             = MathMin(MathMax(cfg.scan_liq_min_zvol,             0.00), 10.0);
 
+      // --- LFM scanner threshold clamps
+      cfg.scan_lfm_score_breakout_min = MathMin(MathMax(cfg.scan_lfm_score_breakout_min, 0.0), 100.0);
+      cfg.scan_lfm_score_fake_max     = MathMin(MathMax(cfg.scan_lfm_score_fake_max,     0.0), 100.0);
+
+      cfg.scan_lfm_per_breakout_min   = MathMin(MathMax(cfg.scan_lfm_per_breakout_min,   0.0), 1.0);
+      cfg.scan_lfm_vci_breakout_min   = MathMin(MathMax(cfg.scan_lfm_vci_breakout_min,  -1.0), 1.0);
+      cfg.scan_lfm_ar_fake_min        = MathMin(MathMax(cfg.scan_lfm_ar_fake_min,        0.0), 20.0);
+
+      cfg.scan_lfm_reversal_ar_min    = MathMin(MathMax(cfg.scan_lfm_reversal_ar_min,    0.0), 20.0);
+      cfg.scan_lfm_reversal_per_max   = MathMin(MathMax(cfg.scan_lfm_reversal_per_max,   0.0), 1.0);
+      cfg.scan_lfm_divergence_min_abs = MathMin(MathMax(cfg.scan_lfm_divergence_min_abs, 0.0), 5.0);
+
+      cfg.scan_lfm_emit_cooldown_sec  = MathMin(MathMax(cfg.scan_lfm_emit_cooldown_sec,  0), 86400);
+      cfg.scan_lfm_hysteresis_score   = MathMin(MathMax(cfg.scan_lfm_hysteresis_score,   0.0), 25.0);
+
+      cfg.scan_lfm_mtf_w_htf          = MathMin(MathMax(cfg.scan_lfm_mtf_w_htf,          0.0), 1.0);
+      cfg.scan_lfm_mtf_w_mtf          = MathMin(MathMax(cfg.scan_lfm_mtf_w_mtf,          0.0), 1.0);
+      cfg.scan_lfm_mtf_w_ltf          = MathMin(MathMax(cfg.scan_lfm_mtf_w_ltf,          0.0), 1.0);
+      cfg.scan_lfm_obi_flow_quality_min  = MathMin(MathMax(cfg.scan_lfm_obi_flow_quality_min,  0.0), 1.0);
+      cfg.scan_lfm_obi_depth_quality_min = MathMin(MathMax(cfg.scan_lfm_obi_depth_quality_min, 0.0), 1.0);
+      cfg.scan_lfm_dp_flow_quality_min   = MathMin(MathMax(cfg.scan_lfm_dp_flow_quality_min,   0.0), 1.0);
+      
+      // --- Confluence-side LFM gate clamps (optional)
+      cfg.cf_lfm_min_score_soft      = MathMin(MathMax(cfg.cf_lfm_min_score_soft,   0.0), 100.0);
+      cfg.cf_lfm_min_score_strong    = MathMin(MathMax(cfg.cf_lfm_min_score_strong, 0.0), 100.0);
+
+      cfg.cf_lfm_min_imb_soft        = MathMin(MathMax(cfg.cf_lfm_min_imb_soft,     -1.0), 1.0);
+      cfg.cf_lfm_min_imb_strong      = MathMin(MathMax(cfg.cf_lfm_min_imb_strong,   -1.0), 1.0);
+
+      cfg.cf_lfm_contra_imb_floor    = MathMin(MathMax(cfg.cf_lfm_contra_imb_floor, -1.0), 1.0);
+      cfg.cf_lfm_tight_score_min     = MathMin(MathMax(cfg.cf_lfm_tight_score_min,   0.0), 100.0);
+      cfg.cf_lfm_tight_imb_min       = MathMin(MathMax(cfg.cf_lfm_tight_imb_min,    -1.0), 1.0);
+
+      if(cfg.cf_lfm_min_score_soft > cfg.cf_lfm_min_score_strong)
+      {
+        double tmp = cfg.cf_lfm_min_score_soft;
+        cfg.cf_lfm_min_score_soft   = cfg.cf_lfm_min_score_strong;
+        cfg.cf_lfm_min_score_strong = tmp;
+      }
+       
+      // --- LFM core params clamps
+      cfg.lfm_atr_period              = MathMin(MathMax(cfg.lfm_atr_period,              2), 500);
+      cfg.lfm_vol_ema                 = MathMin(MathMax(cfg.lfm_vol_ema,                 2), 500);
+      cfg.lfm_per_ema                 = MathMin(MathMax(cfg.lfm_per_ema,                 2), 500);
+      cfg.lfm_ar_ema                  = MathMin(MathMax(cfg.lfm_ar_ema,                  2), 500);
+      cfg.lfm_spread_ema              = MathMin(MathMax(cfg.lfm_spread_ema,              2), 500);
+      cfg.lfm_epsilon                 = MathMin(MathMax(cfg.lfm_epsilon,             1e-12), 1.0);
+
+      cfg.lfm_w_per                   = MathMin(MathMax(cfg.lfm_w_per,                   0.0), 1.0);
+      cfg.lfm_w_vci                   = MathMin(MathMax(cfg.lfm_w_vci,                   0.0), 1.0);
+      cfg.lfm_w_spi                   = MathMin(MathMax(cfg.lfm_w_spi,                   0.0), 1.0);
+      cfg.lfm_w_vnf                   = MathMin(MathMax(cfg.lfm_w_vnf,                   0.0), 1.0);
+      cfg.lfm_w_ar                    = MathMin(MathMax(cfg.lfm_w_ar,                    0.0), 1.0);
+
+      cfg.lfm_fx_weight_overlap       = MathMin(MathMax(cfg.lfm_fx_weight_overlap,       0.1), 3.0);
+      cfg.lfm_fx_weight_london_or_ny  = MathMin(MathMax(cfg.lfm_fx_weight_london_or_ny,  0.1), 3.0);
+      cfg.lfm_fx_weight_asia          = MathMin(MathMax(cfg.lfm_fx_weight_asia,          0.1), 3.0);
+
+      cfg.lfm_depth_weight            = MathMin(MathMax(cfg.lfm_depth_weight,            0.0), 1.0);
+      cfg.lfm_base_weight_after_depth = MathMin(MathMax(cfg.lfm_base_weight_after_depth, 0.0), 1.0);
+
+      // Normalize LFM component weights if needed (preserve defaults if sum invalid)
+      {
+        double wsum_lfm = cfg.lfm_w_per + cfg.lfm_w_vci + cfg.lfm_w_spi + cfg.lfm_w_vnf + cfg.lfm_w_ar;
+        if(wsum_lfm > 0.0)
+        {
+          cfg.lfm_w_per /= wsum_lfm;
+          cfg.lfm_w_vci /= wsum_lfm;
+          cfg.lfm_w_spi /= wsum_lfm;
+          cfg.lfm_w_vnf /= wsum_lfm;
+          cfg.lfm_w_ar  /= wsum_lfm;
+        }
+        else
+        {
+          cfg.lfm_w_per = 0.25;
+          cfg.lfm_w_vci = 0.20;
+          cfg.lfm_w_spi = 0.15;
+          cfg.lfm_w_vnf = 0.20;
+          cfg.lfm_w_ar  = 0.20;
+        }
+      }
+
+      // Normalize scanner-local LFM MTF weights (fallback to spec defaults if invalid)
+      {
+        double wsum_lfm_mtf = cfg.scan_lfm_mtf_w_htf + cfg.scan_lfm_mtf_w_mtf + cfg.scan_lfm_mtf_w_ltf;
+        if(wsum_lfm_mtf > 0.0)
+        {
+          cfg.scan_lfm_mtf_w_htf /= wsum_lfm_mtf;
+          cfg.scan_lfm_mtf_w_mtf /= wsum_lfm_mtf;
+          cfg.scan_lfm_mtf_w_ltf /= wsum_lfm_mtf;
+        }
+        else
+        {
+          cfg.scan_lfm_mtf_w_htf = 0.50;
+          cfg.scan_lfm_mtf_w_mtf = 0.30;
+          cfg.scan_lfm_mtf_w_ltf = 0.20;
+        }
+      }
+
+      // Normalize depth blend pair if sum invalid / zero
+      {
+        double wsum_depth = cfg.lfm_base_weight_after_depth + cfg.lfm_depth_weight;
+        if(wsum_depth > 0.0)
+        {
+          cfg.lfm_base_weight_after_depth /= wsum_depth;
+          cfg.lfm_depth_weight            /= wsum_depth;
+        }
+        else
+        {
+          cfg.lfm_base_weight_after_depth = 0.85;
+          cfg.lfm_depth_weight            = 0.15;
+        }
+      }
+      
       #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
         // --- OBI clamps
         cfg.scan_obi_depth_points = MathMin(MathMax(cfg.scan_obi_depth_points, 1), 250);
         cfg.scan_obi_threshold    = MathMin(MathMax(cfg.scan_obi_threshold,    0.00), 1.00);
         cfg.scan_obi_keylevel_atr = MathMin(MathMax(cfg.scan_obi_keylevel_atr, 0.05), 5.0);
 
+        // OBI runtime auto-routing (bool flag needs no numeric clamp)
+        cfg.scan_obi_auto_route_probe_ms = MathMin(MathMax(cfg.scan_obi_auto_route_probe_ms, 0), 5000);
+        
         // --- OBI extended clamps (keep consistent with primary OBI clamp block)
         cfg.scan_obi_basis_mode         = MathMin(MathMax(cfg.scan_obi_basis_mode,         0), 1);
         cfg.scan_obi_norm_mode          = MathMin(MathMax(cfg.scan_obi_norm_mode,          0), 2);
@@ -4790,11 +6116,13 @@ namespace Config
         // --- OBI scanner institutional classification / emit control clamps (secondary pass; keep in sync)
         cfg.scan_obi_ndelta_threshold         = MathMin(MathMax(cfg.scan_obi_ndelta_threshold,         0.0), 1.0);
         cfg.scan_obi_absorption_z_threshold   = MathMin(MathMax(cfg.scan_obi_absorption_z_threshold,   0.05), 20.0);
+        cfg.scan_obi_strong_class_mode       = MathMin(MathMax(cfg.scan_obi_strong_class_mode,       0), 1);
         
         // --- VSA background-hook scanner fusion clamps
         cfg.scan_vsa_hook_min_abs_relvol    = MathMin(MathMax(cfg.scan_vsa_hook_min_abs_relvol,    0.0), 10.0);
         cfg.scan_vsa_hook_min_abs_normscore = MathMin(MathMax(cfg.scan_vsa_hook_min_abs_normscore, 0.0), 1.0);
         cfg.scan_vsa_hook_min_spread_ratio  = MathMin(MathMax(cfg.scan_vsa_hook_min_spread_ratio,  0.0), 10.0);
+        cfg.scan_vsa_hook_relvol_basis  = MathMin(MathMax(cfg.scan_vsa_hook_relvol_basis, 0), 2);
         cfg.scan_vsa_hook_boost_max         = MathMin(MathMax(cfg.scan_vsa_hook_boost_max,         1.0), 5.0);
 
         // --- Wyckoff clamps
@@ -4803,6 +6131,18 @@ namespace Config
         cfg.scan_wyck_lb_h4          = MathMin(MathMax(cfg.scan_wyck_lb_h4,          50), 5000);
         cfg.scan_wyck_lb_d1          = MathMin(MathMax(cfg.scan_wyck_lb_d1,          50), 5000);
 
+        cfg.scan_wyck_wci_buy_min        = MathMin(MathMax(cfg.scan_wyck_wci_buy_min,        0.0), 100.0);
+        cfg.scan_wyck_wci_sell_max       = MathMin(MathMax(cfg.scan_wyck_wci_sell_max,       0.0), 100.0);
+        cfg.scan_wyck_composite_min_abs  = MathMin(MathMax(cfg.scan_wyck_composite_min_abs,  0.0),  20.0);
+        cfg.scan_wyck_evr_absorption_max = MathMin(MathMax(cfg.scan_wyck_evr_absorption_max, 0.0),  10.0);
+
+        // Keep buy/sell thresholds in sensible order
+        if(cfg.scan_wyck_wci_sell_max >= cfg.scan_wyck_wci_buy_min)
+          {
+           cfg.scan_wyck_wci_sell_max = 40.0;
+           cfg.scan_wyck_wci_buy_min  = 60.0;
+          }
+          
         // --- Correlation clamps (hysteresis: recover <= threshold)
         cfg.scan_corr_threshold = MathMin(MathMax(cfg.scan_corr_threshold, 0.00), 0.999);
         cfg.scan_corr_recover   = MathMin(MathMax(cfg.scan_corr_recover,   0.00), cfg.scan_corr_threshold);
@@ -4836,6 +6176,26 @@ namespace Config
         // Visible range placeholder (seconds); 0 keeps it disabled / caller-driven
         cfg.scan_vp_visible_range_sec  = MathMin(MathMax(cfg.scan_vp_visible_range_sec,  0), 31536000);
 
+        // Explicit TIME/FIXED range timestamps (epoch seconds)
+        if((long)cfg.scan_vp_range_from_ts < 0) cfg.scan_vp_range_from_ts = 0;
+        if((long)cfg.scan_vp_range_to_ts   < 0) cfg.scan_vp_range_to_ts   = 0;
+
+        // If both are set, require strictly increasing range; otherwise clear to safe "unset"
+        if(cfg.scan_vp_range_from_ts > 0 && cfg.scan_vp_range_to_ts > 0 &&
+           cfg.scan_vp_range_to_ts <= cfg.scan_vp_range_from_ts)
+        {
+          cfg.scan_vp_range_from_ts = 0;
+          cfg.scan_vp_range_to_ts   = 0;
+        }
+
+        cfg.scan_vp_value_area_method = MathMin(MathMax(cfg.scan_vp_value_area_method, 0), 1);
+        cfg.scan_vp_vwap_source_mode  = MathMin(MathMax(cfg.scan_vp_vwap_source_mode,  0), 2);
+
+        // Optional row-height model (0=disabled/use existing bin controls, 1=tick, 2=auto, 3=ATR)
+        cfg.scan_vp_row_height_mode       = MathMin(MathMax(cfg.scan_vp_row_height_mode,       0), 3);
+        cfg.scan_vp_row_height_atr_period = MathMin(MathMax(cfg.scan_vp_row_height_atr_period, 1), 500);
+        cfg.scan_vp_row_height_atr_mult   = MathMin(MathMax(cfg.scan_vp_row_height_atr_mult, 0.01), 20.0);
+
         cfg.scan_vp_bin_mode           = MathMin(MathMax(cfg.scan_vp_bin_mode,           0), 1);
         cfg.scan_vp_bin_count          = MathMin(MathMax(cfg.scan_vp_bin_count,          5), 2000);
         cfg.scan_vp_alloc_mode         = MathMin(MathMax(cfg.scan_vp_alloc_mode,         0), 4);
@@ -4844,6 +6204,7 @@ namespace Config
 
         cfg.scan_vp_footprint_build_mode = MathMin(MathMax(cfg.scan_vp_footprint_build_mode, 0), 2);
         cfg.scan_vp_footprint_min_bars   = MathMin(MathMax(cfg.scan_vp_footprint_min_bars,   1), 50000);
+        cfg.scan_vp_force_tick_volume = (cfg.scan_vp_force_tick_volume ? true : false);
 
         cfg.scan_vp_dev_poc_max_points = MathMin(MathMax(cfg.scan_vp_dev_poc_max_points, 0), 100000);
 
@@ -4853,6 +6214,18 @@ namespace Config
         // Node heuristic fractions in [0..1] (with practical floors where applicable)
         cfg.scan_vp_hvn_min_frac       = MathMin(MathMax(cfg.scan_vp_hvn_min_frac, 0.0), 1.0);
         cfg.scan_vp_lvn_max_frac       = MathMin(MathMax(cfg.scan_vp_lvn_max_frac, 0.01), 1.0);
+        
+        cfg.scan_vpx_enable                = (cfg.scan_vpx_enable ? true : false);
+        cfg.scan_vpx_emit_vwap_touch       = (cfg.scan_vpx_emit_vwap_touch ? true : false);
+        cfg.scan_vpx_emit_vwap_cross       = (cfg.scan_vpx_emit_vwap_cross ? true : false);
+        cfg.scan_vpx_emit_dev_poc_shift    = (cfg.scan_vpx_emit_dev_poc_shift ? true : false);
+        cfg.scan_vpx_emit_delta_poc_retest = (cfg.scan_vpx_emit_delta_poc_retest ? true : false);
+        cfg.scan_vpx_emit_shape_transition = (cfg.scan_vpx_emit_shape_transition ? true : false);
+
+        cfg.scan_vpx_vwap_touch_atr        = MathMin(MathMax(cfg.scan_vpx_vwap_touch_atr,        0.0), 5.0);
+        cfg.scan_vpx_vwap_cross_margin_atr = MathMin(MathMax(cfg.scan_vpx_vwap_cross_margin_atr, 0.0), 5.0);
+        cfg.scan_vpx_dev_poc_shift_atr     = MathMin(MathMax(cfg.scan_vpx_dev_poc_shift_atr,     0.0), 5.0);
+        cfg.scan_vpx_delta_poc_retest_atr  = MathMin(MathMax(cfg.scan_vpx_delta_poc_retest_atr,  0.0), 5.0);
       #endif
 
       #ifdef CFG_HAS_FVG_LOOKBACK_BARS
@@ -4865,6 +6238,70 @@ namespace Config
         cfg.fvg_min_gap_atr = MathMin(MathMax(cfg.fvg_min_gap_atr, 0.0), 5.0);
       #endif
 
+      #ifdef CFG_HAS_FVG_MIN_SCORE
+        cfg.fvg_min_score = MathMin(MathMax(cfg.fvg_min_score, 0.0), 1.0);
+      #endif
+
+      #ifdef CFG_HAS_FVG_MODE
+        // Keep broad clamp; exact semantic enum handling happens downstream if needed.
+        cfg.fvg_mode = MathMin(MathMax(cfg.fvg_mode, 0), 8);
+      #endif
+
+      #ifdef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+        // Expected small enum (currently treat as 0..2 and fallback to 0 if out-of-range later)
+        cfg.fvg_zone_bounds_mode = MathMin(MathMax(cfg.fvg_zone_bounds_mode, 0), 2);
+      #endif
+
+      #ifdef CFG_HAS_FVG_USE_BODY_ONLY
+        cfg.fvg_use_body_only = (cfg.fvg_use_body_only ? true : false);
+      #endif
+
+      #ifdef CFG_HAS_FVG_MIN_GAP_MODE
+        // 0=ATR, 1=pct, 2=points
+        cfg.fvg_min_gap_mode = MathMin(MathMax(cfg.fvg_min_gap_mode, 0), 2);
+      #endif
+
+      #ifdef CFG_HAS_FVG_MIN_GAP_PCT
+        if(cfg.fvg_min_gap_pct < 0.0) cfg.fvg_min_gap_pct = 0.0;
+        cfg.fvg_min_gap_pct = MathMin(cfg.fvg_min_gap_pct, 100.0);
+      #endif
+
+      #ifdef CFG_HAS_FVG_MIN_GAP_PTS
+        if(cfg.fvg_min_gap_pts < 0.0) cfg.fvg_min_gap_pts = 0.0;
+      #endif
+
+      #ifdef CFG_HAS_FVG_DETECT_MODEL
+        if(cfg.fvg_detect_model != 0 && cfg.fvg_detect_model != 1)
+           cfg.fvg_detect_model = 1; // default to ICT strict
+      #endif
+
+      #ifdef CFG_HAS_FVG_INVALIDATION_MODE
+        if(cfg.fvg_invalidation_mode != 0 && cfg.fvg_invalidation_mode != 1)
+           cfg.fvg_invalidation_mode = 0; // default to wick mode
+      #endif
+
+      #ifdef CFG_HAS_FVG_PARTIAL_FILL_THR
+        cfg.fvg_partial_fill_thr = MathMin(MathMax(cfg.fvg_partial_fill_thr, 0.0), 1.0);
+      #endif
+
+      #ifdef CFG_HAS_FVG_MAX_AGE_BARS
+        if(cfg.fvg_max_age_bars < 0) cfg.fvg_max_age_bars = 0;
+        cfg.fvg_max_age_bars = MathMin(cfg.fvg_max_age_bars, 100000);
+      #endif
+
+      #ifdef CFG_HAS_FVG_ATR_PERIOD
+        cfg.fvg_atr_period = MathMin(MathMax(cfg.fvg_atr_period, 2), 200);
+      #endif
+
+      #ifdef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+        cfg.fvg_ignore_session_gaps = (cfg.fvg_ignore_session_gaps ? true : false);
+      #endif
+
+      #ifdef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+        cfg.fvg_volume_ratio_len = MathMin(MathMax(cfg.fvg_volume_ratio_len, 1), 500);
+        if(cfg.fvg_volume_ratio_min < 0.0) cfg.fvg_volume_ratio_min = 0.0;
+      #endif
+      
       // Provider / API (fail-safe to local)
       if(cfg.auto_provider < 0 || cfg.auto_provider > 2) cfg.auto_provider = 0;
       if(cfg.auto_provider != 0 && cfg.auto_api_base_url == "") cfg.auto_provider = 0;
@@ -4898,6 +6335,116 @@ namespace Config
         cfg.struct_zone_min_score = MathMin(MathMax(cfg.struct_zone_min_score, 0.0), 1.0);
       #endif
 
+      #ifdef CFG_HAS_STRUCT_PIVOT_L
+        if(cfg.struct_pivot_L <= 0) cfg.struct_pivot_L = 2;
+        cfg.struct_pivot_L = MathMin(MathMax(cfg.struct_pivot_L, 1), 20);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_PIVOT_R
+        if(cfg.struct_pivot_R <= 0) cfg.struct_pivot_R = 2;
+        cfg.struct_pivot_R = MathMin(MathMax(cfg.struct_pivot_R, 1), 20);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_BOS_MIN
+        if(cfg.struct_bos_min <= 0.0) cfg.struct_bos_min = 0.35;
+        cfg.struct_bos_min = MathMin(MathMax(cfg.struct_bos_min, 0.05), 5.0);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_TREND_MIN
+        if(cfg.struct_trend_min < 0.0) cfg.struct_trend_min = 0.20;
+        cfg.struct_trend_min = MathMin(MathMax(cfg.struct_trend_min, 0.0), 1.0);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+        if(cfg.struct_ob_zone_mode < 0) cfg.struct_ob_zone_mode = 3;
+        cfg.struct_ob_zone_mode = MathMin(MathMax(cfg.struct_ob_zone_mode, 0), 3);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+        if(cfg.struct_ob_cluster_max <= 0) cfg.struct_ob_cluster_max = 1;
+        cfg.struct_ob_cluster_max = MathMin(MathMax(cfg.struct_ob_cluster_max, 1), 8);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+        if(cfg.struct_ob_min_impulse < 0.0) cfg.struct_ob_min_impulse = 0.0;
+        cfg.struct_ob_min_impulse = MathMin(MathMax(cfg.struct_ob_min_impulse, 0.0), 1.0);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+        if(cfg.struct_ob_min_disp_atr < 0.0) cfg.struct_ob_min_disp_atr = 0.0;
+        cfg.struct_ob_min_disp_atr = MathMin(MathMax(cfg.struct_ob_min_disp_atr, 0.0), 10.0);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+        if(cfg.struct_ob_expire_bars < 0) cfg.struct_ob_expire_bars = 0;
+        cfg.struct_ob_expire_bars = MathMin(MathMax(cfg.struct_ob_expire_bars, 0), 5000);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+        if(cfg.struct_sd_atr_period <= 0) cfg.struct_sd_atr_period = 14;
+        cfg.struct_sd_atr_period = MathMin(MathMax(cfg.struct_sd_atr_period, 5), 200);
+
+        if(cfg.struct_sd_base_min_bars <= 0) cfg.struct_sd_base_min_bars = 2;
+        cfg.struct_sd_base_min_bars = MathMin(MathMax(cfg.struct_sd_base_min_bars, 1), 20);
+
+        if(cfg.struct_sd_base_max_bars <= 0) cfg.struct_sd_base_max_bars = 6;
+        cfg.struct_sd_base_max_bars = MathMin(MathMax(cfg.struct_sd_base_max_bars, 1), 50);
+
+        if(cfg.struct_sd_base_max_bars < cfg.struct_sd_base_min_bars)
+          cfg.struct_sd_base_max_bars = cfg.struct_sd_base_min_bars;
+
+        if(cfg.struct_sd_base_range_atr_max <= 0.0) cfg.struct_sd_base_range_atr_max = 0.80;
+        cfg.struct_sd_base_range_atr_max = MathMin(MathMax(cfg.struct_sd_base_range_atr_max, 0.05), 5.0);
+
+        if(cfg.struct_sd_base_body_ratio_max <= 0.0) cfg.struct_sd_base_body_ratio_max = 0.50;
+        cfg.struct_sd_base_body_ratio_max = MathMin(MathMax(cfg.struct_sd_base_body_ratio_max, 0.05), 1.0);
+
+        if(cfg.struct_sd_impulse_atr_min <= 0.0) cfg.struct_sd_impulse_atr_min = 1.50;
+        cfg.struct_sd_impulse_atr_min = MathMin(MathMax(cfg.struct_sd_impulse_atr_min, 0.10), 10.0);
+
+        if(cfg.struct_sd_impulse_body_ratio_min <= 0.0) cfg.struct_sd_impulse_body_ratio_min = 0.70;
+        cfg.struct_sd_impulse_body_ratio_min = MathMin(MathMax(cfg.struct_sd_impulse_body_ratio_min, 0.05), 1.0);
+
+        if(cfg.struct_sd_volume_sma_len <= 0) cfg.struct_sd_volume_sma_len = 20;
+        cfg.struct_sd_volume_sma_len = MathMin(MathMax(cfg.struct_sd_volume_sma_len, 2), 500);
+
+        if(cfg.struct_sd_volume_ratio_k <= 0.0) cfg.struct_sd_volume_ratio_k = 1.50;
+        cfg.struct_sd_volume_ratio_k = MathMin(MathMax(cfg.struct_sd_volume_ratio_k, 0.10), 10.0);
+
+        if(cfg.struct_sd_merge_overlap_atr < 0.0) cfg.struct_sd_merge_overlap_atr = 0.10;
+        cfg.struct_sd_merge_overlap_atr = MathMin(MathMax(cfg.struct_sd_merge_overlap_atr, 0.0), 5.0);
+
+        if(cfg.struct_sd_max_active_zones <= 0) cfg.struct_sd_max_active_zones = 20;
+        cfg.struct_sd_max_active_zones = MathMin(MathMax(cfg.struct_sd_max_active_zones, 1), 200);
+
+        if(cfg.struct_sd_min_score_100 < 0.0) cfg.struct_sd_min_score_100 = 0.0;
+        cfg.struct_sd_min_score_100 = MathMin(MathMax(cfg.struct_sd_min_score_100, 0.0), 100.0);
+
+        if(cfg.struct_sd_break_body_atr_min < 0.0) cfg.struct_sd_break_body_atr_min = 0.0;
+        cfg.struct_sd_break_body_atr_min = MathMin(MathMax(cfg.struct_sd_break_body_atr_min, 0.0), 10.0);
+
+        if(cfg.struct_sd_break_range_atr_min < 0.0) cfg.struct_sd_break_range_atr_min = 0.0;
+        cfg.struct_sd_break_range_atr_min = MathMin(MathMax(cfg.struct_sd_break_range_atr_min, 0.0), 10.0);
+
+        if(cfg.struct_sd_displacement_mode < 0) cfg.struct_sd_displacement_mode = 0;
+        cfg.struct_sd_displacement_mode = MathMin(MathMax(cfg.struct_sd_displacement_mode, 0), 3);
+
+        if(cfg.struct_sd_mitigation_mode < 0) cfg.struct_sd_mitigation_mode = 0;
+        cfg.struct_sd_mitigation_mode = MathMin(MathMax(cfg.struct_sd_mitigation_mode, 0), 2);
+
+        if(cfg.struct_sd_invalidation_mode < 0) cfg.struct_sd_invalidation_mode = 3;
+        cfg.struct_sd_invalidation_mode = MathMin(MathMax(cfg.struct_sd_invalidation_mode, 0), 3);
+
+        if(cfg.struct_sd_invalidation_atr < 0.0) cfg.struct_sd_invalidation_atr = 1.0;
+        cfg.struct_sd_invalidation_atr = MathMin(MathMax(cfg.struct_sd_invalidation_atr, 0.0), 10.0);
+
+        if(cfg.struct_sd_sweep_bonus_weight < 0.0) cfg.struct_sd_sweep_bonus_weight = 0.0;
+        cfg.struct_sd_sweep_bonus_weight = MathMin(MathMax(cfg.struct_sd_sweep_bonus_weight, 0.0), 100.0);
+
+        if(cfg.struct_sd_min_fvg_overlap01 < 0.0) cfg.struct_sd_min_fvg_overlap01 = 0.0;
+        cfg.struct_sd_min_fvg_overlap01 = MathMin(MathMax(cfg.struct_sd_min_fvg_overlap01, 0.0), 1.0);
+      #endif
+      
       // Master min quality: fallback only (does not override explicit per-type mins)
       cfg.auto_min_quality = MathMin(MathMax(cfg.auto_min_quality, 0.0), 1.0);
       if(cfg.auto_min_quality > 0.0)
@@ -5061,6 +6608,69 @@ namespace Config
         cfg.auto_risk_scale_cap = t;
       }
 
+      // UMVI params (Universal Market Volatility Indicator)
+      if(cfg.umvi_n <= 0) cfg.umvi_n = 14;
+      if(cfg.umvi_m <= 0) cfg.umvi_m = 20;
+      if(cfg.umvi_r <= 0) cfg.umvi_r = 10;
+      if(cfg.umvi_s <= 0) cfg.umvi_s = 5;
+      if(cfg.umvi_N <= 0) cfg.umvi_N = 100;
+
+      // Period clamps
+      if(cfg.umvi_n < 5)   cfg.umvi_n = 5;
+      if(cfg.umvi_n > 100) cfg.umvi_n = 100;
+
+      if(cfg.umvi_m < 5)   cfg.umvi_m = 5;
+      if(cfg.umvi_m > 200) cfg.umvi_m = 200;
+
+      if(cfg.umvi_r < 3)   cfg.umvi_r = 3;
+      if(cfg.umvi_r > 100) cfg.umvi_r = 100;
+
+      if(cfg.umvi_s < 2)   cfg.umvi_s = 2;
+      if(cfg.umvi_s > 50)  cfg.umvi_s = 50;
+
+      if(cfg.umvi_N < 30)  cfg.umvi_N = 30;
+      if(cfg.umvi_N > 500) cfg.umvi_N = 500;
+
+      // Threshold clamps
+      if(cfg.umvi_breakout_th <= 0.0)    cfg.umvi_breakout_th = 65.0;
+      if(cfg.umvi_meanrev_th <= 0.0)     cfg.umvi_meanrev_th  = 35.0;
+      if(cfg.umvi_breakout_re_th <= 0.0) cfg.umvi_breakout_re_th = 1.50;
+
+      cfg.umvi_breakout_th    = MathMin(MathMax(cfg.umvi_breakout_th,    0.0), 100.0);
+      cfg.umvi_meanrev_th     = MathMin(MathMax(cfg.umvi_meanrev_th,     0.0), 100.0);
+      cfg.umvi_breakout_re_th = MathMin(MathMax(cfg.umvi_breakout_re_th, 0.5),   5.0);
+
+      // Weight clamps (0..1) then renormalize to sum=1
+      cfg.umvi_w_atr = MathMin(MathMax(cfg.umvi_w_atr, 0.0), 1.0);
+      cfg.umvi_w_ret = MathMin(MathMax(cfg.umvi_w_ret, 0.0), 1.0);
+      cfg.umvi_w_re  = MathMin(MathMax(cfg.umvi_w_re,  0.0), 1.0);
+      cfg.umvi_w_va  = MathMin(MathMax(cfg.umvi_w_va,  0.0), 1.0);
+      cfg.umvi_w_vm  = MathMin(MathMax(cfg.umvi_w_vm,  0.0), 1.0);
+
+      double umvi_w_sum = cfg.umvi_w_atr + cfg.umvi_w_ret + cfg.umvi_w_re + cfg.umvi_w_va + cfg.umvi_w_vm;
+      if(umvi_w_sum <= 0.0)
+      {
+        cfg.umvi_w_atr = 0.30;
+        cfg.umvi_w_ret = 0.25;
+        cfg.umvi_w_re  = 0.20;
+        cfg.umvi_w_va  = 0.15;
+        cfg.umvi_w_vm  = 0.10;
+        umvi_w_sum = 1.0;
+      }
+      else
+      {
+        cfg.umvi_w_atr /= umvi_w_sum;
+        cfg.umvi_w_ret /= umvi_w_sum;
+        cfg.umvi_w_re  /= umvi_w_sum;
+        cfg.umvi_w_va  /= umvi_w_sum;
+        cfg.umvi_w_vm  /= umvi_w_sum;
+      }
+
+      // UMVI extra gate clamps
+      cfg.w_umvi = MathMin(MathMax(cfg.w_umvi, 0.0), 1.5);
+      if(cfg.umvi_extra_mode < 0) cfg.umvi_extra_mode = 0;
+      if(cfg.umvi_extra_mode > 4) cfg.umvi_extra_mode = 4;
+      
     // (Toggles are bools—no clamp needed)
     #ifdef CFG_HAS_EXTRA_CONFL
       cfg.extra_min_needed = MathMax(0,   cfg.extra_min_needed);
@@ -5238,6 +6848,18 @@ namespace Config
     if(cfg.vsa_norm_abs_high_th <= 0.0) cfg.vsa_norm_abs_high_th = 1.5;
     if(cfg.vsa_score_strong_th <= 0.0) cfg.vsa_score_strong_th = 5.0;
 
+    cfg.vsa_score_w_rv  = MathMin(MathMax(cfg.vsa_score_w_rv,  0.0), 10.0);
+    cfg.vsa_score_w_rs  = MathMin(MathMax(cfg.vsa_score_w_rs,  0.0), 10.0);
+    cfg.vsa_score_w_clv = MathMin(MathMax(cfg.vsa_score_w_clv, 0.0), 10.0);
+
+    // Avoid degenerate all-zero score weights
+    if((cfg.vsa_score_w_rv + cfg.vsa_score_w_rs + cfg.vsa_score_w_clv) <= 0.0)
+    {
+      cfg.vsa_score_w_rv  = 0.50;
+      cfg.vsa_score_w_rs  = 0.30;
+      cfg.vsa_score_w_clv = 0.20;
+    }
+    
     if(cfg.vsa_ema_fast < 2) cfg.vsa_ema_fast = 50;
     if(cfg.vsa_ema_slow <= cfg.vsa_ema_fast) cfg.vsa_ema_slow = cfg.vsa_ema_fast + 1;
     if(cfg.vsa_ema_slow > 10000) cfg.vsa_ema_slow = 10000; // sanity ceiling
@@ -5271,6 +6893,9 @@ namespace Config
     if(cfg.vsa_er_lb < 5)   cfg.vsa_er_lb = 20;
     if(cfg.vsa_er_lb > 500) cfg.vsa_er_lb = 500;
 
+    if(cfg.vsa_utso_breakout_lb < 1)    cfg.vsa_utso_breakout_lb = 10;
+    if(cfg.vsa_utso_breakout_lb > 1000) cfg.vsa_utso_breakout_lb = 1000;
+    
     if(cfg.vsa_stopvol_zv_th < 0.0)  cfg.vsa_stopvol_zv_th = 1.5;
     if(cfg.vsa_stopvol_zv_th > 20.0) cfg.vsa_stopvol_zv_th = 20.0;
     if(cfg.vsa_stopvol_rs_th <= 0.0) cfg.vsa_stopvol_rs_th = 1.2;
@@ -5280,7 +6905,16 @@ namespace Config
     if(cfg.vsa_utso_zv_th > 20.0) cfg.vsa_utso_zv_th = 20.0;
     if(cfg.vsa_utso_rs_th <= 0.0) cfg.vsa_utso_rs_th = 1.2;
     if(cfg.vsa_utso_rs_th > 20.0) cfg.vsa_utso_rs_th = 20.0;
-    
+
+    if(cfg.vsa_stopvol_clv_min < -1.0 || cfg.vsa_stopvol_clv_min >= 1.0)
+      cfg.vsa_stopvol_clv_min = -0.30;
+
+    if(cfg.vsa_buyclimax_clv_max <= -1.0 || cfg.vsa_buyclimax_clv_max > 1.0)
+      cfg.vsa_buyclimax_clv_max = 0.30;
+
+    if(cfg.vsa_sellclimax_clv_min < -1.0 || cfg.vsa_sellclimax_clv_min >= 1.0)
+      cfg.vsa_sellclimax_clv_min = -0.30;
+      
     // MTF confirm safety (fallback TF)
     if(cfg.vsa_mtf_tf == PERIOD_CURRENT || cfg.vsa_mtf_tf < PERIOD_M1)
       cfg.vsa_mtf_tf = PERIOD_H1;
@@ -5517,6 +7151,31 @@ namespace Config
      warns="";
      bool ok=true;
 
+     // ---------------- UTD validation (warn-only; Normalize() clamps) ----------------
+     if(cfg.utd_eff_period > 0 && cfg.utd_eff_period < 2)
+     { warns += "UTD: utd_eff_period < 2 (invalid).\\n"; ok=false; }
+
+     if(cfg.utd_mom_period > 0 && cfg.utd_mom_period < 2)
+     { warns += "UTD: utd_mom_period < 2 (invalid).\\n"; ok=false; }
+
+     if(cfg.utd_fdi_period > 0 && cfg.utd_fdi_period < 10)
+     { warns += "UTD: utd_fdi_period < 10 (too small).\\n"; ok=false; }
+
+     if(cfg.utd_atr_short > 0 && cfg.utd_atr_long > 0 && cfg.utd_atr_long <= cfg.utd_atr_short)
+     { warns += "UTD: utd_atr_long must be > utd_atr_short.\\n"; ok=false; }
+
+     if(cfg.utd_buy_th < 0.0 || cfg.utd_buy_th > 1.0)
+     { warns += "UTD: utd_buy_th must be within [0..1].\\n"; ok=false; }
+
+     if(cfg.utd_sell_th < 0.0 || cfg.utd_sell_th > 1.0)
+     { warns += "UTD: utd_sell_th must be within [0..1].\\n"; ok=false; }
+
+     if(cfg.utd_strong_th < 0.0 || cfg.utd_strong_th > 1.0)
+     { warns += "UTD: utd_strong_th must be within [0..1].\\n"; ok=false; }
+
+     if(cfg.utd_exit_th < 0.0 || cfg.utd_exit_th > 1.0)
+     { warns += "UTD: utd_exit_th must be within [0..1].\\n"; ok=false; }
+     
      #ifdef CFG_HAS_STRAT_MODE
       const StrategyMode sm = CfgStrategyMode(cfg);
       if(sm == STRAT_PACK_ONLY || sm == STRAT_COMBINED)
@@ -5639,6 +7298,72 @@ namespace Config
         warns += "struct_zone_min_score is very low; filter may be ineffective.\n";
     #endif
 
+    #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+      if(cfg.struct_ob_zone_mode == 0)
+        warns += "struct_ob_zone_mode=0 (wick->open legacy OB); SD spec geometry is not active.\n";
+    #endif
+    #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+      if(cfg.struct_ob_cluster_max > 4)
+        warns += "struct_ob_cluster_max > 4; legacy OB geometry may become too broad.\n";
+    #endif
+
+    #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+      // Institutional SD spec tuning sanity (warnings only; no hard veto)
+      if(cfg.struct_sd_base_min_bars < 2)
+        warns += "struct_sd_base_min_bars < 2; institutional base-cluster detection may be noisy.\n";
+
+      if(cfg.struct_sd_base_max_bars < cfg.struct_sd_base_min_bars)
+        warns += "struct_sd_base_max_bars < struct_sd_base_min_bars; Normalize() will align them.\n";
+
+      if(cfg.struct_sd_base_range_atr_max < 0.10)
+        warns += "struct_sd_base_range_atr_max < 0.10; bases may rarely qualify.\n";
+
+      if(cfg.struct_sd_base_body_ratio_max > 0.80)
+        warns += "struct_sd_base_body_ratio_max > 0.80; base candles may be too loose.\n";
+
+      if(cfg.struct_sd_impulse_atr_min > 3.0)
+        warns += "struct_sd_impulse_atr_min > 3.0; impulse displacement may rarely qualify.\n";
+
+      if(cfg.struct_sd_impulse_body_ratio_min > 0.90)
+        warns += "struct_sd_impulse_body_ratio_min > 0.90; impulse body requirement may be too strict.\n";
+
+      if(cfg.struct_sd_use_volume_confirm && cfg.struct_sd_volume_ratio_k <= 1.0)
+        warns += "struct_sd_use_volume_confirm=true but struct_sd_volume_ratio_k<=1; volume filter is effectively weak/off.\n";
+
+      if(cfg.struct_sd_merge_overlap_atr > 1.0)
+        warns += "struct_sd_merge_overlap_atr > 1.0; overlapping zones may over-merge.\n";
+
+      if(cfg.struct_sd_min_score_100 > 0.0 && cfg.struct_sd_min_score_100 < 20.0)
+        warns += "struct_sd_min_score_100 is very low; institutional SD filter may be ineffective.\n";
+
+      if(cfg.struct_sd_min_score_100 >= 95.0)
+        warns += "struct_sd_min_score_100 >= 95; institutional SD zones may rarely pass.\n";
+
+      if(cfg.struct_sd_displacement_mode == 0 &&
+         (cfg.struct_sd_break_body_atr_min > 0.0 || cfg.struct_sd_break_range_atr_min > 0.0))
+        warns += "struct_sd_displacement_mode=0 while struct_sd_break_* ATR thresholds are set; those thresholds are inactive.\n";
+
+      if(cfg.struct_sd_break_body_atr_min > 3.0)
+        warns += "struct_sd_break_body_atr_min > 3.0; break-candle body requirement may be too strict.\n";
+
+      if(cfg.struct_sd_break_range_atr_min > 3.0)
+        warns += "struct_sd_break_range_atr_min > 3.0; break-candle range requirement may be too strict.\n";
+
+      if(cfg.struct_sd_sweep_bonus_weight > 25.0)
+        warns += "struct_sd_sweep_bonus_weight > 25.0; liquidity sweep bonus may dominate detector scoring.\n";
+
+      if(cfg.struct_sd_min_fvg_overlap01 > 0.0 && !cfg.struct_sd_require_fvg)
+        warns += "struct_sd_min_fvg_overlap01 > 0 while struct_sd_require_fvg=false; minimum FVG overlap may have no hard effect until consumed downstream.\n";
+
+      if(cfg.struct_sd_require_exact_htf_alignment && cfg.struct_htf_mult <= 1)
+        warns += "struct_sd_require_exact_htf_alignment=true but struct_htf_mult<=1; exact HTF alignment may collapse toward the entry timeframe.\n";
+
+      #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+        if(cfg.struct_zone_min_score > 0.0 && cfg.struct_sd_min_score_100 > 0.0)
+          warns += "Both struct_zone_min_score and struct_sd_min_score_100 are set; keep struct_sd_min_score_100 as canonical detector threshold and treat struct_zone_min_score as legacy/compat only.\n";
+      #endif
+    #endif
+    
     #ifdef CFG_HAS_ORDERFLOW_TH
       if(cfg.orderflow_th < 0.10) warns += "orderflow_th < 0.10; likely too permissive or unstable.\n";
     #endif
@@ -5680,10 +7405,10 @@ namespace Config
       }
     #endif
 
-    // Correlation warnings (helps catch 'enabled but empty basket' cases)
+    // Correlation warnings (unified gate/scanner ref policy)
     #ifdef CFG_HAS_EXTRA_CORR
-      if(cfg.extra_correlation && StringLen(cfg.corr_ref_symbol)==0)
-        warns += "Correlation enabled but corr_ref_symbol empty (strategy should auto-basket, otherwise correlation may be neutral).\\n";
+      if(cfg.extra_correlation && StringLen(cfg.corr_ref_symbol)==0 && !cfg.corr_auto_ref_fallback)
+        warns += "Correlation enabled but corr_ref_symbol empty and corr_auto_ref_fallback=false; no explicit reference symbol is available.\n";
     #endif
 
     // If news_on is set but NEWSFILTER_AVAILABLE == 0, warn that blocks are ignored.
@@ -5857,6 +7582,42 @@ namespace Config
         cfg.wyck_ar_window_bars      = 60;
         cfg.wyck_vol_len             = 20;
         cfg.wyck_vol_mult            = 1.5;
+
+        // WCI defaults (parallel analytical layer for WyckoffCycle)
+        cfg.wyck_wci_enable               = true;
+
+        cfg.wyck_wci_atr_period           = 14;
+        cfg.wyck_wci_vol_ma_period        = 20;
+        cfg.wyck_wci_range_lookback       = 50;
+        cfg.wyck_wci_trend_ema_fast       = 20;
+        cfg.wyck_wci_trend_ema_slow       = 50;
+        cfg.wyck_wci_momentum_lookback    = 10;
+        cfg.wyck_wci_np_norm_lookback     = 50;
+
+        cfg.wyck_wci_fx_tickvol_weighting = true;
+        cfg.wyck_wci_fx_atr_sma_period    = 50;
+
+        cfg.wyck_wci_rv_climax            = 1.5;
+        cfg.wyck_wci_rv_low               = 0.7;
+        cfg.wyck_wci_evr_absorption_max   = 0.5;
+        cfg.wyck_wci_evr_trend_min        = 1.5;
+        cfg.wyck_wci_spring_cpv_min       = 0.6;
+        cfg.wyck_wci_upthrust_cpv_max     = 0.4;
+        cfg.wyck_wci_phase_comp_mark_up   = 1.0;
+        cfg.wyck_wci_phase_comp_mark_dn   = -1.0;
+
+        cfg.wyck_wci_a_np                 = 1.0;
+        cfg.wyck_wci_a_evr                = 1.0;
+        cfg.wyck_wci_a_trend              = 1.0;
+        cfg.wyck_wci_a_momo               = 1.0;
+
+        cfg.wyck_wci_as_w1_prox           = 1.0;
+        cfg.wyck_wci_as_w2_rv             = 1.0;
+        cfg.wyck_wci_as_w3_evr            = 1.0;
+
+        cfg.wyck_wci_ds_w1_prox           = 1.0;
+        cfg.wyck_wci_ds_w2_rv             = 1.0;
+        cfg.wyck_wci_ds_w3_evr            = 1.0;
       #endif
 
      // Silver Bullet hard requirements: default OFF unless extras enable them
@@ -6160,6 +7921,52 @@ namespace Config
      ex.struct_min_touch_count  = 0;
      ex.struct_zone_min_score   = 0.0;
 
+     // Advanced StructureSDOB defaults
+     ex.struct_pivot_L         = 2;
+     ex.struct_pivot_R         = 2;
+     ex.struct_bos_min         = 0.35;
+     ex.struct_trend_min       = 0.20;
+
+     ex.struct_ob_zone_mode    = 3;    // OBZM_SD_SPEC (preferred default)
+     ex.struct_ob_cluster_max  = 1;
+     ex.struct_ob_min_impulse  = 0.0;  // disabled filter by default
+     ex.struct_ob_min_disp_atr = 0.0;  // disabled filter by default
+     ex.struct_ob_expire_bars  = 0;    // disabled by default
+
+     // Institutional SD (base-cluster/spec) defaults — separate from Patterns sd_*
+     ex.struct_sd_atr_period             = 14;
+     ex.struct_sd_base_min_bars          = 2;
+     ex.struct_sd_base_max_bars          = 6;
+
+     ex.struct_sd_base_range_atr_max     = 0.80;
+     ex.struct_sd_base_body_ratio_max    = 0.50;
+
+     ex.struct_sd_impulse_atr_min        = 1.50;
+     ex.struct_sd_impulse_body_ratio_min = 0.70;
+
+     ex.struct_sd_use_volume_confirm     = false;
+     ex.struct_sd_volume_sma_len         = 20;
+     ex.struct_sd_volume_ratio_k         = 1.50;
+
+     ex.struct_sd_require_fvg            = false;
+     ex.struct_sd_merge_overlap_atr      = 0.10;
+     ex.struct_sd_max_active_zones       = 20;
+     ex.struct_sd_enable_mtf_weight      = true;
+     ex.struct_sd_min_score_100          = 60.0;
+
+     ex.struct_sd_break_body_atr_min          = 0.0;
+     ex.struct_sd_break_range_atr_min         = 0.0;
+
+     ex.struct_sd_displacement_mode           = 0;
+     ex.struct_sd_mitigation_mode             = 0;
+     ex.struct_sd_invalidation_mode           = 3;
+     ex.struct_sd_invalidation_atr            = 1.0;
+
+     ex.struct_sd_sweep_bonus_weight          = 0.0;
+     ex.struct_sd_min_fvg_overlap01           = 0.0;
+     ex.struct_sd_require_exact_htf_alignment = false;
+     ex.struct_sd_use_autovol_tuning          = false;
+      
      ex.weekly_open_spread_ramp = true;
    
      return BuildSettingsEx(
@@ -6400,6 +8207,86 @@ namespace Config
       s+=",sdVolOn="+BoolStr(c.sd_use_volume_filter);
       s+=",sdVolK="+DoubleToString(c.sd_vol_spike_k,2);
     #endif
+
+    // Structure / SDOB knobs (single truth for config round-trip)
+    s+=",structZZ="+IntegerToString(c.struct_zz_depth);
+    s+=",structHTF="+IntegerToString(c.struct_htf_mult);
+    s+=",obPx="+DoubleToString(c.ob_prox_max_pips,1);
+
+    #ifdef CFG_HAS_STRUCT_ZONE_MARGIN_PIPS
+      s+=",sdMarginPips="+DoubleToString(c.struct_zone_margin_pips,2);
+    #endif
+    #ifdef CFG_HAS_STRUCT_MIN_TOUCH_COUNT
+      s+=",sdTouches="+IntegerToString(c.struct_min_touch_count);
+    #endif
+    #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
+      s+=",sdScore="+DoubleToString(c.struct_zone_min_score,3);
+    #endif
+
+    #ifdef CFG_HAS_STRUCT_PIVOT_L
+      s+=",stPL="+IntegerToString(c.struct_pivot_L);
+    #endif
+    #ifdef CFG_HAS_STRUCT_PIVOT_R
+      s+=",stPR="+IntegerToString(c.struct_pivot_R);
+    #endif
+    #ifdef CFG_HAS_STRUCT_BOS_MIN
+      s+=",stBosMin="+DoubleToString(c.struct_bos_min,3);
+    #endif
+    #ifdef CFG_HAS_STRUCT_TREND_MIN
+      s+=",stTrendMin="+DoubleToString(c.struct_trend_min,3);
+    #endif
+
+    #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+      s+=",structOBMode="+IntegerToString(c.struct_ob_zone_mode);
+    #endif
+    #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+      s+=",structOBClMax="+IntegerToString(c.struct_ob_cluster_max);
+    #endif
+    #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+      s+=",structOBMinImp="+DoubleToString(c.struct_ob_min_impulse,3);
+    #endif
+    #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+      s+=",structOBMinDispATR="+DoubleToString(c.struct_ob_min_disp_atr,3);
+    #endif
+    #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+      s+=",structOBExpBars="+IntegerToString(c.struct_ob_expire_bars);
+    #endif
+
+    // Institutional SD spec settings (separate from Patterns sd_*)
+    #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+      s+=",sdiAtrP="+IntegerToString(c.struct_sd_atr_period);
+      s+=",sdiBaseMin="+IntegerToString(c.struct_sd_base_min_bars);
+      s+=",sdiBaseMax="+IntegerToString(c.struct_sd_base_max_bars);
+
+      s+=",sdiBaseATR="+DoubleToString(c.struct_sd_base_range_atr_max,3);
+      s+=",sdiBaseBody="+DoubleToString(c.struct_sd_base_body_ratio_max,3);
+
+      s+=",sdiImpATR="+DoubleToString(c.struct_sd_impulse_atr_min,3);
+      s+=",sdiImpBody="+DoubleToString(c.struct_sd_impulse_body_ratio_min,3);
+
+      s+=",sdiVolOn="+BoolStr(c.struct_sd_use_volume_confirm);
+      s+=",sdiVolLen="+IntegerToString(c.struct_sd_volume_sma_len);
+      s+=",sdiVolK="+DoubleToString(c.struct_sd_volume_ratio_k,3);
+
+      s+=",sdiReqFVG="+BoolStr(c.struct_sd_require_fvg);
+      s+=",sdiMergeATR="+DoubleToString(c.struct_sd_merge_overlap_atr,3);
+      s+=",sdiMaxZ="+IntegerToString(c.struct_sd_max_active_zones);
+      s+=",sdiMTFw="+BoolStr(c.struct_sd_enable_mtf_weight);
+      s+=",sdiMin100="+DoubleToString(c.struct_sd_min_score_100,1);
+
+      s+=",sdiBrkBodyATR="+DoubleToString(c.struct_sd_break_body_atr_min,3);
+      s+=",sdiBrkRangeATR="+DoubleToString(c.struct_sd_break_range_atr_min,3);
+
+      s+=",sdiDispMode="+IntegerToString(c.struct_sd_displacement_mode);
+      s+=",sdiMitMode="+IntegerToString(c.struct_sd_mitigation_mode);
+      s+=",sdiInvMode="+IntegerToString(c.struct_sd_invalidation_mode);
+      s+=",sdiInvATR="+DoubleToString(c.struct_sd_invalidation_atr,3);
+
+      s+=",sdiSweepW="+DoubleToString(c.struct_sd_sweep_bonus_weight,3);
+      s+=",sdiMinFVG01="+DoubleToString(c.struct_sd_min_fvg_overlap01,3);
+      s+=",sdiExactHTF="+BoolStr(c.struct_sd_require_exact_htf_alignment);
+      s+=",sdiAutoVol="+BoolStr(c.struct_sd_use_autovol_tuning);
+    #endif
     
     s+=",acChartQ="+DoubleToString(c.auto_chart_min_quality,3);
     s+=",acFibQ="+DoubleToString(c.auto_fib_min_quality,3);
@@ -6411,6 +8298,62 @@ namespace Config
     s+=",acFibT2="+DoubleToString(c.auto_fib_target_r2,3);
     s+=",acFibT3="+DoubleToString(c.auto_fib_target_r3,3);
 
+    // Core FVG settings (scanner-independent / canonical FVG backend)
+    #ifdef CFG_HAS_FVG_MIN_SCORE
+      s+=",fvgQ="+DoubleToString(c.fvg_min_score,3);
+    #endif
+    #ifdef CFG_HAS_FVG_MODE
+      s+=",fvgMode="+IntegerToString(c.fvg_mode);
+    #endif
+    #ifdef CFG_HAS_FVG_LOOKBACK_BARS
+      s+=",fvgLB="+IntegerToString(c.fvg_lookback_bars);
+    #endif
+    #ifdef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+      s+=",fvgImp="+IntegerToString(c.fvg_impulse_lookahead_bars);
+    #endif
+    #ifdef CFG_HAS_FVG_MIN_GAP_ATR
+      s+=",fvgGapATR="+DoubleToString(c.fvg_min_gap_atr,3);
+    #endif
+
+    #ifdef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+      s+=",fvgZB="+IntegerToString(c.fvg_zone_bounds_mode);
+    #endif
+    #ifdef CFG_HAS_FVG_USE_BODY_ONLY
+      s+=",fvgBody="+BoolStr(c.fvg_use_body_only);
+    #endif
+    #ifdef CFG_HAS_FVG_MIN_GAP_MODE
+      s+=",fvgGapM="+IntegerToString(c.fvg_min_gap_mode);
+    #endif
+    #ifdef CFG_HAS_FVG_MIN_GAP_PCT
+      s+=",fvgGapPct="+DoubleToString(c.fvg_min_gap_pct,6);
+    #endif
+    #ifdef CFG_HAS_FVG_MIN_GAP_PTS
+      s+=",fvgGapPts="+DoubleToString(c.fvg_min_gap_pts,1);
+    #endif
+    #ifdef CFG_HAS_FVG_DETECT_MODEL
+      s+=",fvgDet="+IntegerToString(c.fvg_detect_model);
+    #endif
+    #ifdef CFG_HAS_FVG_INVALIDATION_MODE
+      s+=",fvgInv="+IntegerToString(c.fvg_invalidation_mode);
+    #endif
+    #ifdef CFG_HAS_FVG_PARTIAL_FILL_THR
+      s+=",fvgPart="+DoubleToString(c.fvg_partial_fill_thr,3);
+    #endif
+    #ifdef CFG_HAS_FVG_MAX_AGE_BARS
+      s+=",fvgAge="+IntegerToString(c.fvg_max_age_bars);
+    #endif
+
+    #ifdef CFG_HAS_FVG_ATR_PERIOD
+      s+=",fvgAtrP="+IntegerToString(c.fvg_atr_period);
+    #endif
+    #ifdef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+      s+=",fvgSessGap="+BoolStr(c.fvg_ignore_session_gaps);
+    #endif
+    #ifdef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+      s+=",fvgVolLen="+IntegerToString(c.fvg_volume_ratio_len);
+      s+=",fvgVolMin="+DoubleToString(c.fvg_volume_ratio_min,3);
+    #endif
+    
     // Key levels (local)
     s+=",acKeyTouches="+IntegerToString(c.auto_keylevel_min_touches);
     s+=",acKeyClustATR="+DoubleToString(c.auto_keylevel_cluster_atr,3);
@@ -6637,6 +8580,42 @@ namespace Config
       s+=",wyARw="+IntegerToString(c.wyck_ar_window_bars);
       s+=",wyVolN="+IntegerToString(c.wyck_vol_len);
       s+=",wyVolM="+DoubleToString(c.wyck_vol_mult,3);
+
+      // WCI (Wyckoff Composite Indicator) core settings
+      s+=",wyWCIOn="+BoolStr(c.wyck_wci_enable);
+
+      s+=",wyWCIAtr="+IntegerToString(c.wyck_wci_atr_period);
+      s+=",wyWCIVol="+IntegerToString(c.wyck_wci_vol_ma_period);
+      s+=",wyWCIRLB="+IntegerToString(c.wyck_wci_range_lookback);
+      s+=",wyWCIFst="+IntegerToString(c.wyck_wci_trend_ema_fast);
+      s+=",wyWCISlw="+IntegerToString(c.wyck_wci_trend_ema_slow);
+      s+=",wyWCIMom="+IntegerToString(c.wyck_wci_momentum_lookback);
+      s+=",wyWCINPn="+IntegerToString(c.wyck_wci_np_norm_lookback);
+
+      s+=",wyWCIFXW="+BoolStr(c.wyck_wci_fx_tickvol_weighting);
+      s+=",wyWCIFXA="+IntegerToString(c.wyck_wci_fx_atr_sma_period);
+
+      s+=",wyWCIRvC="+DoubleToString(c.wyck_wci_rv_climax,3);
+      s+=",wyWCIRvL="+DoubleToString(c.wyck_wci_rv_low,3);
+      s+=",wyWCIEAb="+DoubleToString(c.wyck_wci_evr_absorption_max,3);
+      s+=",wyWCIETr="+DoubleToString(c.wyck_wci_evr_trend_min,3);
+      s+=",wyWCISCp="+DoubleToString(c.wyck_wci_spring_cpv_min,3);
+      s+=",wyWCIUTp="+DoubleToString(c.wyck_wci_upthrust_cpv_max,3);
+      s+=",wyWCIMUp="+DoubleToString(c.wyck_wci_phase_comp_mark_up,3);
+      s+=",wyWCIMDn="+DoubleToString(c.wyck_wci_phase_comp_mark_dn,3);
+
+      s+=",wyWCIA1="+DoubleToString(c.wyck_wci_a_np,3);
+      s+=",wyWCIA2="+DoubleToString(c.wyck_wci_a_evr,3);
+      s+=",wyWCIA3="+DoubleToString(c.wyck_wci_a_trend,3);
+      s+=",wyWCIA4="+DoubleToString(c.wyck_wci_a_momo,3);
+
+      s+=",wyWCIAS1="+DoubleToString(c.wyck_wci_as_w1_prox,3);
+      s+=",wyWCIAS2="+DoubleToString(c.wyck_wci_as_w2_rv,3);
+      s+=",wyWCIAS3="+DoubleToString(c.wyck_wci_as_w3_evr,3);
+
+      s+=",wyWCIDS1="+DoubleToString(c.wyck_wci_ds_w1_prox,3);
+      s+=",wyWCIDS2="+DoubleToString(c.wyck_wci_ds_w2_rv,3);
+      s+=",wyWCIDS3="+DoubleToString(c.wyck_wci_ds_w3_evr,3);
     #endif
 
     #ifdef CFG_HAS_EXTRA_PHASE_CTX
@@ -6658,11 +8637,32 @@ namespace Config
       s+=",wPH="+DoubleToString(c.w_phase_ctx,3);
     #endif
 
+    s+=",cfLFMSf="+DoubleToString(c.cf_lfm_min_score_soft,2);
+    s+=",cfLFMSt="+DoubleToString(c.cf_lfm_min_score_strong,2);
+    s+=",cfLFMIf="+DoubleToString(c.cf_lfm_min_imb_soft,3);
+    s+=",cfLFMIt="+DoubleToString(c.cf_lfm_min_imb_strong,3);
+    s+=",cfLFMIc="+DoubleToString(c.cf_lfm_contra_imb_floor,3);
+    s+=",cfLFMTS="+DoubleToString(c.cf_lfm_tight_score_min,2);
+    s+=",cfLFMTI="+DoubleToString(c.cf_lfm_tight_imb_min,3);
+     
     s+=",xMTFZ="+BoolStr(c.extra_mtf_zones);
     s+=",wZ1="+DoubleToString(c.w_mtf_zone_h1,3);
     s+=",wZ4="+DoubleToString(c.w_mtf_zone_h4,3);
     s+=",zMaxATR="+DoubleToString(c.mtf_zone_max_dist_atr,3);
 
+    // UTD (Universal Trend Detector)
+    s+=",utd="+BoolStr(c.utd_enable);
+    s+=",utdEff="+IntegerToString(c.utd_eff_period);
+    s+=",utdMom="+IntegerToString(c.utd_mom_period);
+    s+=",utdAS="+IntegerToString(c.utd_atr_short);
+    s+=",utdAL="+IntegerToString(c.utd_atr_long);
+    s+=",utdFdi="+IntegerToString(c.utd_fdi_period);
+    s+=",utdBuy="+DoubleToString(c.utd_buy_th,3);
+    s+=",utdStrong="+DoubleToString(c.utd_strong_th,3);
+    s+=",utdExit="+DoubleToString(c.utd_exit_th,3);
+    s+=",utdMtf="+BoolStr(c.utd_mtf_confirm);
+    s+=",utdMtfTf="+IntegerToString((int)c.utd_mtf_tf);
+    
     s+=",vsa="+BoolStr(c.vsa_enable);
     s+=",vsaMax="+DoubleToString(c.vsa_penalty_max,3);
     
@@ -6685,6 +8685,10 @@ namespace Config
     s+=",vsaAbsN="+DoubleToString(c.vsa_norm_abs_high_th,3);
     s+=",vsaScT="+DoubleToString(c.vsa_score_strong_th,3);
 
+    s+=",vsaSwRV="+DoubleToString(c.vsa_score_w_rv,3);
+    s+=",vsaSwRS="+DoubleToString(c.vsa_score_w_rs,3);
+    s+=",vsaSwCL="+DoubleToString(c.vsa_score_w_clv,3);
+    
     s+=",vsaTR="+BoolStr(c.vsa_use_true_range);
     s+=",vsaEmaPair="+BoolStr(c.vsa_trend_use_ema_pair);
     s+=",vsaEmaF="+IntegerToString(c.vsa_ema_fast);
@@ -6692,6 +8696,11 @@ namespace Config
     s+=",vsaFinalNorm="+BoolStr(c.vsa_use_normscore_gate_on_final);
     s+=",vsaUTPrev="+BoolStr(c.vsa_require_prev_hhll_ut_shake);
 
+    s+=",vsaReqCf="+BoolStr(c.vsa_require_confirm);
+    s+=",vsaFtCf="+BoolStr(c.vsa_followthrough_confirm_enable);
+    s+=",vsaCfVU="+BoolStr(c.vsa_confirm_volume_up_only);
+    s+=",vsaNDTr="+BoolStr(c.vsa_alert_ndns_require_trend);
+    
     s+=",vsaMk="+IntegerToString(c.vsa_market_mode);
     s+=",vsaVB="+IntegerToString(c.vsa_vol_class_mode);
 
@@ -6710,15 +8719,43 @@ namespace Config
     s+=",vsaAbsZH="+DoubleToString(c.vsa_absorption_z_high_th,3);
 
     s+=",vsaERLb="+IntegerToString(c.vsa_er_lb);
+    s+=",vsaUTLb="+IntegerToString(c.vsa_utso_breakout_lb);
 
     s+=",vsaSVZ="+DoubleToString(c.vsa_stopvol_zv_th,3);
     s+=",vsaSVR="+DoubleToString(c.vsa_stopvol_rs_th,3);
     s+=",vsaUTZ="+DoubleToString(c.vsa_utso_zv_th,3);
     s+=",vsaUTR="+DoubleToString(c.vsa_utso_rs_th,3);
+
+    s+=",vsaSVCL="+DoubleToString(c.vsa_stopvol_clv_min,3);
+    s+=",vsaBCCL="+DoubleToString(c.vsa_buyclimax_clv_max,3);
+    s+=",vsaSCCL="+DoubleToString(c.vsa_sellclimax_clv_min,3);
     
     s+=",struct="+BoolStr(c.structure_enable);
     s+=",liq="+BoolStr(c.liquidity_enable);
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
+
+    // LFM global math / weighting params
+    s+=",lfmAtr="+IntegerToString(c.lfm_atr_period);
+    s+=",lfmVolE="+IntegerToString(c.lfm_vol_ema);
+    s+=",lfmPerE="+IntegerToString(c.lfm_per_ema);
+    s+=",lfmArE="+IntegerToString(c.lfm_ar_ema);
+    s+=",lfmSprE="+IntegerToString(c.lfm_spread_ema);
+    s+=",lfmEps="+DoubleToString(c.lfm_epsilon,8);
+
+    s+=",lfmWPer="+DoubleToString(c.lfm_w_per,4);
+    s+=",lfmWVCI="+DoubleToString(c.lfm_w_vci,4);
+    s+=",lfmWSPI="+DoubleToString(c.lfm_w_spi,4);
+    s+=",lfmWVNF="+DoubleToString(c.lfm_w_vnf,4);
+    s+=",lfmWAR="+DoubleToString(c.lfm_w_ar,4);
+
+    s+=",lfmFXOn="+BoolStr(c.lfm_fx_session_weight_on);
+    s+=",lfmFXOv="+DoubleToString(c.lfm_fx_weight_overlap,3);
+    s+=",lfmFXLN="+DoubleToString(c.lfm_fx_weight_london_or_ny,3);
+    s+=",lfmFXAs="+DoubleToString(c.lfm_fx_weight_asia,3);
+
+    s+=",lfmDpOn="+BoolStr(c.lfm_depth_enhance_on);
+    s+=",lfmDpW="+DoubleToString(c.lfm_depth_weight,4);
+    s+=",lfmDpBW="+DoubleToString(c.lfm_base_weight_after_depth,4);
 
     // Post-confirm extras (DOM / correlation)
     #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
@@ -6768,6 +8805,14 @@ namespace Config
     #ifdef CFG_HAS_CORR_REF_SYMBOL
       if(StringLen(c.corr_ref_symbol)>0) s+=",corrRef="+c.corr_ref_symbol;
     #endif
+    #ifdef CFG_HAS_CORR_AUTO_REF_FALLBACK
+      s+=",corrAuto="+BoolStr(c.corr_auto_ref_fallback);
+    #endif
+
+    // Legacy alias fields kept explicit so they are no longer ghosted.
+    s+=",corrTF="+IntegerToString((int)c.corr_ema_tf);
+    s+=",corrEF="+IntegerToString(c.corr_ema_fast);
+    s+=",corrES="+IntegerToString(c.corr_ema_slow);
 
     // ---- Structured scanners (MarketScannerHub) ----
     s+=",scTF="+IntegerToString(c.scan_tf_mask);
@@ -6849,6 +8894,19 @@ namespace Config
       s+=",scLiq1h="+BoolStr(c.scan_liq_tf_1h);
       s+=",scLiqSw="+BoolStr(c.scan_liq_emit_sweeps);
 
+      // LFM scan (quantitative liquidity flow)
+      s+=",scLFMOn="+BoolStr(c.scan_lfm_enable);
+      s+=",scLFMBk="+BoolStr(c.scan_lfm_emit_breakout_valid);
+      s+=",scLFMFk="+BoolStr(c.scan_lfm_emit_fake_breakout);
+      s+=",scLFMRv="+BoolStr(c.scan_lfm_emit_reversal);
+
+      s+=",scLFMMTF="+BoolStr(c.scan_lfm_use_mtf);
+      s+=",scLFMFX="+BoolStr(c.scan_lfm_use_fx_session_weight);
+      s+=",scLFMDp="+BoolStr(c.scan_lfm_use_depth_enhancement);
+      s+=",scLFMNB="+BoolStr(c.scan_lfm_require_new_bar);
+      s+=",scLFMFr="+BoolStr(c.scan_lfm_mtf_require_fresh_neighbors);
+      s+=",scLFMNr="+BoolStr(c.scan_lfm_mtf_no_recursive_neighbor_mtf);
+      
       // Wyckoff scan
       s+=",scWyOn="+BoolStr(c.scan_wyck_enable);
       s+=",scWyH4="+IntegerToString(c.scan_wyck_tf_h4);
@@ -6859,6 +8917,14 @@ namespace Config
       s+=",scWyLB4="+IntegerToString(c.scan_wyck_lb_h4);
       s+=",scWyLBD1="+IntegerToString(c.scan_wyck_lb_d1);
 
+      s+=",scWyWCI="+BoolStr(c.scan_wyck_emit_wci_strength);
+      s+=",scWyEVR="+BoolStr(c.scan_wyck_emit_evr_divergence);
+      s+=",scWyBuy="+DoubleToString(c.scan_wyck_wci_buy_min,2);
+      s+=",scWySel="+DoubleToString(c.scan_wyck_wci_sell_max,2);
+      s+=",scWyCmp="+DoubleToString(c.scan_wyck_composite_min_abs,3);
+      s+=",scWyEAb="+DoubleToString(c.scan_wyck_evr_absorption_max,3);
+      s+=",scWyReq="+BoolStr(c.scan_wyck_require_htf_phase_for_wci_signal);
+      
       // OBI scan
       s+=",scOBIOn="+BoolStr(c.scan_obi_enable);
       s+=",scOBID="+IntegerToString(c.scan_obi_depth_points);
@@ -6871,6 +8937,8 @@ namespace Config
       s+=",scOBIMinV="+DoubleToString(c.scan_obi_min_tot_vol,2);
       s+=",scOBIVWDist="+DoubleToString(c.scan_obi_vwap_dist_atr,3);
 
+      s+=",scOBIAROn="+BoolStr(c.scan_obi_auto_route_enable);
+      s+=",scOBIARMs="+IntegerToString(c.scan_obi_auto_route_probe_ms);
       s+=",scOBIMode="+IntegerToString(c.scan_obi_mode);
       s+=",scOBITop="+IntegerToString(c.scan_obi_top_levels);
       s+=",scOBIWOn="+BoolStr(c.scan_obi_weighted_enable);
@@ -6956,6 +9024,7 @@ namespace Config
       s+=",scOBIFXTh="+DoubleToString(c.scan_obi_fxlpi_threshold,4);
 
       s+=",scOBISigM="+IntegerToString(c.scan_obi_signal_metric_mode);
+      s+=",scOBIStM="+IntegerToString(c.scan_obi_strong_class_mode);
 
       s+=",scOBINDT="+DoubleToString(c.scan_obi_ndelta_threshold,4);
       s+=",scOBIAZT="+DoubleToString(c.scan_obi_absorption_z_threshold,4);
@@ -6980,7 +9049,8 @@ namespace Config
       s+=",scVHFin="+BoolStr(c.scan_vsa_hook_use_final_signal_hint);
       s+=",scVHMTF="+BoolStr(c.scan_vsa_hook_require_mtf_align);
       s+=",scVHBoost="+DoubleToString(c.scan_vsa_hook_boost_max,3);
-      
+      s+=",scVHBs="+IntegerToString(c.scan_vsa_hook_relvol_basis);
+
       // Footprint scan
       s+=",scFootOn="+BoolStr(c.scan_foot_enable);
       s+=",scFootATR="+BoolStr(c.scan_foot_use_atr_proxy);
@@ -7012,7 +9082,8 @@ namespace Config
       s+=",scOFOfrT="+DoubleToString(c.scan_of_ofr_buy_share_thr,3);
       s+=",scOFOfrRb="+DoubleToString(c.scan_of_ofr_rebalance_band,3);
       s+=",scOFOfrV="+DoubleToString(c.scan_of_ofr_min_total_vol,3);
-      
+
+      s+=",scOFSrcLb="+BoolStr(c.scan_of_show_proxy_labels);
       s+=",scFTickOn="+BoolStr(c.scan_foot_allow_ticks);
       s+=",scFTickMax="+IntegerToString(c.scan_foot_ticks_max_tf_sec);
       s+=",scFMinTk="+IntegerToString(c.scan_foot_min_ticks);
@@ -7057,16 +9128,20 @@ namespace Config
       s+=",scFExAH="+IntegerToString(c.scan_foot_exhaust_min_aggr_hits);
       s+=",scFExCN="+BoolStr(c.scan_foot_exhaust_require_close_near);
 
-      // Correlation scan (existing keys preserved)
+      // Correlation scan
       s+=",scCorrOn="+BoolStr(c.scan_corr_enable);
       s+=",scCorrThr="+DoubleToString(c.scan_corr_threshold,3);
       s+=",scCorrRec="+DoubleToString(c.scan_corr_recover,3);
       s+=",scCorrLen="+IntegerToString(c.scan_corr_len);
-      
+
       #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
         if(StringLen(c.scan_corr_secondary_symbol)>0) s+=",scCorrSym="+c.scan_corr_secondary_symbol;
         s+=",scCorrPx="+IntegerToString((int)c.scan_corr_price);
+
+        // Emit legacy key first, then canonical mode key.
         s+=",scCorrLog="+BoolStr(c.scan_corr_use_log_returns);
+        s+=",scCorrRm="+IntegerToString(c.scan_corr_return_mode);
+
         s+=",scCorrSm="+IntegerToString(c.scan_corr_smooth_len);
         s+=",scCorrSens="+DoubleToString(c.scan_corr_div_sensitivity,3);
         s+=",scCorrZL="+IntegerToString(c.scan_corr_z_len);
@@ -7074,6 +9149,18 @@ namespace Config
         s+=",scCorrMk="+IntegerToString(c.scan_corr_mom_k);
         s+=",scCorrMt="+DoubleToString(c.scan_corr_mom_thr,2);
         s+=",scCorrML="+BoolStr(c.scan_corr_mtf_len_enable);
+
+        s+=",scCorrLagB="+IntegerToString(c.scan_corr_lag_test_bars);
+        s+=",scCorrLL="+IntegerToString(c.scan_corr_max_leadlag);
+        s+=",scCorrLLE="+DoubleToString(c.scan_corr_leadlag_min_edge,2);
+
+        s+=",scCorrDM="+IntegerToString(c.scan_corr_div_mode);
+        s+=",scCorrDA="+DoubleToString(c.scan_corr_div_min_abs_corr,2);
+        s+=",scCorrDPO="+BoolStr(c.scan_corr_div_price_opposite_enable);
+        s+=",scCorrDZ="+DoubleToString(c.scan_corr_div_zspread_thr,2);
+
+        s+=",scCorrATR="+IntegerToString(c.scan_corr_atr_period);
+        s+=",scCorrVA="+BoolStr(c.scan_corr_vol_adjust_enable);
       #endif
 
       // News scan
@@ -7106,12 +9193,26 @@ namespace Config
       s+=",scVPCmp="+IntegerToString(c.scan_vp_composite_sessions);
       s+=",scVPVis="+IntegerToString(c.scan_vp_visible_range_sec);
 
+      // Explicit TIME/FIXED range timestamps (epoch seconds; 0 = unset)
+      s+=",scVPRF="+(string)(long)c.scan_vp_range_from_ts;
+      s+=",scVPRT="+(string)(long)c.scan_vp_range_to_ts;
+
+      // Additional profile semantics
+      s+=",scVPVAM="+IntegerToString(c.scan_vp_value_area_method);
+      s+=",scVPVWS="+IntegerToString(c.scan_vp_vwap_source_mode);
+      
       s+=",scVPBM="+IntegerToString(c.scan_vp_bin_mode);
       s+=",scVPBC="+IntegerToString(c.scan_vp_bin_count);
       s+=",scVPAlc="+IntegerToString(c.scan_vp_alloc_mode);
 
+      s+=",scVPRHM="+IntegerToString(c.scan_vp_row_height_mode);
+      s+=",scVPRHP="+IntegerToString(c.scan_vp_row_height_atr_period);
+      s+=",scVPRHA="+DoubleToString(c.scan_vp_row_height_atr_mult,3);
+      
       s+=",scVPVol="+IntegerToString(c.scan_vp_volume_mode);
       s+=",scVPDlt="+BoolStr(c.scan_vp_delta_mode);
+      s+=",scVPFTV="+BoolStr(c.scan_vp_force_tick_volume);
+      
       s+=",scVPFT="+BoolStr(c.scan_vp_use_footprint_ticks);
       s+=",scVPFBM="+IntegerToString(c.scan_vp_footprint_build_mode);
       s+=",scVPFMB="+IntegerToString(c.scan_vp_footprint_min_bars);
@@ -7122,6 +9223,18 @@ namespace Config
       s+=",scVPNF="+BoolStr(c.scan_vp_compute_nodes_full);
       s+=",scVPShp="+BoolStr(c.scan_vp_compute_shape);
 
+      s+=",scVPXOn="+BoolStr(c.scan_vpx_enable);
+      s+=",scVPXVT="+BoolStr(c.scan_vpx_emit_vwap_touch);
+      s+=",scVPXVC="+BoolStr(c.scan_vpx_emit_vwap_cross);
+      s+=",scVPXDP="+BoolStr(c.scan_vpx_emit_dev_poc_shift);
+      s+=",scVPXDR="+BoolStr(c.scan_vpx_emit_delta_poc_retest);
+      s+=",scVPXST="+BoolStr(c.scan_vpx_emit_shape_transition);
+
+      s+=",scVPXVTA="+DoubleToString(c.scan_vpx_vwap_touch_atr,3);
+      s+=",scVPXVCA="+DoubleToString(c.scan_vpx_vwap_cross_margin_atr,3);
+      s+=",scVPXDPA="+DoubleToString(c.scan_vpx_dev_poc_shift_atr,3);
+      s+=",scVPXDRA="+DoubleToString(c.scan_vpx_delta_poc_retest_atr,3);
+      
       s+=",scVPSmOn="+BoolStr(c.scan_vp_smoothing_enable);
       s+=",scVPSmS="+DoubleToString(c.scan_vp_smoothing_sigma_bins,3);
       s+=",scVPSmR="+IntegerToString(c.scan_vp_smoothing_radius);
@@ -7140,6 +9253,38 @@ namespace Config
     s+=",scLPStr="+DoubleToString(c.scan_liq_struct_break_eps_atr,3);
     s+=",scLPZv="+DoubleToString(c.scan_liq_min_zvol,3);
 
+    // LFM scanner thresholds / runtime tuning
+    s+=",scLFMSB="+DoubleToString(c.scan_lfm_score_breakout_min,2);
+    s+=",scLFMSF="+DoubleToString(c.scan_lfm_score_fake_max,2);
+    s+=",scLFMPB="+DoubleToString(c.scan_lfm_per_breakout_min,3);
+    s+=",scLFMVB="+DoubleToString(c.scan_lfm_vci_breakout_min,3);
+    s+=",scLFMAR="+DoubleToString(c.scan_lfm_ar_fake_min,3);
+
+    s+=",scLFMRA="+DoubleToString(c.scan_lfm_reversal_ar_min,3);
+    s+=",scLFMRP="+DoubleToString(c.scan_lfm_reversal_per_max,3);
+    s+=",scLFMDv="+DoubleToString(c.scan_lfm_divergence_min_abs,3);
+
+    s+=",scLFMCd="+IntegerToString(c.scan_lfm_emit_cooldown_sec);
+    s+=",scLFMHy="+DoubleToString(c.scan_lfm_hysteresis_score,2);
+
+    s+=",scLFMWH="+DoubleToString(c.scan_lfm_mtf_w_htf,3);
+    s+=",scLFMWM="+DoubleToString(c.scan_lfm_mtf_w_mtf,3);
+    s+=",scLFMWL="+DoubleToString(c.scan_lfm_mtf_w_ltf,3);
+    s+=",scLFMQOF="+DoubleToString(c.scan_lfm_obi_flow_quality_min,3);
+    s+=",scLFMQOD="+DoubleToString(c.scan_lfm_obi_depth_quality_min,3);
+    s+=",scLFMQDP="+DoubleToString(c.scan_lfm_dp_flow_quality_min,3);
+    
+    // Confluence-side LFM gate thresholds (optional)
+    s+=",cfLFMSf="+DoubleToString(c.cf_lfm_min_score_soft,2);
+    s+=",cfLFMSt="+DoubleToString(c.cf_lfm_min_score_strong,2);
+
+    s+=",cfLFMIf="+DoubleToString(c.cf_lfm_min_imb_soft,3);
+    s+=",cfLFMIt="+DoubleToString(c.cf_lfm_min_imb_strong,3);
+
+    s+=",cfLFMIc="+DoubleToString(c.cf_lfm_contra_imb_floor,3);
+    s+=",cfLFMTS="+DoubleToString(c.cf_lfm_tight_score_min,2);
+    s+=",cfLFMTI="+DoubleToString(c.cf_lfm_tight_imb_min,3);
+     
     // Liquidity Pools (Lux-style)
     #ifdef CFG_HAS_LIQPOOL_FIELDS
        s+=",liqMinTouch="+IntegerToString(c.liqPoolMinTouches);
@@ -7975,6 +10120,26 @@ namespace Config
       cfg.vsa_allow_tick_volume = true; // FX-friendly
     #endif
 
+    // Exact-spec alignment knobs (safe explicit preset values)
+    cfg.vsa_score_w_rv                  = 0.50;
+    cfg.vsa_score_w_rs                  = 0.30;
+    cfg.vsa_score_w_clv                 = 0.20;
+
+    cfg.vsa_utso_breakout_lb            = 10;
+
+    cfg.vsa_stopvol_clv_min             = -0.30;
+    cfg.vsa_buyclimax_clv_max           =  0.30;
+    cfg.vsa_sellclimax_clv_min          = -0.30;
+
+    cfg.vsa_require_confirm             = false; // keep rollout conservative
+    cfg.vsa_followthrough_confirm_enable= false;
+    cfg.vsa_confirm_volume_up_only      = true;
+    cfg.vsa_alert_ndns_require_trend    = true;
+
+    #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+      cfg.scan_vsa_hook_relvol_basis    = 2; // ADAPTIVE
+    #endif
+    
     Normalize(cfg);
 
     if(log_summary)
@@ -8013,6 +10178,26 @@ namespace Config
       cfg.vsa_absorption_zscore_enable = true;
     #endif
 
+    // Exact-spec alignment knobs (safe explicit preset values)
+    cfg.vsa_score_w_rv                  = 0.50;
+    cfg.vsa_score_w_rs                  = 0.30;
+    cfg.vsa_score_w_clv                 = 0.20;
+
+    cfg.vsa_utso_breakout_lb            = 20;
+
+    cfg.vsa_stopvol_clv_min             = -0.30;
+    cfg.vsa_buyclimax_clv_max           =  0.30;
+    cfg.vsa_sellclimax_clv_min          = -0.30;
+
+    cfg.vsa_require_confirm             = true;
+    cfg.vsa_followthrough_confirm_enable= true;
+    cfg.vsa_confirm_volume_up_only      = false;
+    cfg.vsa_alert_ndns_require_trend    = true;
+
+    #ifdef CFG_HAS_SCAN_EXTRA_SETTINGS
+      cfg.scan_vsa_hook_relvol_basis    = 2; // ADAPTIVE
+    #endif
+     
     Normalize(cfg);
 
     if(log_summary)
@@ -8067,6 +10252,9 @@ namespace Config
     bool seenVsaRsN=false, seenVsaRsW=false;
     bool seenVsaClvU=false, seenVsaClvD=false;
     bool seenVsaAbsL=false, seenVsaAbsN=false, seenVsaScT=false;
+    bool seenVsaSwRV=false, seenVsaSwRS=false, seenVsaSwCL=false;
+    bool seenVsaReqCf=false, seenVsaFtCf=false, seenVsaCfVU=false, seenVsaNDTr=false;
+    
     bool seenVsaTR=false, seenVsaEmaPair=false, seenVsaEmaF=false, seenVsaEmaS=false;
     bool seenVsaFinalNorm=false, seenVsaUTPrev=false;
 
@@ -8077,6 +10265,11 @@ namespace Config
     bool seenVsaAbsZ=false, seenVsaAbsZH=false;
     bool seenVsaERLb=false;
     bool seenVsaSVZ=false, seenVsaSVR=false, seenVsaUTZ=false, seenVsaUTR=false;
+
+    bool seenVsaUTLb=false;
+    bool seenVsaSVCL=false, seenVsaBCCL=false, seenVsaSCCL=false;
+
+    bool seenScVHBs=false; // scanner VSA-hook rel-vol basis
     
     for(int i=0;i<n;i++)
     {
@@ -8242,6 +10435,62 @@ namespace Config
       else if(k=="acFibT2") cfg.auto_fib_target_r2 = ToDouble(v);
       else if(k=="acFibT3") cfg.auto_fib_target_r3 = ToDouble(v);
 
+      // Core FVG settings (scanner-independent / canonical FVG backend)
+      #ifdef CFG_HAS_FVG_MIN_SCORE
+        else if(k=="fvgQ")      cfg.fvg_min_score = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MODE
+        else if(k=="fvgMode")   cfg.fvg_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_LOOKBACK_BARS
+        else if(k=="fvgLB")     cfg.fvg_lookback_bars = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_IMPULSE_LOOKAHEAD_BARS
+        else if(k=="fvgImp")    cfg.fvg_impulse_lookahead_bars = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MIN_GAP_ATR
+        else if(k=="fvgGapATR") cfg.fvg_min_gap_atr = ToDouble(v);
+      #endif
+
+      #ifdef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+        else if(k=="fvgZB")     cfg.fvg_zone_bounds_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_USE_BODY_ONLY
+        else if(k=="fvgBody")   cfg.fvg_use_body_only = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MIN_GAP_MODE
+        else if(k=="fvgGapM")   cfg.fvg_min_gap_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MIN_GAP_PCT
+        else if(k=="fvgGapPct") cfg.fvg_min_gap_pct = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MIN_GAP_PTS
+        else if(k=="fvgGapPts") cfg.fvg_min_gap_pts = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_FVG_DETECT_MODEL
+        else if(k=="fvgDet")    cfg.fvg_detect_model = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_INVALIDATION_MODE
+        else if(k=="fvgInv")    cfg.fvg_invalidation_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_PARTIAL_FILL_THR
+        else if(k=="fvgPart")   cfg.fvg_partial_fill_thr = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_FVG_MAX_AGE_BARS
+        else if(k=="fvgAge")    cfg.fvg_max_age_bars = ToInt(v);
+      #endif
+
+      #ifdef CFG_HAS_FVG_ATR_PERIOD
+        else if(k=="fvgAtrP")   cfg.fvg_atr_period = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+        else if(k=="fvgSessGap") cfg.fvg_ignore_session_gaps = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+        else if(k=="fvgVolLen") cfg.fvg_volume_ratio_len = ToInt(v);
+        else if(k=="fvgVolMin") cfg.fvg_volume_ratio_min = ToDouble(v);
+      #endif
+      
       // Key levels (local)
       else if(k=="acKeyTouches")  cfg.auto_keylevel_min_touches = ToInt(v);
       else if(k=="acKeyClustATR") cfg.auto_keylevel_cluster_atr = ToDouble(v);
@@ -8441,6 +10690,70 @@ namespace Config
         else if(k=="sdMinScore" || k=="sdScore") cfg.struct_zone_min_score = ToDouble(v);
       #endif
 
+      #ifdef CFG_HAS_STRUCT_PIVOT_L
+        else if(k=="structPL" || k=="stPL") cfg.struct_pivot_L = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_PIVOT_R
+        else if(k=="structPR" || k=="stPR") cfg.struct_pivot_R = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_BOS_MIN
+        else if(k=="structBosMin" || k=="stBosMin") cfg.struct_bos_min = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_TREND_MIN
+        else if(k=="structTrendMin" || k=="stTrendMin") cfg.struct_trend_min = ToDouble(v);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+        else if(k=="obMode" || k=="structOBMode") cfg.struct_ob_zone_mode = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+        else if(k=="obClMax" || k=="structOBClMax") cfg.struct_ob_cluster_max = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+        else if(k=="obMinImp" || k=="structOBMinImp") cfg.struct_ob_min_impulse = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+        else if(k=="obMinDispATR" || k=="structOBMinDispATR") cfg.struct_ob_min_disp_atr = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+        else if(k=="obExpBars" || k=="structOBExpBars") cfg.struct_ob_expire_bars = ToInt(v);
+      #endif
+
+      #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+        else if(k=="sdiAtrP"    || k=="structSDAtrP")      cfg.struct_sd_atr_period = ToInt(v);
+        else if(k=="sdiBaseMin" || k=="structSDBaseMin")   cfg.struct_sd_base_min_bars = ToInt(v);
+        else if(k=="sdiBaseMax" || k=="structSDBaseMax")   cfg.struct_sd_base_max_bars = ToInt(v);
+
+        else if(k=="sdiBaseATR" || k=="structSDBaseATR")   cfg.struct_sd_base_range_atr_max = ToDouble(v);
+        else if(k=="sdiBaseBody"|| k=="structSDBaseBody")  cfg.struct_sd_base_body_ratio_max = ToDouble(v);
+
+        else if(k=="sdiImpATR"  || k=="structSDImpATR")    cfg.struct_sd_impulse_atr_min = ToDouble(v);
+        else if(k=="sdiImpBody" || k=="structSDImpBody")   cfg.struct_sd_impulse_body_ratio_min = ToDouble(v);
+
+        else if(k=="sdiVolOn"   || k=="structSDVolOn")     cfg.struct_sd_use_volume_confirm = ToBool(v);
+        else if(k=="sdiVolLen"  || k=="structSDVolLen")    cfg.struct_sd_volume_sma_len = ToInt(v);
+        else if(k=="sdiVolK"    || k=="structSDVolK")      cfg.struct_sd_volume_ratio_k = ToDouble(v);
+
+        else if(k=="sdiReqFVG"  || k=="structSDReqFVG")    cfg.struct_sd_require_fvg = ToBool(v);
+        else if(k=="sdiMergeATR"|| k=="structSDMergeATR")  cfg.struct_sd_merge_overlap_atr = ToDouble(v);
+        else if(k=="sdiMaxZ"    || k=="structSDMaxZones")  cfg.struct_sd_max_active_zones = ToInt(v);
+        else if(k=="sdiMTFw"    || k=="structSDMTFWeight") cfg.struct_sd_enable_mtf_weight = ToBool(v);
+        else if(k=="sdiMin100"  || k=="structSDMin100")    cfg.struct_sd_min_score_100 = ToDouble(v);
+
+        else if(k=="sdiBrkBodyATR"  || k=="structSDBrkBodyATR")   cfg.struct_sd_break_body_atr_min = ToDouble(v);
+        else if(k=="sdiBrkRangeATR" || k=="structSDBrkRangeATR")  cfg.struct_sd_break_range_atr_min = ToDouble(v);
+
+        else if(k=="sdiDispMode"    || k=="structSDDispMode")     cfg.struct_sd_displacement_mode = ToInt(v);
+        else if(k=="sdiMitMode"     || k=="structSDMitMode")      cfg.struct_sd_mitigation_mode = ToInt(v);
+        else if(k=="sdiInvMode"     || k=="structSDInvMode")      cfg.struct_sd_invalidation_mode = ToInt(v);
+        else if(k=="sdiInvATR"      || k=="structSDInvATR")       cfg.struct_sd_invalidation_atr = ToDouble(v);
+
+        else if(k=="sdiSweepW"      || k=="structSDSweepW")       cfg.struct_sd_sweep_bonus_weight = ToDouble(v);
+        else if(k=="sdiMinFVG01"    || k=="structSDMinFVG01")     cfg.struct_sd_min_fvg_overlap01 = ToDouble(v);
+        else if(k=="sdiExactHTF"    || k=="structSDExactHTF")     cfg.struct_sd_require_exact_htf_alignment = ToBool(v);
+        else if(k=="sdiAutoVol"     || k=="structSDAutoVol")      cfg.struct_sd_use_autovol_tuning = ToBool(v);
+      #endif
+      
       #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
         else if(k=="mainReq"){ cfg.main_require_checklist=ToBool(v); seenMainReq=true; }
       #endif
@@ -8505,6 +10818,42 @@ namespace Config
         else if(k=="wyARw")   cfg.wyck_ar_window_bars = ToInt(v);
         else if(k=="wyVolN")  cfg.wyck_vol_len = ToInt(v);
         else if(k=="wyVolM")  cfg.wyck_vol_mult = ToDouble(v);
+
+        // WCI (Wyckoff Composite Indicator) core settings
+        else if(k=="wyWCIOn")  cfg.wyck_wci_enable = ToBool(v);
+
+        else if(k=="wyWCIAtr") cfg.wyck_wci_atr_period = ToInt(v);
+        else if(k=="wyWCIVol") cfg.wyck_wci_vol_ma_period = ToInt(v);
+        else if(k=="wyWCIRLB") cfg.wyck_wci_range_lookback = ToInt(v);
+        else if(k=="wyWCIFst") cfg.wyck_wci_trend_ema_fast = ToInt(v);
+        else if(k=="wyWCISlw") cfg.wyck_wci_trend_ema_slow = ToInt(v);
+        else if(k=="wyWCIMom") cfg.wyck_wci_momentum_lookback = ToInt(v);
+        else if(k=="wyWCINPn") cfg.wyck_wci_np_norm_lookback = ToInt(v);
+
+        else if(k=="wyWCIFXW") cfg.wyck_wci_fx_tickvol_weighting = ToBool(v);
+        else if(k=="wyWCIFXA") cfg.wyck_wci_fx_atr_sma_period = ToInt(v);
+
+        else if(k=="wyWCIRvC") cfg.wyck_wci_rv_climax = ToDouble(v);
+        else if(k=="wyWCIRvL") cfg.wyck_wci_rv_low = ToDouble(v);
+        else if(k=="wyWCIEAb") cfg.wyck_wci_evr_absorption_max = ToDouble(v);
+        else if(k=="wyWCIETr") cfg.wyck_wci_evr_trend_min = ToDouble(v);
+        else if(k=="wyWCISCp") cfg.wyck_wci_spring_cpv_min = ToDouble(v);
+        else if(k=="wyWCIUTp") cfg.wyck_wci_upthrust_cpv_max = ToDouble(v);
+        else if(k=="wyWCIMUp") cfg.wyck_wci_phase_comp_mark_up = ToDouble(v);
+        else if(k=="wyWCIMDn") cfg.wyck_wci_phase_comp_mark_dn = ToDouble(v);
+
+        else if(k=="wyWCIA1")  cfg.wyck_wci_a_np = ToDouble(v);
+        else if(k=="wyWCIA2")  cfg.wyck_wci_a_evr = ToDouble(v);
+        else if(k=="wyWCIA3")  cfg.wyck_wci_a_trend = ToDouble(v);
+        else if(k=="wyWCIA4")  cfg.wyck_wci_a_momo = ToDouble(v);
+
+        else if(k=="wyWCIAS1") cfg.wyck_wci_as_w1_prox = ToDouble(v);
+        else if(k=="wyWCIAS2") cfg.wyck_wci_as_w2_rv = ToDouble(v);
+        else if(k=="wyWCIAS3") cfg.wyck_wci_as_w3_evr = ToDouble(v);
+
+        else if(k=="wyWCIDS1") cfg.wyck_wci_ds_w1_prox = ToDouble(v);
+        else if(k=="wyWCIDS2") cfg.wyck_wci_ds_w2_rv = ToDouble(v);
+        else if(k=="wyWCIDS3") cfg.wyck_wci_ds_w3_evr = ToDouble(v);
       #endif
 
       else if(k=="xMTFZ")  cfg.extra_mtf_zones = ToBool(v);
@@ -8515,6 +10864,20 @@ namespace Config
       // Feature toggles
       else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
       else if(k=="vsaMax") cfg.vsa_penalty_max = ToDouble(v);
+
+      // UTD (Universal Trend Detector)
+      else if(k=="utd")      cfg.utd_enable = ToBool(v);
+      else if(k=="utdEff")   cfg.utd_eff_period = ToInt(v);
+      else if(k=="utdMom")   cfg.utd_mom_period = ToInt(v);
+      else if(k=="utdAS")    cfg.utd_atr_short  = ToInt(v);
+      else if(k=="utdAL")    cfg.utd_atr_long   = ToInt(v);
+      else if(k=="utdFdi")   cfg.utd_fdi_period = ToInt(v);
+      else if(k=="utdBuy")   cfg.utd_buy_th     = ToDouble(v);
+      else if(k=="utdStrong")cfg.utd_strong_th  = ToDouble(v);
+      else if(k=="utdExit")  cfg.utd_exit_th    = ToDouble(v);
+      else if(k=="utdMtf")   cfg.utd_mtf_confirm= ToBool(v);
+      else if(k=="utdMtfTf") cfg.utd_mtf_tf     = (ENUM_TIMEFRAMES)ToInt(v);
+      
       #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
         else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
       #endif
@@ -8545,6 +10908,10 @@ namespace Config
       else if(k=="vsaAbsN")   { cfg.vsa_norm_abs_high_th = ToDouble(v); seenVsaAbsN=true; }
       else if(k=="vsaScT")    { cfg.vsa_score_strong_th = ToDouble(v); seenVsaScT=true; }
 
+      else if(k=="vsaSwRV")   { cfg.vsa_score_w_rv = ToDouble(v); seenVsaSwRV=true; }
+      else if(k=="vsaSwRS")   { cfg.vsa_score_w_rs = ToDouble(v); seenVsaSwRS=true; }
+      else if(k=="vsaSwCL")   { cfg.vsa_score_w_clv = ToDouble(v); seenVsaSwCL=true; }
+      
       else if(k=="vsaTR")        { cfg.vsa_use_true_range = ToBool(v); seenVsaTR=true; }
       else if(k=="vsaEmaPair")   { cfg.vsa_trend_use_ema_pair = ToBool(v); seenVsaEmaPair=true; }
       else if(k=="vsaEmaF")      { cfg.vsa_ema_fast = ToInt(v); seenVsaEmaF=true; }
@@ -8552,6 +10919,11 @@ namespace Config
       else if(k=="vsaFinalNorm") { cfg.vsa_use_normscore_gate_on_final = ToBool(v); seenVsaFinalNorm=true; }
       else if(k=="vsaUTPrev")    { cfg.vsa_require_prev_hhll_ut_shake = ToBool(v); seenVsaUTPrev=true; }
 
+      else if(k=="vsaReqCf")  { cfg.vsa_require_confirm = ToBool(v); seenVsaReqCf=true; }
+      else if(k=="vsaFtCf")   { cfg.vsa_followthrough_confirm_enable = ToBool(v); seenVsaFtCf=true; }
+      else if(k=="vsaCfVU")   { cfg.vsa_confirm_volume_up_only = ToBool(v); seenVsaCfVU=true; }
+      else if(k=="vsaNDTr")   { cfg.vsa_alert_ndns_require_trend = ToBool(v); seenVsaNDTr=true; }
+      
       else if(k=="vsaMk")      { cfg.vsa_market_mode = ToInt(v); seenVsaMk=true; }
       else if(k=="vsaVB")      { cfg.vsa_vol_class_mode = ToInt(v); seenVsaVB=true; }
 
@@ -8570,16 +10942,44 @@ namespace Config
       else if(k=="vsaAbsZH")   { cfg.vsa_absorption_z_high_th = ToDouble(v); seenVsaAbsZH=true; }
 
       else if(k=="vsaERLb")    { cfg.vsa_er_lb = ToInt(v); seenVsaERLb=true; }
+      else if(k=="vsaUTLb")   { cfg.vsa_utso_breakout_lb = ToInt(v); seenVsaUTLb=true; }
 
       else if(k=="vsaSVZ")     { cfg.vsa_stopvol_zv_th = ToDouble(v); seenVsaSVZ=true; }
       else if(k=="vsaSVR")     { cfg.vsa_stopvol_rs_th = ToDouble(v); seenVsaSVR=true; }
       else if(k=="vsaUTZ")     { cfg.vsa_utso_zv_th = ToDouble(v); seenVsaUTZ=true; }
       else if(k=="vsaUTR")     { cfg.vsa_utso_rs_th = ToDouble(v); seenVsaUTR=true; }
+
+      else if(k=="vsaSVCL")   { cfg.vsa_stopvol_clv_min = ToDouble(v); seenVsaSVCL=true; }
+      else if(k=="vsaBCCL")   { cfg.vsa_buyclimax_clv_max = ToDouble(v); seenVsaBCCL=true; }
+      else if(k=="vsaSCCL")   { cfg.vsa_sellclimax_clv_min = ToDouble(v); seenVsaSCCL=true; }
       
       else if(k=="struct") cfg.structure_enable = ToBool(v);
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
       else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
 
+      // LFM global math / weighting params
+      else if(k=="lfmAtr")  cfg.lfm_atr_period = ToInt(v);
+      else if(k=="lfmVolE") cfg.lfm_vol_ema = ToInt(v);
+      else if(k=="lfmPerE") cfg.lfm_per_ema = ToInt(v);
+      else if(k=="lfmArE")  cfg.lfm_ar_ema = ToInt(v);
+      else if(k=="lfmSprE") cfg.lfm_spread_ema = ToInt(v);
+      else if(k=="lfmEps")  cfg.lfm_epsilon = ToDouble(v);
+
+      else if(k=="lfmWPer") cfg.lfm_w_per = ToDouble(v);
+      else if(k=="lfmWVCI") cfg.lfm_w_vci = ToDouble(v);
+      else if(k=="lfmWSPI") cfg.lfm_w_spi = ToDouble(v);
+      else if(k=="lfmWVNF") cfg.lfm_w_vnf = ToDouble(v);
+      else if(k=="lfmWAR")  cfg.lfm_w_ar = ToDouble(v);
+
+      else if(k=="lfmFXOn") cfg.lfm_fx_session_weight_on = ToBool(v);
+      else if(k=="lfmFXOv") cfg.lfm_fx_weight_overlap = ToDouble(v);
+      else if(k=="lfmFXLN") cfg.lfm_fx_weight_london_or_ny = ToDouble(v);
+      else if(k=="lfmFXAs") cfg.lfm_fx_weight_asia = ToDouble(v);
+
+      else if(k=="lfmDpOn") cfg.lfm_depth_enhance_on = ToBool(v);
+      else if(k=="lfmDpW")  cfg.lfm_depth_weight = ToDouble(v);
+      else if(k=="lfmDpBW") cfg.lfm_base_weight_after_depth = ToDouble(v);
+      
       // Post-confirm extras (DOM / correlation)
       else if(k=="xDOM")    cfg.extra_dom_imbalance = ToBool(v);
       else if(k=="wDOM")    cfg.w_dom_imbalance = ToDouble(v);
@@ -8600,6 +11000,10 @@ namespace Config
       else if(k=="corrLb")   cfg.corr_lookback = ToInt(v);
       else if(k=="corrAbs")  cfg.corr_min_abs = ToDouble(v);
       else if(k=="corrRef")  cfg.corr_ref_symbol = v;
+      else if(k=="corrAuto") cfg.corr_auto_ref_fallback = ToBool(v);
+      else if(k=="corrTF")   cfg.corr_ema_tf = (ENUM_TIMEFRAMES)ToInt(v);
+      else if(k=="corrEF")   cfg.corr_ema_fast = ToInt(v);
+      else if(k=="corrES")   cfg.corr_ema_slow = ToInt(v);
       
       else if(k=="scTF")  cfg.scan_tf_mask = ToInt(v);
       else if(k=="scInt") cfg.auto_scan_interval_sec = ToInt(v);
@@ -8678,6 +11082,18 @@ namespace Config
         else if(k=="scLiq1h") cfg.scan_liq_tf_1h = ToBool(v);
         else if(k=="scLiqSw") cfg.scan_liq_emit_sweeps = ToBool(v);
 
+        else if(k=="scLFMOn") cfg.scan_lfm_enable = ToBool(v);
+        else if(k=="scLFMBk") cfg.scan_lfm_emit_breakout_valid = ToBool(v);
+        else if(k=="scLFMFk") cfg.scan_lfm_emit_fake_breakout = ToBool(v);
+        else if(k=="scLFMRv") cfg.scan_lfm_emit_reversal = ToBool(v);
+
+        else if(k=="scLFMMTF") cfg.scan_lfm_use_mtf = ToBool(v);
+        else if(k=="scLFMFX")  cfg.scan_lfm_use_fx_session_weight = ToBool(v);
+        else if(k=="scLFMDp")  cfg.scan_lfm_use_depth_enhancement = ToBool(v);
+        else if(k=="scLFMNB")  cfg.scan_lfm_require_new_bar = ToBool(v);
+        else if(k=="scLFMFr")  cfg.scan_lfm_mtf_require_fresh_neighbors = ToBool(v);
+        else if(k=="scLFMNr")  cfg.scan_lfm_mtf_no_recursive_neighbor_mtf = ToBool(v);
+        
         else if(k=="scWyOn")    cfg.scan_wyck_enable = ToBool(v);
         else if(k=="scWyH4")    cfg.scan_wyck_tf_h4 = ToInt(v);
         else if(k=="scWyD1")    cfg.scan_wyck_tf_d1 = ToInt(v);
@@ -8687,6 +11103,14 @@ namespace Config
         else if(k=="scWyLB4")   cfg.scan_wyck_lb_h4 = ToInt(v);
         else if(k=="scWyLBD1")  cfg.scan_wyck_lb_d1 = ToInt(v);
 
+        else if(k=="scWyWCI")   cfg.scan_wyck_emit_wci_strength = ToBool(v);
+        else if(k=="scWyEVR")   cfg.scan_wyck_emit_evr_divergence = ToBool(v);
+        else if(k=="scWyBuy")   cfg.scan_wyck_wci_buy_min = ToDouble(v);
+        else if(k=="scWySel")   cfg.scan_wyck_wci_sell_max = ToDouble(v);
+        else if(k=="scWyCmp")   cfg.scan_wyck_composite_min_abs = ToDouble(v);
+        else if(k=="scWyEAb")   cfg.scan_wyck_evr_absorption_max = ToDouble(v);
+        else if(k=="scWyReq")   cfg.scan_wyck_require_htf_phase_for_wci_signal = ToBool(v);
+        
         else if(k=="scOBIOn")   cfg.scan_obi_enable = ToBool(v);
         else if(k=="scOBID")    cfg.scan_obi_depth_points = ToInt(v);
         else if(k=="scOBIThr")  cfg.scan_obi_threshold = ToDouble(v);
@@ -8697,6 +11121,9 @@ namespace Config
         else if(k=="scOBIMax")  cfg.scan_obi_max_levels = ToInt(v);
         else if(k=="scOBIMinV") cfg.scan_obi_min_tot_vol = ToDouble(v);
         else if(k=="scOBIVWDist") cfg.scan_obi_vwap_dist_atr = ToDouble(v);
+
+        else if(k=="scOBIAROn") cfg.scan_obi_auto_route_enable = ToBool(v);
+        else if(k=="scOBIARMs") cfg.scan_obi_auto_route_probe_ms = ToInt(v);
         
         else if(k=="scOBIMode") cfg.scan_obi_mode = ToInt(v);
         else if(k=="scOBITop")  cfg.scan_obi_top_levels = ToInt(v);
@@ -8783,6 +11210,7 @@ namespace Config
         else if(k=="scOBIFXTh")  cfg.scan_obi_fxlpi_threshold = ToDouble(v);
 
         else if(k=="scOBISigM")  cfg.scan_obi_signal_metric_mode = ToInt(v);
+        else if(k=="scOBIStM")  cfg.scan_obi_strong_class_mode = ToInt(v);
 
         else if(k=="scOBINDT")   cfg.scan_obi_ndelta_threshold = ToDouble(v);
         else if(k=="scOBIAZT")   cfg.scan_obi_absorption_z_threshold = ToDouble(v);
@@ -8807,7 +11235,8 @@ namespace Config
         else if(k=="scVHFin")   cfg.scan_vsa_hook_use_final_signal_hint = ToBool(v);
         else if(k=="scVHMTF")   cfg.scan_vsa_hook_require_mtf_align = ToBool(v);
         else if(k=="scVHBoost") cfg.scan_vsa_hook_boost_max = ToDouble(v);
-        
+        else if(k=="scVHBs")   { cfg.scan_vsa_hook_relvol_basis = ToInt(v); seenScVHBs=true; }
+
         else if(k=="scFootOn")  cfg.scan_foot_enable = ToBool(v);
         else if(k=="scFootATR") cfg.scan_foot_use_atr_proxy = ToBool(v);
         else if(k=="scFootZs")  cfg.scan_foot_zstrong = ToDouble(v);
@@ -8838,7 +11267,8 @@ namespace Config
         else if(k=="scOFOfrT")  cfg.scan_of_ofr_buy_share_thr = ToDouble(v);
         else if(k=="scOFOfrRb") cfg.scan_of_ofr_rebalance_band = ToDouble(v);
         else if(k=="scOFOfrV")  cfg.scan_of_ofr_min_total_vol = ToDouble(v);
-        
+
+        else if(k=="scOFSrcLb") cfg.scan_of_show_proxy_labels = ToBool(v);
         else if(k=="scFTickOn")  cfg.scan_foot_allow_ticks = ToBool(v);
         else if(k=="scFTickMax") cfg.scan_foot_ticks_max_tf_sec = ToInt(v);
         else if(k=="scFMinTk")   cfg.scan_foot_min_ticks = ToInt(v);
@@ -8883,16 +11313,28 @@ namespace Config
         else if(k=="scFExAH")   cfg.scan_foot_exhaust_min_aggr_hits = ToInt(v);
         else if(k=="scFExCN")   cfg.scan_foot_exhaust_require_close_near = ToBool(v);
 
-        // Correlation (existing)
+        // Correlation
         else if(k=="scCorrOn")  cfg.scan_corr_enable    = ToBool(v);
         else if(k=="scCorrThr") cfg.scan_corr_threshold = ToDouble(v);
         else if(k=="scCorrRec") cfg.scan_corr_recover   = ToDouble(v);
         else if(k=="scCorrLen") cfg.scan_corr_len       = ToInt(v);
-        
+
         #ifdef CFG_HAS_SCAN_CORR_DETECTOR_SETTINGS
            else if(k=="scCorrSym")  cfg.scan_corr_secondary_symbol = v;
            else if(k=="scCorrPx")   cfg.scan_corr_price            = (ENUM_APPLIED_PRICE)ToInt(v);
-           else if(k=="scCorrLog")  cfg.scan_corr_use_log_returns  = ToBool(v);
+
+           // Legacy bool-only key: map directly into the new mode when no newer key is present.
+           else if(k=="scCorrLog")
+           {
+             cfg.scan_corr_use_log_returns = ToBool(v);
+             cfg.scan_corr_return_mode = (cfg.scan_corr_use_log_returns ? 1 : 0);
+           }
+           else if(k=="scCorrRm")
+           {
+             cfg.scan_corr_return_mode = ToInt(v);
+             cfg.scan_corr_use_log_returns = (cfg.scan_corr_return_mode == 1 || cfg.scan_corr_return_mode == 3);
+           }
+
            else if(k=="scCorrSm")   cfg.scan_corr_smooth_len       = ToInt(v);
            else if(k=="scCorrSens") cfg.scan_corr_div_sensitivity  = ToDouble(v);
            else if(k=="scCorrZL")   cfg.scan_corr_z_len            = ToInt(v);
@@ -8900,6 +11342,18 @@ namespace Config
            else if(k=="scCorrMk")   cfg.scan_corr_mom_k            = ToInt(v);
            else if(k=="scCorrMt")   cfg.scan_corr_mom_thr          = ToDouble(v);
            else if(k=="scCorrML")   cfg.scan_corr_mtf_len_enable   = ToBool(v);
+
+           else if(k=="scCorrLagB") cfg.scan_corr_lag_test_bars    = ToInt(v);
+           else if(k=="scCorrLL")   cfg.scan_corr_max_leadlag      = ToInt(v);
+           else if(k=="scCorrLLE")  cfg.scan_corr_leadlag_min_edge = ToDouble(v);
+
+           else if(k=="scCorrDM")   cfg.scan_corr_div_mode                 = ToInt(v);
+           else if(k=="scCorrDA")   cfg.scan_corr_div_min_abs_corr         = ToDouble(v);
+           else if(k=="scCorrDPO")  cfg.scan_corr_div_price_opposite_enable = ToBool(v);
+           else if(k=="scCorrDZ")   cfg.scan_corr_div_zspread_thr          = ToDouble(v);
+
+           else if(k=="scCorrATR")  cfg.scan_corr_atr_period        = ToInt(v);
+           else if(k=="scCorrVA")   cfg.scan_corr_vol_adjust_enable = ToBool(v);
         #endif
 
         else if(k=="scNewsOn")   cfg.scan_news_enable = ToBool(v);
@@ -8930,12 +11384,24 @@ namespace Config
         else if(k=="scVPCmp")  cfg.scan_vp_composite_sessions = ToInt(v);
         else if(k=="scVPVis")  cfg.scan_vp_visible_range_sec = ToInt(v);
 
+        else if(k=="scVPRF")  cfg.scan_vp_range_from_ts = (datetime)ToLong(v);
+        else if(k=="scVPRT")  cfg.scan_vp_range_to_ts   = (datetime)ToLong(v);
+
+        else if(k=="scVPVAM") cfg.scan_vp_value_area_method = ToInt(v);
+        else if(k=="scVPVWS") cfg.scan_vp_vwap_source_mode  = ToInt(v);
+        
         else if(k=="scVPBM")   cfg.scan_vp_bin_mode = ToInt(v);
         else if(k=="scVPBC")   cfg.scan_vp_bin_count = ToInt(v);
         else if(k=="scVPAlc")  cfg.scan_vp_alloc_mode = ToInt(v);
 
+        else if(k=="scVPRHM") cfg.scan_vp_row_height_mode = ToInt(v);
+        else if(k=="scVPRHP") cfg.scan_vp_row_height_atr_period = ToInt(v);
+        else if(k=="scVPRHA") cfg.scan_vp_row_height_atr_mult = ToDouble(v);
+        
         else if(k=="scVPVol")  cfg.scan_vp_volume_mode = ToInt(v);
         else if(k=="scVPDlt")  cfg.scan_vp_delta_mode = ToBool(v);
+        else if(k=="scVPFTV") cfg.scan_vp_force_tick_volume = ToBool(v);
+        
         else if(k=="scVPFT")   cfg.scan_vp_use_footprint_ticks = ToBool(v);
         else if(k=="scVPFBM")  cfg.scan_vp_footprint_build_mode = ToInt(v);
         else if(k=="scVPFMB")  cfg.scan_vp_footprint_min_bars = ToInt(v);
@@ -8946,6 +11412,18 @@ namespace Config
         else if(k=="scVPNF")   cfg.scan_vp_compute_nodes_full = ToBool(v);
         else if(k=="scVPShp")  cfg.scan_vp_compute_shape = ToBool(v);
 
+        else if(k=="scVPXOn")  cfg.scan_vpx_enable = ToBool(v);
+        else if(k=="scVPXVT")  cfg.scan_vpx_emit_vwap_touch = ToBool(v);
+        else if(k=="scVPXVC")  cfg.scan_vpx_emit_vwap_cross = ToBool(v);
+        else if(k=="scVPXDP")  cfg.scan_vpx_emit_dev_poc_shift = ToBool(v);
+        else if(k=="scVPXDR")  cfg.scan_vpx_emit_delta_poc_retest = ToBool(v);
+        else if(k=="scVPXST")  cfg.scan_vpx_emit_shape_transition = ToBool(v);
+
+        else if(k=="scVPXVTA") cfg.scan_vpx_vwap_touch_atr = ToDouble(v);
+        else if(k=="scVPXVCA") cfg.scan_vpx_vwap_cross_margin_atr = ToDouble(v);
+        else if(k=="scVPXDPA") cfg.scan_vpx_dev_poc_shift_atr = ToDouble(v);
+        else if(k=="scVPXDRA") cfg.scan_vpx_delta_poc_retest_atr = ToDouble(v);
+        
         else if(k=="scVPSmOn") cfg.scan_vp_smoothing_enable = ToBool(v);
         else if(k=="scVPSmS")  cfg.scan_vp_smoothing_sigma_bins = ToDouble(v);
         else if(k=="scVPSmR")  cfg.scan_vp_smoothing_radius = ToInt(v);
@@ -8963,6 +11441,35 @@ namespace Config
       else if(k=="scLPStr")  cfg.scan_liq_struct_break_eps_atr = ToDouble(v);
       else if(k=="scLPZv")   cfg.scan_liq_min_zvol = ToDouble(v);
 
+      else if(k=="scLFMSB") cfg.scan_lfm_score_breakout_min = ToDouble(v);
+      else if(k=="scLFMSF") cfg.scan_lfm_score_fake_max = ToDouble(v);
+      else if(k=="scLFMPB") cfg.scan_lfm_per_breakout_min = ToDouble(v);
+      else if(k=="scLFMVB") cfg.scan_lfm_vci_breakout_min = ToDouble(v);
+      else if(k=="scLFMAR") cfg.scan_lfm_ar_fake_min = ToDouble(v);
+
+      else if(k=="scLFMRA") cfg.scan_lfm_reversal_ar_min = ToDouble(v);
+      else if(k=="scLFMRP") cfg.scan_lfm_reversal_per_max = ToDouble(v);
+      else if(k=="scLFMDv") cfg.scan_lfm_divergence_min_abs = ToDouble(v);
+
+      else if(k=="scLFMCd") cfg.scan_lfm_emit_cooldown_sec = ToInt(v);
+      else if(k=="scLFMHy") cfg.scan_lfm_hysteresis_score = ToDouble(v);
+
+      else if(k=="scLFMWH") cfg.scan_lfm_mtf_w_htf = ToDouble(v);
+      else if(k=="scLFMWM") cfg.scan_lfm_mtf_w_mtf = ToDouble(v);
+      else if(k=="scLFMWL") cfg.scan_lfm_mtf_w_ltf = ToDouble(v);
+      else if(k=="scLFMQOF") cfg.scan_lfm_obi_flow_quality_min = ToDouble(v);
+      else if(k=="scLFMQOD") cfg.scan_lfm_obi_depth_quality_min = ToDouble(v);
+      else if(k=="scLFMQDP") cfg.scan_lfm_dp_flow_quality_min = ToDouble(v);
+      else if(k=="cfLFMSf") cfg.cf_lfm_min_score_soft = ToDouble(v);
+      else if(k=="cfLFMSt") cfg.cf_lfm_min_score_strong = ToDouble(v);
+
+      else if(k=="cfLFMIf") cfg.cf_lfm_min_imb_soft = ToDouble(v);
+      else if(k=="cfLFMIt") cfg.cf_lfm_min_imb_strong = ToDouble(v);
+
+      else if(k=="cfLFMIc") cfg.cf_lfm_contra_imb_floor = ToDouble(v);
+      else if(k=="cfLFMTS") cfg.cf_lfm_tight_score_min = ToDouble(v);
+      else if(k=="cfLFMTI") cfg.cf_lfm_tight_imb_min = ToDouble(v);
+      
       // Liquidity Pools (Lux-style)
       else if(k=="liqMinTouch") cfg.liqPoolMinTouches = ToInt(v);
       else if(k=="liqGap")      cfg.liqPoolGapBars = ToInt(v);
@@ -9173,6 +11680,10 @@ namespace Config
     if(!seenVsaAbsN)  cfg.vsa_norm_abs_high_th = 1.5;
     if(!seenVsaScT)   cfg.vsa_score_strong_th = 5.0;
 
+    if(!seenVsaSwRV)  cfg.vsa_score_w_rv = 0.50;
+    if(!seenVsaSwRS)  cfg.vsa_score_w_rs = 0.30;
+    if(!seenVsaSwCL)  cfg.vsa_score_w_clv = 0.20;
+    
     if(!seenVsaTR)        cfg.vsa_use_true_range = false;
     if(!seenVsaEmaPair)   cfg.vsa_trend_use_ema_pair = true;
     if(!seenVsaEmaF)      cfg.vsa_ema_fast = 50;
@@ -9180,13 +11691,18 @@ namespace Config
     if(!seenVsaFinalNorm) cfg.vsa_use_normscore_gate_on_final = true;
     if(!seenVsaUTPrev)    cfg.vsa_require_prev_hhll_ut_shake = true;
 
+    if(!seenVsaReqCf) cfg.vsa_require_confirm = false;
+    if(!seenVsaFtCf)  cfg.vsa_followthrough_confirm_enable = false;
+    if(!seenVsaCfVU)  cfg.vsa_confirm_volume_up_only = true;
+    if(!seenVsaNDTr)  cfg.vsa_alert_ndns_require_trend = true;
+    
     if(!seenVsaMk)      cfg.vsa_market_mode = 0;
     if(!seenVsaVB)      cfg.vsa_vol_class_mode = 2;
 
-    if(!seenVsaSessV)   cfg.vsa_use_session_vol_norm = false;
+    if(!seenVsaSessV)   cfg.vsa_use_session_vol_norm = true;
     if(!seenVsaSessLb)  cfg.vsa_session_vol_lb = 60;
 
-    if(!seenVsaPR)      cfg.vsa_use_vol_percent_rank = false;
+    if(!seenVsaPR)      cfg.vsa_use_vol_percent_rank = true;
     if(!seenVsaPRLb)    cfg.vsa_percent_rank_lb = 30;
     if(!seenVsaPRHi)    cfg.vsa_percent_rank_high_th = 0.90;
     if(!seenVsaPRLo)    cfg.vsa_percent_rank_low_th = 0.20;
@@ -9198,11 +11714,18 @@ namespace Config
     if(!seenVsaAbsZH)   cfg.vsa_absorption_z_high_th = 2.0;
 
     if(!seenVsaERLb)    cfg.vsa_er_lb = 20;
+    if(!seenVsaUTLb)   cfg.vsa_utso_breakout_lb = 10;
 
     if(!seenVsaSVZ)     cfg.vsa_stopvol_zv_th = 1.5;
     if(!seenVsaSVR)     cfg.vsa_stopvol_rs_th = 1.2;
     if(!seenVsaUTZ)     cfg.vsa_utso_zv_th = 1.0;
     if(!seenVsaUTR)     cfg.vsa_utso_rs_th = 1.2;
+
+    if(!seenVsaSVCL)   cfg.vsa_stopvol_clv_min = -0.30;
+    if(!seenVsaBCCL)   cfg.vsa_buyclimax_clv_max = 0.30;
+    if(!seenVsaSCCL)   cfg.vsa_sellclimax_clv_min = -0.30;
+
+    if(!seenScVHBs)    cfg.scan_vsa_hook_relvol_basis = 2; // adaptive
     
     Normalize(cfg);
     _SyncRouterFallbackAlias(cfg);
@@ -9616,6 +12139,19 @@ struct Settings
    bool scan_liq_tf_1h;
    bool scan_liq_emit_sweeps;
 
+   // LFM scanner runtime controls (quantitative liquidity flow)
+   bool scan_lfm_enable;
+   bool scan_lfm_emit_breakout_valid;
+   bool scan_lfm_emit_fake_breakout;
+   bool scan_lfm_emit_reversal;
+
+   bool scan_lfm_use_mtf;
+   bool scan_lfm_use_fx_session_weight;
+   bool scan_lfm_use_depth_enhancement;
+
+   bool scan_lfm_mtf_require_fresh_neighbors; // require HTF/LTF cached LFM bars to match iTime(tf,1)
+   bool scan_lfm_mtf_no_recursive_neighbor_mtf; // use neighbor current-TF score (not neighbor lfm_score_mtf)
+   bool scan_lfm_require_new_bar;   // recommended true (classification emits on closed bar)
    bool scan_wyck_enable;
    
    // Optional TF override (0 = use defaults in Confluence: H4/D1)
@@ -9628,6 +12164,15 @@ struct Settings
    double scan_wyck_manip_zvol_min;    // min VSA zVol (or climax) to boost/confirm manipulation (spring/UTAD)
    int    scan_wyck_lb_h4;             // lookback bars for H4 phase detect (WyckoffCycle)
    int    scan_wyck_lb_d1;             // lookback bars for D1 phase detect (WyckoffCycle)
+
+   // WCI-specific Wyckoff scanner emits / thresholds (optional, backend-only)
+   bool   scan_wyck_emit_wci_strength;          // emit WCI strength threshold events (bull/bear)
+   bool   scan_wyck_emit_evr_divergence;        // emit effort-vs-result absorption/divergence events
+   double scan_wyck_wci_buy_min;                // WCI buy threshold (default 60)
+   double scan_wyck_wci_sell_max;               // WCI sell threshold (default 40)
+   double scan_wyck_composite_min_abs;          // min |composite| for WCI directional emit
+   double scan_wyck_evr_absorption_max;         // EVR threshold for absorption event (default 0.5)
+   bool   scan_wyck_require_htf_phase_for_wci_signal; // require HTF phase alignment for WCI buy/sell emits   
 
    bool scan_obi_enable;
    
@@ -9645,6 +12190,10 @@ struct Settings
    // Optional VWAP distance gating (ATR multiples; 0 disables)
    double scan_obi_vwap_dist_atr;
 
+   // OBI runtime auto-routing (MarketData capability advisory; optional)
+   bool   scan_obi_auto_route_enable;   // if true, Confluence may auto-downgrade DOM modes to proxy modes when DOM is unlikely
+   int    scan_obi_auto_route_probe_ms; // optional capability probe in ms (0 = no extra tick probe)
+   
    // OBI advanced metric mode / aggregation (Option A: explicit, clean)
    int    scan_obi_mode;                    // 0=symmetric, 1=ratio-1, 2=log-ratio, 3=proxy-footprint fallback, 4=proxy-delta fallback
    int    scan_obi_top_levels;              // 0=disabled; else true Top-N price levels per side
@@ -9694,7 +12243,7 @@ struct Settings
 
     // OBI institutional extensions (advanced / optional; additive only)
     // Weighting model extensions (beyond legacy weighted_enable + half-life)
-    int    scan_obi_weight_mode;                 // 0=legacy/none, 1=level-inverse(1/i), 2=exp-half-life, 3=exp-lambda
+    int    scan_obi_weight_mode;                 // 0=back-compat sentinel (Confluence maps with weighted_enable), 1=level-inverse(1/i), 2=exp-half-life, 3=exp-lambda
     double scan_obi_weight_lambda_per_point;     // lambda for exp-distance weighting (mode 3)
 
     // Optional MA baseline / centering telemetry (OBI core diagnostics)
@@ -9751,12 +12300,13 @@ struct Settings
     // OBI scanner institutional classification / emit controls (optional; Confluence OBIX wiring)
     double scan_obi_ndelta_threshold;            // strong-class gate for |NDelta| (spec-style default 0.5)
     double scan_obi_absorption_z_threshold;      // OBIX absorption event gate for |ZAbs| (spec-style default 2.0)
+    int    scan_obi_strong_class_mode;          // 0=legacy(score+ndelta+absorb), 1=spec(zobi+ndelta+persistence)
 
     bool   scan_obi_emit_score_events;           // emit OBIX score-z threshold events
     bool   scan_obi_emit_persist_events;         // emit OBIX persistence threshold events
     bool   scan_obi_emit_absorb_events;          // emit OBIX absorption z threshold events
     bool   scan_obi_emit_fx_events;              // emit OBIX FXLPI threshold events
-    bool   scan_obi_emit_strong_class_events;    // emit strong bullish/bearish class events (multi-condition)
+    bool   scan_obi_emit_strong_class_events;    // emit OBIX strong bull/bear events (gating depends on scan_obi_strong_class_mode)
 
    // NOTE:
    // - scan_obi_* controls DOM/resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
@@ -9773,6 +12323,7 @@ struct Settings
    double scan_vsa_hook_min_abs_relvol;         // min |RV| proxy / relVol ratio requirement
    double scan_vsa_hook_min_abs_normscore;      // min |normScore| requirement
    double scan_vsa_hook_min_spread_ratio;       // min spread ratio requirement
+   int    scan_vsa_hook_relvol_basis;          // 0=ZV, 1=RV, 2=ADAPTIVE (Confluence VSA hook basis selector)
 
    bool   scan_vsa_hook_directional_norm_gate;  // require directional norm-score gate
    bool   scan_vsa_hook_use_final_signal_hint;  // use exact final signal as directional hint
@@ -9799,7 +12350,7 @@ struct Settings
    int    scan_of_exhaust_lb;          // exhaustion lookback (spec: 5)
    int    scan_of_htf_mult;            // HTF multiplier (spec: 4)
 
-   // OFIS optional extensions (backend-only / future Confluence wiring)
+   // OFIS optional extensions (implemented backend controls + future UI/panel metadata)
    bool   scan_of_mom_enable;              // emit/cache OFM (order flow momentum) signals
    int    scan_of_mom_ema_len;             // OFM smoothing EMA length
    double scan_of_mom_thr;                 // OFM threshold (implementation-defined; keep conservative)
@@ -9810,22 +12361,38 @@ struct Settings
    double scan_of_ofr_buy_share_thr;   // buy dominance threshold in [0.50..0.99]; sell dominance uses (1-threshold)
    double scan_of_ofr_rebalance_band;  // neutral band around 0.50 before emitting rebalance
    double scan_of_ofr_min_total_vol;   // minimum aggressive-flow proxy total volume to evaluate OFR
-    
-   bool scan_corr_enable;
-   double scan_corr_threshold;   // abs(corr) threshold to classify "strong"
-   double scan_corr_recover;     // abs(corr) <= this => "weak" (hysteresis)
-   int    scan_corr_len;         // lookback bars for Pearson returns + zscore sample
+   bool   scan_of_show_proxy_labels;   // future UI/panel: show DOM vs proxy provenance labels; no backend signal impact
    
-   string            scan_corr_secondary_symbol; // optional hard override; else uses corrRef/auto basket
-   ENUM_APPLIED_PRICE scan_corr_price;           // PRICE_CLOSE / PRICE_OPEN / PRICE_MEDIAN / PRICE_TYPICAL / PRICE_WEIGHTED
-   bool              scan_corr_use_log_returns;  // default true
-   int               scan_corr_smooth_len;       // default 5 (EMA on corr stream)
-   double            scan_corr_div_sensitivity;  // default 0.30
-   int               scan_corr_z_len;            // default 200 (rolling window for corr-z)
-   int               scan_corr_mom_k;            // default 5
-   double            scan_corr_z_thr;            // default 2.0  (|z| trigger)
-   double            scan_corr_mom_thr;          // default 0.20 (|mom| trigger)
-   bool              scan_corr_mtf_len_enable;   // optional: enable multi-length check
+   bool   scan_corr_enable;
+   double scan_corr_threshold;    // abs(corr) threshold to classify "strong"
+   double scan_corr_recover;      // abs(corr) <= this => "weak" (hysteresis)
+   int    scan_corr_len;          // lookback bars for primary correlation stream
+
+   string             scan_corr_secondary_symbol;     // optional hard override; else uses corrRef / auto basket
+   ENUM_APPLIED_PRICE scan_corr_price;                // PRICE_CLOSE / PRICE_OPEN / PRICE_MEDIAN / PRICE_TYPICAL / PRICE_WEIGHTED
+
+   int    scan_corr_return_mode;                      // 0=raw price, 1=log return, 2=simple return, 3=ATR-log, 4=ATR-simple
+   bool   scan_corr_use_log_returns;                  // LEGACY alias for old scCorrLog strings; keep for backward compatibility
+
+   int    scan_corr_smooth_len;                       // default 5 (EMA on corr stream)
+   double scan_corr_div_sensitivity;                  // default 0.30 (breakdown / recovery sensitivity)
+   int    scan_corr_z_len;                            // default 200 (rolling window for corr-z)
+   int    scan_corr_mom_k;                            // default 5
+   double scan_corr_z_thr;                            // default 2.0  (|z| trigger)
+   double scan_corr_mom_thr;                          // default 0.20 (|mom| trigger)
+   bool   scan_corr_mtf_len_enable;                   // optional: enable multi-length check
+
+   int    scan_corr_lag_test_bars;                    // reserved lag probe step / test bars
+   int    scan_corr_max_leadlag;                      // max lead/lag search in bars
+   double scan_corr_leadlag_min_edge;                 // required |r_lag|-|r_now| edge to emit lag shift
+
+   int    scan_corr_div_mode;                         // 0=spread-z only, 1=blended score, 2=opposite-move strict
+   double scan_corr_div_min_abs_corr;                 // minimum historical |corr| before divergence is valid
+   bool   scan_corr_div_price_opposite_enable;        // include opposite-move confirmation in divergence logic
+   double scan_corr_div_zspread_thr;                  // z-spread threshold for divergence
+
+   int    scan_corr_atr_period;                       // ATR period for ATR-adjusted modes
+   bool   scan_corr_vol_adjust_enable;                // compatibility toggle; upgrades return_mode to ATR mode when needed
 
    bool scan_news_enable;
    int scan_news_soon_sec;
@@ -9909,18 +12476,33 @@ struct Settings
    int    scan_vp_composite_sessions;  // number of sessions/days to combine
    int    scan_vp_visible_range_sec;   // backend placeholder; 0=disabled / caller-supplied range preferred
 
+   // Explicit time/fixed range inputs (epoch seconds; 0 = unset)
+   datetime scan_vp_range_from_ts;    // used by TIME_RANGE / FIXED_RANGE when caller sets an absolute window
+   datetime scan_vp_range_to_ts;      // must be > scan_vp_range_from_ts
+   
    // Grid / Allocation
    int    scan_vp_bin_mode;            // 0=bin_points, 1=bin_count
    int    scan_vp_bin_count;           // used when bin_mode==1
    int    scan_vp_alloc_mode;          // 0=auto, 1=close, 2=typical, 3=range-proportional, 4=tick-footprint
 
+   // Additional profile semantics
+   int    scan_vp_value_area_method;  // 0=POC-outward, 1=ranked-desc
+   int    scan_vp_vwap_source_mode;   // 0=HLC3, 1=close, 2=typical
+
+   // Optional row-height model (if VolumeProfile.mqh exposes row_height_* params)
+   // 0=disabled/use existing bin_mode+bin_points/bin_count, 1=tick, 2=auto, 3=ATR
+   int    scan_vp_row_height_mode;
+   int    scan_vp_row_height_atr_period; // ATR period when row_height_mode=ATR
+   double scan_vp_row_height_atr_mult;   // ATR multiplier when row_height_mode=ATR
+   
    // Volume semantics
    int    scan_vp_volume_mode;         // 0=total, 1=buy, 2=sell, 3=delta (same semantic as "volume_type")
    bool   scan_vp_delta_mode;          // compute/store delta bins if available
    bool   scan_vp_use_footprint_ticks; // enable Method C tick/footprint path (via FootprintProxy)
    int    scan_vp_footprint_build_mode;// 0=auto, 1=ticks-only, 2=model-only
    int    scan_vp_footprint_min_bars;  // minimum bars before attempting footprint range build
-
+   bool   scan_vp_force_tick_volume;  // force tick_volume even when real_volume exists (Forex consistency option)
+   
    // Derived outputs
    bool   scan_vp_compute_vwap;        // compute profile VWAP
    bool   scan_vp_compute_dev_poc;     // compute developing POC series
@@ -9928,6 +12510,19 @@ struct Settings
    bool   scan_vp_compute_nodes_full;  // compute full HVN/LVN node lists
    bool   scan_vp_compute_shape;       // compute D/P/b/double-distribution shape classification
 
+   // Optional VP extension (VPX) emit toggles / thresholds (Confluence VPX wiring)
+   bool   scan_vpx_enable;                 // master enable for VP extension emits
+   bool   scan_vpx_emit_vwap_touch;        // emit VPX_VWAP_TOUCH
+   bool   scan_vpx_emit_vwap_cross;        // emit VPX_VWAP_CROSS_UP / DN
+   bool   scan_vpx_emit_dev_poc_shift;     // emit VPX_DEV_POC_SHIFT
+   bool   scan_vpx_emit_delta_poc_retest;  // emit VPX_DELTA_POC_RETEST
+   bool   scan_vpx_emit_shape_transition;  // emit VPX_SHAPE_TRANSITION
+
+   double scan_vpx_vwap_touch_atr;         // VWAP touch band (ATR multiple)
+   double scan_vpx_vwap_cross_margin_atr;  // VWAP cross margin (ATR multiple)
+   double scan_vpx_dev_poc_shift_atr;      // dev-POC shift threshold (ATR multiple)
+   double scan_vpx_delta_poc_retest_atr;   // delta-POC retest band (ATR multiple)
+   
    // Smoothing / node basis
    bool   scan_vp_smoothing_enable;       // gaussian smoothing on/off
    double scan_vp_smoothing_sigma_bins;   // sigma in bin units
@@ -9947,6 +12542,41 @@ struct Settings
    double scan_liq_struct_break_eps_atr;   // e.g. 0.05
    double scan_liq_min_zvol;               // e.g. 1.0 (reuse VSA zVol)
 
+   // --- LFM scanner thresholds / runtime tuning (always-present fields)
+   double scan_lfm_score_breakout_min;   // score100 threshold for valid breakout (default 65)
+   double scan_lfm_score_fake_max;       // score100 threshold for fake breakout max (default 45)
+   double scan_lfm_per_breakout_min;     // PER minimum for breakout validity (default 0.60)
+   double scan_lfm_vci_breakout_min;     // VCI_norm minimum for breakout validity (default 0.00)
+   double scan_lfm_ar_fake_min;          // AR_norm minimum for fake breakout (default 1.30)
+
+   double scan_lfm_reversal_ar_min;      // AR_norm minimum for reversal setup (default 1.30)
+   double scan_lfm_reversal_per_max;     // PER maximum for reversal setup (default 0.35)
+   double scan_lfm_divergence_min_abs;   // |liq_imbalance - oc_delta| minimum (default 0.20)
+
+   int    scan_lfm_emit_cooldown_sec;    // optional debounce between repeated emits (default 0/60)
+   double scan_lfm_hysteresis_score;     // score hysteresis in score100 units (default 2.0)
+
+   // Scanner-local MTF aggregation weights (used when scan_lfm_use_mtf=true)
+   double scan_lfm_mtf_w_htf;            // default 0.50
+   double scan_lfm_mtf_w_mtf;            // default 0.30
+   double scan_lfm_mtf_w_ltf;            // default 0.20
+
+   // LFM payload quality gates (used by Confluence LFM overrides / enhancements)
+   double scan_lfm_obi_flow_quality_min;   // min OBI flow payload quality to override liq_imbalance (default 0.20)
+   double scan_lfm_obi_depth_quality_min;  // min OBI payload quality to apply depth enhancement (default 0.20)
+   double scan_lfm_dp_flow_quality_min;    // min DeltaProxy fallback flow quality (default 0.15)
+   
+   // --- Confluence-side LFM gate thresholds (optional de-hardcode of Confluence.mqh)
+   double cf_lfm_min_score_soft;      // router liquidity gate soft score threshold (default 55)
+   double cf_lfm_min_score_strong;    // router liquidity gate strong score threshold (default 65)
+
+   double cf_lfm_min_imb_soft;        // router liquidity gate soft imbalance threshold (default +0.05)
+   double cf_lfm_min_imb_strong;      // router liquidity gate strong imbalance threshold (default -0.05)
+
+   double cf_lfm_contra_imb_floor;    // confluence row contradiction floor (default -0.25)
+   double cf_lfm_tight_score_min;     // extra/tight liquidity gate score threshold (default 60)
+   double cf_lfm_tight_imb_min;       // extra/tight liquidity gate imbalance threshold (default +0.10)
+
    // Main confluence toggles
    bool   cf_autochartist_chart;
    bool   cf_autochartist_fib;
@@ -9964,7 +12594,7 @@ struct Settings
    int    auto_chart_pivot_L;
    int    auto_chart_pivot_R;
    
-   // SD base patterns (RBR/DBD/RBD/DBR) detector tuning
+   // SD base patterns (RBR/DBD/RBD/DBR) classifier tuning — Patterns-only, not StructureSDOB detector settings
    #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
      int    sd_atr_period;           // ATR lookback for base/range sizing
      int    sd_base_min_bars;        // minimum base bars (consolidation width)
@@ -10066,7 +12696,50 @@ struct Settings
    bool   extra_enable;      // enable the extra stage
    int    extra_min_needed;  // how many extras must pass
    double extra_min_score;   // optional min extra score
-   
+
+   // ===== UMVI (Universal Market Volatility Indicator) ======================
+   bool   umvi_enable;                // master toggle (scanner computes/caches when true)
+
+   // Periods
+   int    umvi_n;                     // ATR/TR lookback (default 14)
+   int    umvi_m;                     // return stdev period (default 20)
+   int    umvi_r;                     // range expansion lookback (default 10)
+   int    umvi_s;                     // ATR smoothing for clustering (default 5)
+   int    umvi_N;                     // z-score normalization lookback (default 100)
+
+   // Weights (will be clamped + renormalized to sum=1)
+   double umvi_w_atr;                 // 0.30
+   double umvi_w_ret;                 // 0.25
+   double umvi_w_re;                  // 0.20
+   double umvi_w_va;                  // 0.15
+   double umvi_w_vm;                  // 0.10
+
+   // Thresholds / interpretation
+   double umvi_breakout_th;           // default 65  (UMVI > breakout_th)
+   double umvi_breakout_re_th;        // default 1.5 (RE > breakout_re_th)
+   double umvi_meanrev_th;            // default 35  (UMVI < meanrev_th)
+
+   // ===== UTD (Universal Trend Detector) ===================================
+   // Master toggle (scanner computes/caches when true)
+   bool   utd_enable;
+
+   // Periods
+   int    utd_eff_period;     // KAMA efficiency period (default 10)
+   int    utd_mom_period;     // ROC period (default 14)
+   int    utd_atr_short;      // ATR short (default 7)
+   int    utd_atr_long;       // ATR long  (default 50)
+   int    utd_fdi_period;     // FDI period (default 30)
+
+   // Thresholds (TS in [-1..+1], store as positive magnitudes)
+   double utd_buy_th;         // default 0.40
+   double utd_sell_th;        // default 0.40 (abs; sell uses -th)
+   double utd_strong_th;      // default 0.60
+   double utd_exit_th;        // default 0.20
+
+   // MTF confirmation
+   bool           utd_mtf_confirm;
+   ENUM_TIMEFRAMES utd_mtf_tf; // default PERIOD_H1
+      
    // ===== Extra indicator controls (volume footprint + StochRSI) ============
    // Volume footprint “extra” gate
    bool   extra_volume_footprint;   // if true, use volume footprint as extra
@@ -10077,6 +12750,11 @@ struct Settings
    int dom_zone_pad_points;
    double dom_min_abs_imb;
 
+   // UMVI “extra” gate (post-confirm extras)
+   bool   extra_umvi;                 // enable UMVI as an extra gate
+   double w_umvi;                     // weight for UMVI extra (0..1.5 clamp)
+   int    umvi_extra_mode;            // 0=off, 1=breakout, 2=meanrev, 3=high_regime, 4=low_regime
+   
    // Trendlines (Market-Structure swing trendlines) - confluence-only
    bool   extra_trendlines;
    double w_trendlines;
@@ -10166,12 +12844,18 @@ struct Settings
   #endif
   
   // Extra: Correlation gate
-  string             corr_ref_symbol;     // e.g., "DXY" / "USTEC" / "XAUUSD"
-  int                corr_lookback;       // e.g., 120..300 bars
-  double             corr_min_abs;        // e.g., 0.30..0.50 | abs(r)
-  ENUM_TIMEFRAMES    corr_ema_tf;         // e.g., PERIOD_H1
-  int                corr_ema_fast;       // e.g., 21
-  int                corr_ema_slow;       // e.g., 50
+  string             corr_ref_symbol;          // explicit reference symbol, if any
+  int                corr_lookback;            // e.g., 120..300 bars
+  double             corr_min_abs;             // e.g., 0.30..0.50 | abs(r)
+
+  bool               corr_auto_ref_fallback;   // unified policy: if true and corr_ref_symbol empty, allow auto basket for scanner + gate
+
+  // LEGACY correlation TF / EMA alias fields:
+  // keep these for backward compatibility and future peer-confirm reuse.
+  // corr_ema_tf is still consumed by current Confluence CfgCorrTF().
+  ENUM_TIMEFRAMES    corr_ema_tf;              // legacy TF override alias for correlation gate/scanner
+  int                corr_ema_fast;            // legacy reserved fast EMA tuning (future peer-confirm path)
+  int                corr_ema_slow;            // legacy reserved slow EMA tuning (future peer-confirm path)
   
   // Core confluences (used by MainTradingLogic)
   bool    cf_liquidity;       double w_liquidity;
@@ -10231,6 +12915,47 @@ struct Settings
     int    wyck_ar_window_bars;        // AR/SC window
     int    wyck_vol_len;               // volume MA length
     double wyck_vol_mult;              // volume spike multiplier (e.g. 1.5)
+
+    // WCI (Wyckoff Composite Indicator) - parallel analytical layer for WyckoffCycle.mqh
+    bool   wyck_wci_enable;
+
+    // Core windows
+    int    wyck_wci_atr_period;         // default 14
+    int    wyck_wci_vol_ma_period;      // default 20
+    int    wyck_wci_range_lookback;     // default 50
+    int    wyck_wci_trend_ema_fast;     // default 20
+    int    wyck_wci_trend_ema_slow;     // default 50
+    int    wyck_wci_momentum_lookback;  // default 10
+    int    wyck_wci_np_norm_lookback;   // default 50
+
+    // FX tick-volume adaptation
+    bool   wyck_wci_fx_tickvol_weighting;
+    int    wyck_wci_fx_atr_sma_period;  // default 50
+
+    // Thresholds
+    double wyck_wci_rv_climax;          // 1.5
+    double wyck_wci_rv_low;             // 0.7
+    double wyck_wci_evr_absorption_max; // 0.5
+    double wyck_wci_evr_trend_min;      // 1.5
+    double wyck_wci_spring_cpv_min;     // 0.6
+    double wyck_wci_upthrust_cpv_max;   // 0.4
+    double wyck_wci_phase_comp_mark_up; // +1.0
+    double wyck_wci_phase_comp_mark_dn; // -1.0
+
+    // Composite weights
+    double wyck_wci_a_np;
+    double wyck_wci_a_evr;
+    double wyck_wci_a_trend;
+    double wyck_wci_a_momo;
+
+    // Accumulation / Distribution weights
+    double wyck_wci_as_w1_prox;
+    double wyck_wci_as_w2_rv;
+    double wyck_wci_as_w3_evr;
+
+    double wyck_wci_ds_w1_prox;
+    double wyck_wci_ds_w2_rv;
+    double wyck_wci_ds_w3_evr;
   #endif
 
   // Multi-TF zones (H1/H4 zone proximity)
@@ -10256,12 +12981,14 @@ struct Settings
   int    cal_lookback_mins;
   double cal_soft_knee, cal_min_scale;
 
-  // Strategy helpers expect these explicit names (mirrors of the above)
+  // Strategy helpers expect these explicit names.
+  // Canonical source of truth: news_pre_mins / news_post_mins.
+  // Legacy news_block_pre_mins / news_block_post_mins must be synchronized in Normalize().
   #ifdef CFG_HAS_NEWS_PRE_MINS
-    int             news_pre_mins;       // alias to block_pre_m (not auto-synced)
+    int             news_pre_mins;       // canonical pre-event block minutes
   #endif
   #ifdef CFG_HAS_NEWS_POST_MINS
-    int             news_post_mins;      // alias to block_post_m (not auto-synced)
+    int             news_post_mins;      // canonical post-event block minutes
   #endif
   #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
     int             news_lookback_mins;  // preferred explicit
@@ -10283,6 +13010,93 @@ struct Settings
   #endif
   #ifdef CFG_HAS_NEWS_MIN_DECAY_MULT
     double          news_min_decay_mult;
+  #endif
+
+  #ifdef CFG_HAS_NEWS_CSV_PATH
+    string          news_csv_path;
+  #endif
+  #ifdef CFG_HAS_NEWS_CSV_RELOAD_MINS
+    int             news_csv_reload_mins;
+  #endif
+  #ifdef CFG_HAS_NEWS_CSV_HAS_HEADER
+    bool            news_csv_has_header;
+  #endif
+
+  #ifdef CFG_HAS_NEWS_FNVS_ENABLE
+    bool            news_fnvs_enable;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SURPRISE_MODE
+    int             news_fnvs_surprise_mode;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_USE_PREV_NORM
+    bool            news_fnvs_use_prev_norm;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_USE_CCY_SENS
+    bool            news_fnvs_use_ccy_sens;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY
+    bool            news_fnvs_use_event_polarity;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_USE_SENTIMENT
+    bool            news_fnvs_use_sentiment;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+    double          news_fnvs_sentiment_weight;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_POLARITY_MODE
+    int             news_fnvs_polarity_mode;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_HV_MODE
+    int             news_fnvs_hv_mode;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_HV_TF
+    int             news_fnvs_hv_tf;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_HV_PERIOD
+    int             news_fnvs_hv_period;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_ADR_DAYS
+    int             news_fnvs_adr_days;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+    double          news_fnvs_signal_buy_th;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+    double          news_fnvs_signal_sell_th;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+    double          news_fnvs_signal_strong_buy_th;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+    double          news_fnvs_signal_strong_sell_th;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+    double          news_fnvs_ev_min_atr_frac;
+  #endif
+
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_USD
+    double          news_fnvs_sens_usd;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_EUR
+    double          news_fnvs_sens_eur;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_GBP
+    double          news_fnvs_sens_gbp;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_JPY
+    double          news_fnvs_sens_jpy;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_AUD
+    double          news_fnvs_sens_aud;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_NZD
+    double          news_fnvs_sens_nzd;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_CAD
+    double          news_fnvs_sens_cad;
+  #endif
+  #ifdef CFG_HAS_NEWS_FNVS_SENS_CHF
+    double          news_fnvs_sens_chf;
   #endif
   
   // --- Position management (PM) ---------------------------------------------
@@ -10419,6 +13233,55 @@ struct Settings
      double fvg_min_gap_atr;             // minimum gap size in ATR multiples (filter)
   #endif
 
+  #ifdef CFG_HAS_FVG_ZONE_BOUNDS_MODE
+     int fvg_zone_bounds_mode;          // FVG zone bounds mode (e.g., strict C1<->C3 vs alternatives)
+  #endif
+
+  #ifdef CFG_HAS_FVG_USE_BODY_ONLY
+     bool fvg_use_body_only;            // use body extremes instead of wick extremes for gap detection
+  #endif
+
+  #ifdef CFG_HAS_FVG_MIN_GAP_MODE
+     int fvg_min_gap_mode;              // 0=ATR, 1=% of price, 2=points (matches FVG.mqh helpers)
+  #endif
+
+  #ifdef CFG_HAS_FVG_MIN_GAP_PCT
+     double fvg_min_gap_pct;            // percent-of-price threshold when min_gap_mode = %
+  #endif
+
+  #ifdef CFG_HAS_FVG_MIN_GAP_PTS
+     double fvg_min_gap_pts;            // fixed points threshold when min_gap_mode = points
+  #endif
+
+  #ifdef CFG_HAS_FVG_DETECT_MODEL
+     int fvg_detect_model;              // 0=classic 3-candle, 1=ICT strict triad
+  #endif
+
+  #ifdef CFG_HAS_FVG_INVALIDATION_MODE
+     int fvg_invalidation_mode;         // 0=wick breach, 1=close-based
+  #endif
+
+  #ifdef CFG_HAS_FVG_PARTIAL_FILL_THR
+     double fvg_partial_fill_thr;       // 0.0 legacy(any fill), 0.5 spec partial threshold
+  #endif
+
+  #ifdef CFG_HAS_FVG_MAX_AGE_BARS
+     int fvg_max_age_bars;              // 0 = disabled
+  #endif
+
+  #ifdef CFG_HAS_FVG_ATR_PERIOD
+     int fvg_atr_period;                // optional FVG-specific ATR period override (else use global atr_period)
+  #endif
+
+  #ifdef CFG_HAS_FVG_IGNORE_SESSION_GAPS
+     bool fvg_ignore_session_gaps;      // optional session-gap filter policy (future use)
+  #endif
+
+  #ifdef CFG_HAS_FVG_VOLUME_RATIO_SETTINGS
+     int    fvg_volume_ratio_len;       // optional volume confirmation lookback
+     double fvg_volume_ratio_min;       // optional min volume ratio
+  #endif
+  
   // Confluence blending weights (0..0.50 typical)
   double            confl_blend_trend;
   double            confl_blend_mr;
@@ -10506,6 +13369,9 @@ struct Settings
   double            vsa_norm_abs_high_th;  // normalized absorption high threshold (1.5)
 
   double            vsa_score_strong_th;   // exact composite score strong threshold (5.0)
+  double            vsa_score_w_rv;       // exact-spec score weight for RV (default 0.5)
+  double            vsa_score_w_rs;       // exact-spec score weight for RS (default 0.3)
+  double            vsa_score_w_clv;      // exact-spec score weight for CLV (default 0.2)
 
   bool              vsa_use_true_range;                 // use TR instead of spread for RS baseline
   bool              vsa_trend_use_ema_pair;             // EMA fast/slow trend filter (default true)
@@ -10513,6 +13379,10 @@ struct Settings
   int               vsa_ema_slow;                       // 200
   bool              vsa_use_normscore_gate_on_final;    // retain BC-style norm gate in final signal
   bool              vsa_require_prev_hhll_ut_shake;     // HH/LL vs previous bar for UT/Shakeout
+  bool              vsa_require_confirm;              // require confirmation policy (scanner/event layer)
+  bool              vsa_followthrough_confirm_enable; // delayed next-bar follow-through confirm
+  bool              vsa_confirm_volume_up_only;       // immediate confirm = V[i] > V[i-1]
+  bool              vsa_alert_ndns_require_trend;     // ND/NS alerts require trend context
 
   // Universal VSA (multi-market adaptive) controls
   int               vsa_market_mode;              // 0=auto, 1=forex, 2=exchange-volume
@@ -10533,12 +13403,16 @@ struct Settings
   double            vsa_absorption_z_high_th;     // z-score threshold (default 2.0)
 
   int               vsa_er_lb;                    // effort/result ER/NER lookback
+  int               vsa_utso_breakout_lb;       // UT/Shakeout breakout lookback (previous N bars)
 
   // Optional exact rule threshold overrides (literal-spec tuning)
   double            vsa_stopvol_zv_th;            // stopping volume ZV threshold (default 1.5)
   double            vsa_stopvol_rs_th;            // stopping volume RS threshold (default 1.2)
   double            vsa_utso_zv_th;               // upthrust/shakeout ZV threshold (default 1.0)
   double            vsa_utso_rs_th;               // upthrust/shakeout RS threshold (default 1.2)
+  double            vsa_stopvol_clv_min;        // stopping volume CLV lower bound (default -0.3)
+  double            vsa_buyclimax_clv_max;      // buying climax CLV upper bound (default +0.3)
+  double            vsa_sellclimax_clv_min;     // selling climax CLV lower bound (default -0.3)
   
   #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
     bool              vsa_allow_tick_volume; // allow tick volume in VSA when real volume unavailable
@@ -10556,6 +13430,32 @@ struct Settings
   double            regime_tq_min;       // 0..1
   double            regime_sg_min;       // 0..1
 
+  // --- Liquidity Flow Matrix (LFM) global math / weighting settings ---
+  int               lfm_atr_period;       // default 14
+  int               lfm_vol_ema;          // default 20
+  int               lfm_per_ema;          // default 10
+  int               lfm_ar_ema;           // default 20
+  int               lfm_spread_ema;       // default 20
+  double            lfm_epsilon;          // default 1e-5
+
+  // Component weights (baseline composite)
+  double            lfm_w_per;            // default 0.25
+  double            lfm_w_vci;            // default 0.20
+  double            lfm_w_spi;            // default 0.15
+  double            lfm_w_vnf;            // default 0.20
+  double            lfm_w_ar;             // default 0.20
+
+  // FX session weighting (Forex/CFD adaptation)
+  bool              lfm_fx_session_weight_on;     // default true
+  double            lfm_fx_weight_overlap;        // London/NY overlap default 1.20
+  double            lfm_fx_weight_london_or_ny;   // London or NY default 1.00
+  double            lfm_fx_weight_asia;           // Asia default 0.70
+
+  // Depth enhancement (DOM/proxy blend)
+  bool              lfm_depth_enhance_on;         // default true
+  double            lfm_depth_weight;             // default 0.15
+  double            lfm_base_weight_after_depth;  // default 0.85
+   
   // --- Archetype enables -----------------------------------------------------
   bool              enable_main;        // "main_trading_logic"
   bool              enable_trend_pullback;
@@ -10681,9 +13581,73 @@ struct Settings
     int        struct_min_touch_count;
   #endif
   #ifdef CFG_HAS_STRUCT_ZONE_MIN_SCORE
-    double     struct_zone_min_score;
+    double     struct_zone_min_score;   // legacy normalized compat filter [0..1]; prefer struct_sd_min_score_100 as canonical detector threshold
   #endif
 
+  #ifdef CFG_HAS_STRUCT_PIVOT_L
+    int        struct_pivot_L;
+  #endif
+  #ifdef CFG_HAS_STRUCT_PIVOT_R
+    int        struct_pivot_R;
+  #endif
+  #ifdef CFG_HAS_STRUCT_BOS_MIN
+    double     struct_bos_min;
+  #endif
+  #ifdef CFG_HAS_STRUCT_TREND_MIN
+    double     struct_trend_min;
+  #endif
+
+  #ifdef CFG_HAS_STRUCT_OB_ZONE_MODE
+    int        struct_ob_zone_mode;
+  #endif
+  #ifdef CFG_HAS_STRUCT_OB_CLUSTER_MAX
+    int        struct_ob_cluster_max;
+  #endif
+  #ifdef CFG_HAS_STRUCT_OB_MIN_IMPULSE
+    double     struct_ob_min_impulse;
+  #endif
+  #ifdef CFG_HAS_STRUCT_OB_MIN_DISP_ATR
+    double     struct_ob_min_disp_atr;
+  #endif
+  #ifdef CFG_HAS_STRUCT_OB_EXPIRE_BARS
+    int        struct_ob_expire_bars;
+  #endif
+  #ifdef CFG_HAS_STRUCT_SD_SETTINGS
+    // Institutional SD (base-cluster/spec) tuning — separate from Patterns sd_*
+    int        struct_sd_atr_period;
+    int        struct_sd_base_min_bars;
+    int        struct_sd_base_max_bars;
+
+    double     struct_sd_base_range_atr_max;
+    double     struct_sd_base_body_ratio_max;
+
+    double     struct_sd_impulse_atr_min;
+    double     struct_sd_impulse_body_ratio_min;
+
+    bool       struct_sd_use_volume_confirm;
+    int        struct_sd_volume_sma_len;
+    double     struct_sd_volume_ratio_k;
+
+    bool       struct_sd_require_fvg;
+    double     struct_sd_merge_overlap_atr;
+    int        struct_sd_max_active_zones;
+    bool       struct_sd_enable_mtf_weight;
+    double     struct_sd_min_score_100;
+
+    double     struct_sd_break_body_atr_min;
+    double     struct_sd_break_range_atr_min;
+
+    int        struct_sd_displacement_mode;
+    int        struct_sd_mitigation_mode;
+    int        struct_sd_invalidation_mode;
+    double     struct_sd_invalidation_atr;
+
+    double     struct_sd_sweep_bonus_weight;
+    double     struct_sd_min_fvg_overlap01;
+    bool       struct_sd_require_exact_htf_alignment;
+    bool       struct_sd_use_autovol_tuning;
+  #endif
+  
   // -------------------------------------------------
    // 2. BIAS / DIRECTION CONTROL
    // -------------------------------------------------
