@@ -1498,6 +1498,41 @@ namespace Config
          bool   news_csv_has_header;
      #endif
 
+     #ifdef CFG_HAS_NEWS_PRE_MINS
+         int    news_pre_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_POST_MINS
+         int    news_post_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
+         int    news_lookback_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_SOFT_KNEE
+         double news_soft_knee;
+     #endif
+     #ifdef CFG_HAS_NEWS_HARD_SKIP
+         double news_hard_skip;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_SCALE
+         double news_min_scale;
+     #endif
+     #ifdef CFG_HAS_NEWS_HALFLIFE
+         int    news_half_life_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_MAX_BLOCK
+         double news_max_block;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_DECAY_MULT
+         double news_min_decay_mult;
+     #endif
+
+     // Legacy/sync aliases used by defaults + Normalize()
+     int    news_block_pre_mins;
+     int    news_block_post_mins;
+     int    cal_lookback_mins;
+     double cal_soft_knee;
+     double cal_min_scale;
+     
      #ifdef CFG_HAS_NEWS_FNVS_ENABLE
          bool   news_fnvs_enable;
      #endif
@@ -2799,6 +2834,126 @@ namespace Config
          cfg.news_neutral_on_no_data = x.news_neutral_on_no_data;
          cfg.news_allow_cached       = x.news_allow_cached;
      #endif
+
+     #ifdef CFG_HAS_NEWS_CSV_PATH
+         cfg.news_csv_path = x.news_csv_path;
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_RELOAD_MINS
+         cfg.news_csv_reload_mins = x.news_csv_reload_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_CSV_HAS_HEADER
+         cfg.news_csv_has_header = x.news_csv_has_header;
+     #endif
+
+     #ifdef CFG_HAS_NEWS_PRE_MINS
+         cfg.news_pre_mins = x.news_pre_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_POST_MINS
+         cfg.news_post_mins = x.news_post_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
+         cfg.news_lookback_mins = x.news_lookback_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_SOFT_KNEE
+         cfg.news_soft_knee = x.news_soft_knee;
+     #endif
+     #ifdef CFG_HAS_NEWS_HARD_SKIP
+         cfg.news_hard_skip = x.news_hard_skip;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_SCALE
+         cfg.news_min_scale = x.news_min_scale;
+     #endif
+     #ifdef CFG_HAS_NEWS_HALFLIFE
+         cfg.news_half_life_mins = x.news_half_life_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_MAX_BLOCK
+         cfg.news_max_block = x.news_max_block;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_DECAY_MULT
+         cfg.news_min_decay_mult = x.news_min_decay_mult;
+     #endif
+
+     cfg.news_block_pre_mins  = x.news_block_pre_mins;
+     cfg.news_block_post_mins = x.news_block_post_mins;
+     cfg.cal_lookback_mins    = x.cal_lookback_mins;
+     cfg.cal_soft_knee        = x.cal_soft_knee;
+     cfg.cal_min_scale        = x.cal_min_scale;
+
+     #ifdef CFG_HAS_NEWS_FNVS_ENABLE
+         cfg.news_fnvs_enable = x.news_fnvs_enable;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SURPRISE_MODE
+         cfg.news_fnvs_surprise_mode = x.news_fnvs_surprise_mode;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_PREV_NORM
+         cfg.news_fnvs_use_prev_norm = x.news_fnvs_use_prev_norm;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_CCY_SENS
+         cfg.news_fnvs_use_ccy_sens = x.news_fnvs_use_ccy_sens;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_EVENT_POLARITY
+         cfg.news_fnvs_use_event_polarity = x.news_fnvs_use_event_polarity;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_USE_SENTIMENT
+         cfg.news_fnvs_use_sentiment = x.news_fnvs_use_sentiment;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENTIMENT_WEIGHT
+         cfg.news_fnvs_sentiment_weight = x.news_fnvs_sentiment_weight;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_POLARITY_MODE
+         cfg.news_fnvs_polarity_mode = x.news_fnvs_polarity_mode;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_MODE
+         cfg.news_fnvs_hv_mode = x.news_fnvs_hv_mode;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_TF
+         cfg.news_fnvs_hv_tf = x.news_fnvs_hv_tf;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_HV_PERIOD
+         cfg.news_fnvs_hv_period = x.news_fnvs_hv_period;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_ADR_DAYS
+         cfg.news_fnvs_adr_days = x.news_fnvs_adr_days;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_BUY_TH
+         cfg.news_fnvs_signal_buy_th = x.news_fnvs_signal_buy_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_SELL_TH
+         cfg.news_fnvs_signal_sell_th = x.news_fnvs_signal_sell_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_BUY_TH
+         cfg.news_fnvs_signal_strong_buy_th = x.news_fnvs_signal_strong_buy_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SIGNAL_STRONG_SELL_TH
+         cfg.news_fnvs_signal_strong_sell_th = x.news_fnvs_signal_strong_sell_th;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_EV_MIN_ATR_FRAC
+         cfg.news_fnvs_ev_min_atr_frac = x.news_fnvs_ev_min_atr_frac;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_USD
+         cfg.news_fnvs_sens_usd = x.news_fnvs_sens_usd;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_EUR
+         cfg.news_fnvs_sens_eur = x.news_fnvs_sens_eur;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_GBP
+         cfg.news_fnvs_sens_gbp = x.news_fnvs_sens_gbp;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_JPY
+         cfg.news_fnvs_sens_jpy = x.news_fnvs_sens_jpy;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_AUD
+         cfg.news_fnvs_sens_aud = x.news_fnvs_sens_aud;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_NZD
+         cfg.news_fnvs_sens_nzd = x.news_fnvs_sens_nzd;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CAD
+         cfg.news_fnvs_sens_cad = x.news_fnvs_sens_cad;
+     #endif
+     #ifdef CFG_HAS_NEWS_FNVS_SENS_CHF
+         cfg.news_fnvs_sens_chf = x.news_fnvs_sens_chf;
+     #endif
      
      // Silver Bullet TZ
      #ifdef CFG_HAS_EXTRA_SILVERBULLET_TZ
@@ -3340,11 +3495,21 @@ namespace Config
          x.news_fnvs_sens_chf = 0.65;
      #endif
 
-     x.news_block_pre_mins  = x.news_pre_mins;
-     x.news_block_post_mins = x.news_post_mins;
-     x.cal_lookback_mins    = x.news_lookback_mins;
-     x.cal_soft_knee        = x.news_soft_knee;
-     x.cal_min_scale        = x.news_min_scale;
+     #ifdef CFG_HAS_NEWS_PRE_MINS
+         x.news_block_pre_mins = x.news_pre_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_POST_MINS
+         x.news_block_post_mins = x.news_post_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_LOOKBACK_MINS
+         x.cal_lookback_mins = x.news_lookback_mins;
+     #endif
+     #ifdef CFG_HAS_NEWS_SOFT_KNEE
+         x.cal_soft_knee = x.news_soft_knee;
+     #endif
+     #ifdef CFG_HAS_NEWS_MIN_SCALE
+         x.cal_min_scale = x.news_min_scale;
+     #endif
      
      x.extra_news = true;
      x.w_news     = 0.50;
@@ -3463,7 +3628,7 @@ namespace Config
 
         x.struct_sd_displacement_mode           = 0;     // 0 = off / legacy-compatible
         x.struct_sd_mitigation_mode             = 0;     // 0 = touch / proximal
-        x.struct_sd_invalidation_mode           = 3;     // 3 = strongest practical default (any hard invalidation)
+        x.struct_sd_invalidation_mode           = 4;     // 4 = any hard invalidation
         x.struct_sd_invalidation_atr            = 1.0;   // spec-friendly distal margin
 
         x.struct_sd_sweep_bonus_weight          = 0.0;   // off until downstream consumers are fully wired
@@ -6427,13 +6592,13 @@ namespace Config
         cfg.struct_sd_break_range_atr_min = MathMin(MathMax(cfg.struct_sd_break_range_atr_min, 0.0), 10.0);
 
         if(cfg.struct_sd_displacement_mode < 0) cfg.struct_sd_displacement_mode = 0;
-        cfg.struct_sd_displacement_mode = MathMin(MathMax(cfg.struct_sd_displacement_mode, 0), 3);
+        cfg.struct_sd_displacement_mode = MathMin(MathMax(cfg.struct_sd_displacement_mode, 0), 2);
 
         if(cfg.struct_sd_mitigation_mode < 0) cfg.struct_sd_mitigation_mode = 0;
         cfg.struct_sd_mitigation_mode = MathMin(MathMax(cfg.struct_sd_mitigation_mode, 0), 2);
 
-        if(cfg.struct_sd_invalidation_mode < 0) cfg.struct_sd_invalidation_mode = 3;
-        cfg.struct_sd_invalidation_mode = MathMin(MathMax(cfg.struct_sd_invalidation_mode, 0), 3);
+        if(cfg.struct_sd_invalidation_mode < 0) cfg.struct_sd_invalidation_mode = 4;
+        cfg.struct_sd_invalidation_mode = MathMin(MathMax(cfg.struct_sd_invalidation_mode, 0), 4);
 
         if(cfg.struct_sd_invalidation_atr < 0.0) cfg.struct_sd_invalidation_atr = 1.0;
         cfg.struct_sd_invalidation_atr = MathMin(MathMax(cfg.struct_sd_invalidation_atr, 0.0), 10.0);
@@ -7959,7 +8124,7 @@ namespace Config
 
      ex.struct_sd_displacement_mode           = 0;
      ex.struct_sd_mitigation_mode             = 0;
-     ex.struct_sd_invalidation_mode           = 3;
+     ex.struct_sd_invalidation_mode           = 4;
      ex.struct_sd_invalidation_atr            = 1.0;
 
      ex.struct_sd_sweep_bonus_weight          = 0.0;
