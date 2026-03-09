@@ -272,6 +272,13 @@ struct Settings;
 #ifndef CFG_HAS_SCAN_EXTRA_SETTINGS
   #define CFG_HAS_SCAN_EXTRA_SETTINGS 1
 #endif
+#ifndef CFG_HAS_ORDERFLOW_FAMILY_HELPERS
+  #define CFG_HAS_ORDERFLOW_FAMILY_HELPERS 1
+#endif
+
+#ifndef CFG_HAS_ORDERFLOW_EFFECTIVE_MODE
+  #define CFG_HAS_ORDERFLOW_EFFECTIVE_MODE 1
+#endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -735,7 +742,8 @@ struct Settings;
   #define CFG_HAS_W_OBI 1
 #endif
 
-// Field-name aliases so downstream code can use cfg.<alias> without duplicating storage
+// Field-name aliases keep legacy storage/backward compatibility intact.
+// Internal Normalize()/Validate() should still prefer canonical helper accessors where provided.
 #ifndef CFG_FIELD_EXTRA_OBI
   #define CFG_FIELD_EXTRA_OBI extra_dom_imbalance
 #endif
@@ -3961,10 +3969,14 @@ namespace Config
       // 0 means: Confluence will keep defaults (H4/D1)
       cfg.scan_wyck_tf_h4 = 0;
       cfg.scan_wyck_tf_d1 = 0;
-      
-      cfg.scan_obi_enable  = false;
-      cfg.scan_foot_enable = false;
-      cfg.scan_of_enable   = false;
+
+      // --- Canonical order-flow family defaults: backend-first scanner stack ---
+      // DOM / resting-liquidity intent remains with OBI.
+      // Footprint is the canonical aggressive-flow lane.
+      // OFIS / OFR reuse that same aggressive-flow lane for backend signals.
+      cfg.scan_obi_enable  = true;
+      cfg.scan_foot_enable = true;
+      cfg.scan_of_enable   = true;
       cfg.scan_corr_enable = false;
       cfg.scan_news_enable = false;
 
@@ -4046,9 +4058,11 @@ namespace Config
       cfg.scan_obi_min_tot_vol   = 0.0;
       cfg.scan_obi_vwap_dist_atr = 0.0; // disabled by default
 
-      // OBI runtime auto-routing (optional; OFF preserves current behavior)
-      cfg.scan_obi_auto_route_enable   = false;
-      cfg.scan_obi_auto_route_probe_ms = 0;    // 0 = no extra capability probe
+      // OBI runtime auto-routing (recommended ON for backend scanner use)
+      // Keep DOM-first intent, but allow runtime downgrade to proxy-footprint / proxy-delta
+      // on FX / quote-only / no-DOM symbols.
+      cfg.scan_obi_auto_route_enable   = true;
+      cfg.scan_obi_auto_route_probe_ms = 0;    // 0 = no extra capability probe; keep light unless diagnostics require more
       
       // --- OBI advanced defaults (back-compat: keep OFF / symmetric)
       cfg.scan_obi_mode                    = 0;     // symmetric (mode 3 proxy-footprint exists but remains opt-in)
@@ -4058,13 +4072,13 @@ namespace Config
       cfg.scan_obi_ema_len                 = 0;     // disabled
       cfg.scan_obi_weight_ref              = 0;     // MID
 
-      // --- OBI pipeline extensions (back-compat defaults: disabled / conservative)
+      // --- OBI pipeline extensions (backend-first defaults: z-normalized semantics)
       cfg.scan_obi_basis_mode         = 0;    // volume
-      cfg.scan_obi_norm_mode          = 0;    // none
-      cfg.scan_obi_z_window           = 0;    // disabled
+      cfg.scan_obi_norm_mode          = 1;    // z-score
+      cfg.scan_obi_z_window           = 50;   // active z-window for canonical scanner semantics
       cfg.scan_obi_z_min_samples      = 20;
-      cfg.scan_obi_z_clamp_abs        = 0.0;  // disabled
-      cfg.scan_obi_z_threshold        = 2.0;  // only used when z-score mode active
+      cfg.scan_obi_z_clamp_abs        = 0.0;  // disabled unless caller explicitly wants hard clipping
+      cfg.scan_obi_z_threshold        = 2.0;  // canonical strong z threshold
 
       cfg.scan_obi_transform_mode     = 0;    // none
       cfg.scan_obi_logistic_k         = 4.0;
@@ -4090,6 +4104,10 @@ namespace Config
       cfg.scan_obi_eps_vol                 = 1e-9;
       cfg.scan_obi_max_ratio_m1            = 10.0;
 
+      // --- OBI proxy-footprint tuning (de-hardcoded; preserve current behavior)
+      cfg.scan_obi_proxy_fp_build_mode  = 0;   // auto
+      cfg.scan_obi_proxy_fp_z_lookback  = 60;
+      cfg.scan_obi_proxy_fp_z_scale     = 2.0;
       cfg.scan_obi_flip_hysteresis_abs     = 0.0;
 
       // --- OBI institutional extensions (defaults OFF / neutral to preserve behavior)
@@ -4100,55 +4118,58 @@ namespace Config
       cfg.scan_obi_ma_min_samples              = 20;
       cfg.scan_obi_ma_centering_enable         = false; // preserve raw OBI semantics
 
-      cfg.scan_obi_of_delta_source_mode        = 0;     // disabled/none (OBI core can still use OFI if explicitly selected later)
-      cfg.scan_obi_of_delta_lookback           = 60;
+      // Order-flow confirmation source for NDelta / persistence / absorption / score paths:
+      // 1 = FootprintProxy preferred; runtime route advisory may still align this to DeltaProxy / OFI when needed.
+      cfg.scan_obi_of_delta_source_mode            = 1;
+      cfg.scan_obi_of_delta_lookback               = 60;
       cfg.scan_obi_of_delta_use_fp_ticks_preferred = true;
-      cfg.scan_obi_of_delta_min_total          = 1.0;
+      cfg.scan_obi_of_delta_min_total              = 1.0;
 
       cfg.scan_obi_lpi_enable                  = false;
       cfg.scan_obi_lpi_alpha                   = 0.60;
       cfg.scan_obi_lpi_beta                    = 0.40;
       cfg.scan_obi_lpi_threshold               = 0.50;  // direct-domain threshold (used only if signal metric mode=LPI)
 
-      cfg.scan_obi_persistence_mode            = 0;     // off
+      cfg.scan_obi_persistence_mode            = 2;     // EMA persistence ON for backend scanner use
       cfg.scan_obi_persistence_len             = 20;
       cfg.scan_obi_persistence_gamma           = 0.20;
-      cfg.scan_obi_persistence_threshold       = 0.0;   // disabled unless >0
+      cfg.scan_obi_persistence_threshold       = 0.50;
 
-      cfg.scan_obi_absorption_enable           = false;
+      cfg.scan_obi_absorption_enable           = true;
       cfg.scan_obi_absorption_lookback         = 30;
       cfg.scan_obi_absorption_price_eps_points = 0.25;
-      cfg.scan_obi_absorption_z_clamp_abs      = 0.0;   // disabled
+      cfg.scan_obi_absorption_z_clamp_abs      = 0.0;   // disabled unless caller wants hard clipping
 
-      cfg.scan_obi_score_enable                = false;
+      cfg.scan_obi_score_enable                = true;
       cfg.scan_obi_score_w1_zobi               = 1.0;
       cfg.scan_obi_score_w2_ndelta             = 1.0;
       cfg.scan_obi_score_w3_zabs               = 1.0;
       cfg.scan_obi_score_w4_persistence        = 1.0;
       cfg.scan_obi_score_z_window              = 50;
       cfg.scan_obi_score_z_min_samples         = 20;
-      cfg.scan_obi_score_z_clamp_abs           = 0.0;   // disabled
-      cfg.scan_obi_score_z_threshold           = 2.0;   // direct-domain threshold (used only if signal metric mode=SCORE_Z)
+      cfg.scan_obi_score_z_clamp_abs           = 0.0;   // disabled unless caller wants hard clipping
+      cfg.scan_obi_score_z_threshold           = 2.0;
 
-      cfg.scan_obi_fx_fxlpi_enable             = false;
+      cfg.scan_obi_fx_fxlpi_enable             = true;
       cfg.scan_obi_fx_spread_z_window          = 50;
       cfg.scan_obi_fx_spread_z_min_samples     = 20;
       cfg.scan_obi_fx_obi_weight               = 0.70;
       cfg.scan_obi_fx_spread_weight            = 0.30;
-      cfg.scan_obi_fxlpi_threshold             = 0.50;  // direct-domain threshold (used only if signal metric mode=FXLPI)
+      cfg.scan_obi_fxlpi_threshold             = 0.50;
 
-      cfg.scan_obi_signal_metric_mode          = 0;     // base OBI final (preserve current scanner semantics)
+      cfg.scan_obi_signal_metric_mode          = 2;     // canonical precedence: ScoreZ default; LPI / FXLPI remain route-specific alternates
 
-      // OBI scanner institutional classification / emit controls (optional; default OFF to preserve behavior)
-      cfg.scan_obi_ndelta_threshold            = 0.50;  // spec-style strong-class gate: |NDelta| >= 0.5
-      cfg.scan_obi_absorption_z_threshold      = 2.0;   // spec-style absorption event gate: |ZAbs| >= 2
-      cfg.scan_obi_strong_class_mode           = 0;     // 0=legacy(score+ndelta+absorb), 1=spec(zobi+ndelta+persistence)
+      // OBI scanner institutional classification / emit controls (backend scanner defaults: ACTIVE)
+      // These are backend-only scanner emits. NormalizeOrderFlowFamily() will wake any required source paths.
+      cfg.scan_obi_ndelta_threshold            = 0.50;
+      cfg.scan_obi_absorption_z_threshold      = 2.0;
+      cfg.scan_obi_strong_class_mode           = 1;     // spec(zobi + ndelta + persistence)
 
-      cfg.scan_obi_emit_score_events           = false; // emit OBIX score-z threshold events
-      cfg.scan_obi_emit_persist_events         = false; // emit OBIX persistence threshold events
-      cfg.scan_obi_emit_absorb_events          = false; // emit OBIX absorption z threshold events
-      cfg.scan_obi_emit_fx_events              = false; // emit OBIX FXLPI threshold events
-      cfg.scan_obi_emit_strong_class_events    = false; // emit strong bull/bear class events (multi-condition)
+      cfg.scan_obi_emit_score_events           = true;
+      cfg.scan_obi_emit_persist_events         = true;
+      cfg.scan_obi_emit_absorb_events          = true;
+      cfg.scan_obi_emit_fx_events              = true;
+      cfg.scan_obi_emit_strong_class_events    = true;
       
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
       // Explicit init avoids zero-value ambiguity when feature is later enabled.
@@ -4192,14 +4213,14 @@ namespace Config
       cfg.scan_of_liqsweep_confirm_enable = false;
       cfg.scan_of_cvd_reset_mode          = 0;   // 0=broker-day (matches current Confluence behavior)
 
-      // OFR (Order Flow Ratio) optional scanner extensions (disabled by default to preserve behavior)
-      cfg.scan_of_ofr_enable          = false;
-      cfg.scan_of_ofr_buy_share_thr   = 0.60; // buy dominance threshold (sell dominance uses 1-thr)
-      cfg.scan_of_ofr_rebalance_band  = 0.05; // neutral band around 0.50
-      cfg.scan_of_ofr_min_total_vol   = 1.0;  // min aggressive-flow proxy total volume to evaluate OFR
+      // OFR (Order Flow Ratio) scanner extension: enabled for backend order-flow use
+      cfg.scan_of_ofr_enable          = true;
+      cfg.scan_of_ofr_buy_share_thr   = 0.60; // canonical dominance threshold
+      cfg.scan_of_ofr_rebalance_band  = 0.05; // neutral band around 0.50; NormalizeOrderFlowFamily() prevents overlap
+      cfg.scan_of_ofr_min_total_vol   = 1.0;  // minimum aggressive-flow proxy total volume to evaluate OFR
 
-      // UI/panel metadata only (no backend signal impact)
-      cfg.scan_of_show_proxy_labels     = false; // preserve current output behavior until UI consumes it
+      // Diagnostic/export metadata only (backend provenance labels for later consumers; not a chart-UI requirement)
+      cfg.scan_of_show_proxy_labels     = false; // keep OFF by default; NormalizeOrderFlowFamily() also forces this OFF when scan_of_enable=false
       
       // --- Correlation tuning
       cfg.scan_corr_threshold = 0.70;
@@ -4270,7 +4291,7 @@ namespace Config
       cfg.scan_vp_session_mode        = 0;   // broker-day
       cfg.scan_vp_anchor_minute_utc   = 0;   // midnight anchor
       cfg.scan_vp_composite_sessions  = 3;   // sane default for composite mode
-      cfg.scan_vp_visible_range_sec   = 0;   // placeholder disabled
+      cfg.scan_vp_visible_range_sec   = 0;   // placeholder forced OFF until a real caller-driven visible-range path exists
 
       // Explicit range inputs for TIME_RANGE / FIXED_RANGE (epoch seconds; 0 = unset)
       cfg.scan_vp_range_from_ts      = 0;
@@ -4643,6 +4664,346 @@ namespace Config
     #endif
   }
 
+  // ---------------------------------------------------------------------------
+  // Canonical order-flow family helpers
+  // Purpose:
+  // - Keep OBI / Footprint / OFIS / VP-delta config dependencies coherent
+  // - Provide one config-intent "effective mode" view
+  // - Keep runtime DOM capability selection in MarketData/Confluence
+  // ---------------------------------------------------------------------------
+  enum ConfigOrderFlowMode
+  {
+     CFG_OF_MODE_DOM = 0,
+     CFG_OF_MODE_FOOTPRINT_PROXY = 1,
+     CFG_OF_MODE_DELTA_PROXY = 2
+  };
+
+  inline bool _CfgVPDeltaPathSupported(const Settings &cfg)
+  {
+     if(cfg.scan_vp_alloc_mode == 4) return true;        // tick-footprint allocation
+     if(cfg.scan_vp_use_footprint_ticks) return true;    // footprint-backed VP path enabled
+     return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Canonical internal config access helpers for order-flow / VP normalization.
+  // Keep legacy field names/storage intact, but route Normalize()/Validate()
+  // through these helpers so raw numeric checks do not spread across the file.
+  // ---------------------------------------------------------------------------
+  inline bool _CfgOBIProxyFootprintRequested(const Settings &cfg)
+  {
+     return (cfg.scan_obi_enable && cfg.scan_obi_mode == 3);
+  }
+
+  inline bool _CfgVPVisibleRangeRequested(const Settings &cfg)
+  {
+     return (cfg.scan_vp_profile_mode == 4 || cfg.scan_vp_visible_range_sec > 0);
+  }
+
+  inline bool _CfgVPVisibleRangeSupported()
+  {
+     // Current codebase still has no real caller-fed visible-range provider.
+     return false;
+  }
+
+  inline bool _CfgOFChildExtensionsRequested(const Settings &cfg)
+  {
+     if(cfg.scan_of_ofr_enable) return true;
+     if(cfg.scan_of_mom_enable) return true;
+     if(cfg.scan_of_liqsweep_confirm_enable) return true;
+     if(cfg.scan_of_show_proxy_labels) return true;
+     return false;
+  }
+
+  inline bool _CfgOBIChildExtensionsRequested(const Settings &cfg)
+  {
+     if(cfg.scan_obi_auto_route_enable) return true;
+     if(cfg.scan_obi_div_enable) return true;
+     if(cfg.scan_obi_emit_score_events) return true;
+     if(cfg.scan_obi_emit_persist_events) return true;
+     if(cfg.scan_obi_emit_absorb_events) return true;
+     if(cfg.scan_obi_emit_fx_events) return true;
+     if(cfg.scan_obi_emit_strong_class_events) return true;
+     return false;
+  }
+
+  inline void _DisableOBIChildExtensionsWhenParentOff(Settings &cfg)
+  {
+     if(cfg.scan_obi_enable)
+        return;
+
+     cfg.scan_obi_auto_route_enable    = false;
+     cfg.scan_obi_div_enable           = false;
+     cfg.scan_obi_emit_score_events    = false;
+     cfg.scan_obi_emit_persist_events  = false;
+     cfg.scan_obi_emit_absorb_events   = false;
+     cfg.scan_obi_emit_fx_events       = false;
+     cfg.scan_obi_emit_strong_class_events = false;
+  }
+
+  inline void _DisableOFChildExtensionsWhenParentOff(Settings &cfg)
+  {
+     if(cfg.scan_of_enable)
+        return;
+
+     // Current Config.mqh does not expose standalone CVD emit toggles.
+     // Leave CVD EMA/reset knobs intact but inert when the OF lane is off.
+     cfg.scan_of_ofr_enable = false;
+     cfg.scan_of_mom_enable = false;
+     cfg.scan_of_liqsweep_confirm_enable = false;
+     cfg.scan_of_show_proxy_labels = false;
+  }
+
+  inline int CfgOrderFlowEffectiveMode(const Settings &cfg)
+  {
+     // Canonical internal access path:
+     // - DOM when OBI is enabled in DOM-capable modes
+     // - Footprint proxy when OBI explicitly requests proxy-footprint
+     //   or when the OF/footprint family is active
+     // - Delta proxy otherwise
+     if(cfg.scan_obi_enable)
+     {
+        if(_CfgOBIProxyFootprintRequested(cfg)) return CFG_OF_MODE_FOOTPRINT_PROXY;
+        if(cfg.scan_obi_mode == 4) return CFG_OF_MODE_DELTA_PROXY;
+        return CFG_OF_MODE_DOM;
+     }
+
+      if(cfg.scan_foot_enable || cfg.scan_of_enable || _CfgVPFootprintPathRequested(cfg))
+         return CFG_OF_MODE_FOOTPRINT_PROXY;
+
+     return CFG_OF_MODE_DELTA_PROXY;
+  }
+
+  inline void NormalizeOrderFlowFamily(Settings &cfg)
+  {
+     // ------------------------------------------------------------------------
+     // 1) OF child extensions must never wake the parent lane.
+     //    If scan_of_enable=false, force OF child toggles OFF instead.
+     //    Current Config.mqh has no standalone CVD emit toggles; CVD EMA/reset
+     //    knobs remain inert but are not zeroed here.
+     // ------------------------------------------------------------------------
+     _DisableOFChildExtensionsWhenParentOff(cfg);
+
+     // ------------------------------------------------------------------------
+     // 1b) OBI child toggles must never wake the OBI parent lane.
+     //     If scan_obi_enable=false, force OBI child toggles OFF instead.
+     // ------------------------------------------------------------------------
+     _DisableOBIChildExtensionsWhenParentOff(cfg);
+      
+     // ------------------------------------------------------------------------
+     // 2) OFIS must always have a canonical backend source lane when active.
+     //    Footprint is the preferred backend; DeltaProxy remains fallback.
+     // ------------------------------------------------------------------------
+     if(cfg.scan_of_enable && !cfg.scan_foot_enable)
+        cfg.scan_foot_enable = true;
+
+     // ------------------------------------------------------------------------
+     // 3) OBI proxy-footprint mode requires the footprint backend.
+     // ------------------------------------------------------------------------
+     if(_CfgOBIProxyFootprintRequested(cfg) && !cfg.scan_foot_enable)
+        cfg.scan_foot_enable = true;
+
+     // ------------------------------------------------------------------------
+     // 4) If OBI auto-route is enabled, keep the footprint lane available so
+     //    runtime DOM downgrade never falls into a dead-end path.
+     // ------------------------------------------------------------------------
+     if(cfg.scan_obi_enable && cfg.scan_obi_auto_route_enable && !cfg.scan_foot_enable)
+        cfg.scan_foot_enable = true;
+
+     // ------------------------------------------------------------------------
+     // 4b) VP footprint-backed paths must keep the footprint lane available.
+     // ------------------------------------------------------------------------
+     if(_CfgVPFootprintPathRequested(cfg) && !cfg.scan_foot_enable)
+        cfg.scan_foot_enable = true;
+         
+     // ------------------------------------------------------------------------
+     // 4c) VP child/path coherence
+     // ------------------------------------------------------------------------
+     if(!cfg.scan_vp_enable)
+     {
+        cfg.scan_vp_delta_mode = false;
+        cfg.scan_vp_use_footprint_ticks = false;
+     }
+     else
+     {
+        if(cfg.scan_vp_footprint_build_mode == 1 && !cfg.scan_vp_use_footprint_ticks)
+           cfg.scan_vp_use_footprint_ticks = true;
+
+        if(cfg.scan_vp_alloc_mode == 4 && !cfg.scan_vp_use_footprint_ticks)
+           cfg.scan_vp_use_footprint_ticks = true;
+
+        if(cfg.scan_vp_delta_mode && !_CfgVPDeltaPathSupported(cfg))
+           cfg.scan_vp_use_footprint_ticks = true;
+     }
+      
+     // ------------------------------------------------------------------------
+     // 5) OBI internal dependency coherence
+     // ------------------------------------------------------------------------
+     if(cfg.scan_obi_top_levels > 0 && cfg.scan_obi_max_levels > 0 &&
+        cfg.scan_obi_top_levels > cfg.scan_obi_max_levels)
+        cfg.scan_obi_top_levels = cfg.scan_obi_max_levels;
+
+     // z-score mode must have a valid z window >= minimum samples
+     if(cfg.scan_obi_norm_mode == 1)
+     {
+        if(cfg.scan_obi_z_window < cfg.scan_obi_z_min_samples)
+           cfg.scan_obi_z_window = cfg.scan_obi_z_min_samples;
+     }
+
+      // ------------------------------------------------------------------------
+      // 5b) Wake up institutional OBI dependencies when scanner metrics / emits are active
+      //     Prevents "emit family enabled, but source metric asleep" configs.
+      // ------------------------------------------------------------------------
+      if(cfg.scan_obi_signal_metric_mode == 1)
+         cfg.scan_obi_lpi_enable = true;
+      else if(cfg.scan_obi_signal_metric_mode == 2)
+         cfg.scan_obi_score_enable = true;
+      else if(cfg.scan_obi_signal_metric_mode == 3)
+         cfg.scan_obi_fx_fxlpi_enable = true;
+
+      if(cfg.scan_obi_emit_score_events)
+         cfg.scan_obi_score_enable = true;
+
+      if(cfg.scan_obi_emit_persist_events)
+      {
+         if(cfg.scan_obi_persistence_mode == 0)
+            cfg.scan_obi_persistence_mode = 2;
+         if(cfg.scan_obi_persistence_threshold <= 0.0)
+            cfg.scan_obi_persistence_threshold = 0.50;
+      }
+
+      if(cfg.scan_obi_emit_absorb_events)
+         cfg.scan_obi_absorption_enable = true;
+
+      if(cfg.scan_obi_emit_fx_events)
+         cfg.scan_obi_fx_fxlpi_enable = true;
+
+      if(cfg.scan_obi_emit_strong_class_events)
+      {
+         if(cfg.scan_obi_strong_class_mode == 1)
+         {
+            if(cfg.scan_obi_norm_mode != 1)
+               cfg.scan_obi_norm_mode = 1;
+
+            if(cfg.scan_obi_z_window < cfg.scan_obi_z_min_samples)
+               cfg.scan_obi_z_window = cfg.scan_obi_z_min_samples;
+
+            if(cfg.scan_obi_persistence_mode == 0)
+               cfg.scan_obi_persistence_mode = 2;
+
+            if(cfg.scan_obi_persistence_threshold <= 0.0)
+               cfg.scan_obi_persistence_threshold = 0.50;
+         }
+         else
+         {
+            cfg.scan_obi_score_enable = true;
+            cfg.scan_obi_absorption_enable = true;
+         }
+      }
+
+     // ------------------------------------------------------------------------
+     // 6) Footprint dependency coherence
+     // ------------------------------------------------------------------------
+     if(cfg.scan_foot_stacked_levels > cfg.scan_foot_max_levels)
+        cfg.scan_foot_stacked_levels = cfg.scan_foot_max_levels;
+
+     if(cfg.scan_foot_absorb_depth_levels > cfg.scan_foot_max_levels)
+        cfg.scan_foot_absorb_depth_levels = cfg.scan_foot_max_levels;
+
+     // If cluster min volume is used, do not let it sit below the imbalance floor.
+     if(cfg.scan_foot_cluster_min_vol > 0.0 &&
+        cfg.scan_foot_cluster_min_vol < cfg.scan_foot_imb_min_vol)
+        cfg.scan_foot_cluster_min_vol = cfg.scan_foot_imb_min_vol;
+
+     // ------------------------------------------------------------------------
+     // 7) OFR dominance/rebalance coherence
+     //    rebalance band must not overlap the dominance threshold
+     //    Only relevant when the parent OF lane is active.
+     // ------------------------------------------------------------------------
+     if(cfg.scan_of_enable && cfg.scan_of_ofr_enable)
+     {
+        double max_band = cfg.scan_of_ofr_buy_share_thr - 0.50;
+        if(max_band < 0.0) max_band = 0.0;
+
+        if(cfg.scan_of_ofr_rebalance_band > max_band)
+           cfg.scan_of_ofr_rebalance_band = max_band;
+     }
+
+     // ------------------------------------------------------------------------
+     // 8) VP delta mode only when the active profile path can support it
+     // ------------------------------------------------------------------------
+     if(cfg.scan_vp_delta_mode && !_CfgVPDeltaPathSupported(cfg))
+        cfg.scan_vp_delta_mode = false;
+
+     // ------------------------------------------------------------------------
+     // 9) Visible-range VP remains caller-driven only in this codebase.
+     //    There is currently no real backend visible-range provider, so force it OFF.
+     // ------------------------------------------------------------------------
+     if(_CfgVPVisibleRangeRequested(cfg) && !_CfgVPVisibleRangeSupported())
+     {
+        if(cfg.scan_vp_profile_mode == 4)
+           cfg.scan_vp_profile_mode = 0;
+
+        cfg.scan_vp_visible_range_sec = 0;
+     }
+     else if(!_CfgVPVisibleRangeSupported())
+     {
+        // Keep placeholder storage quiet even when the visible mode was not explicitly selected.
+        cfg.scan_vp_visible_range_sec = 0;
+     }
+  }
+
+  inline void ValidateOrderFlowFamily(const Settings &cfg, string &warns)
+  {
+     if(cfg.scan_of_enable && !cfg.scan_foot_enable)
+        warns += "scan_of_enable=true but scan_foot_enable=false; OFIS has no canonical footprint backend path. NormalizeOrderFlowFamily() should enable scan_foot_enable.\n";
+
+     if(!cfg.scan_of_enable && _CfgOFChildExtensionsRequested(cfg))
+        warns += "scan_of_enable=false while OF child extensions are enabled (OFR / OFM / liqsweep-confirm / proxy-label metadata). NormalizeOrderFlowFamily() forces those child toggles OFF instead of waking the parent OF lane. Current Config.mqh has no standalone CVD emit toggles, so CVD EMA/reset knobs remain inert only.\n";
+
+     if(!cfg.scan_obi_enable && _CfgOBIChildExtensionsRequested(cfg))
+        warns += "scan_obi_enable=false while OBI child toggles are enabled (auto-route / divergence / OBIX emits). NormalizeOrderFlowFamily() forces those child toggles OFF instead of waking the OBI parent lane.\n";
+         
+     if(_CfgOBIProxyFootprintRequested(cfg) && !cfg.scan_foot_enable)
+        warns += "scan_obi_mode=3 (proxy-footprint) but scan_foot_enable=false; OBI footprint-proxy mode requires the footprint backend.\n";
+
+     if(cfg.scan_obi_enable && cfg.scan_obi_auto_route_enable && !cfg.scan_foot_enable)
+        warns += "scan_obi_auto_route_enable=true but scan_foot_enable=false; runtime DOM downgrade would have no footprint-proxy lane.\n";
+
+     if(_CfgVPFootprintPathRequested(cfg) && !cfg.scan_foot_enable)
+        warns += "VP footprint-backed path is requested while scan_foot_enable=false; NormalizeOrderFlowFamily() enables the footprint lane so VP delta / footprint-backed profile builds do not dead-end.\n";
+     
+     if(!cfg.scan_vp_enable && (cfg.scan_vp_delta_mode || cfg.scan_vp_use_footprint_ticks))
+        warns += "scan_vp_enable=false while VP footprint/delta child toggles are enabled; NormalizeOrderFlowFamily() forces VP child toggles OFF instead of waking the VP parent lane.\n";
+         
+     if(cfg.scan_of_enable && cfg.scan_of_ofr_enable)
+     {
+        if(cfg.scan_of_ofr_buy_share_thr <= 0.50 || cfg.scan_of_ofr_buy_share_thr >= 1.0)
+           warns += "scan_of_ofr_buy_share_thr should stay within (0.50,1.00); NormalizeOrderFlowFamily() clamps it to a safe dominance threshold.\n";
+
+        {
+           double max_band = cfg.scan_of_ofr_buy_share_thr - 0.50;
+           if(max_band > 0.0 && cfg.scan_of_ofr_rebalance_band > max_band)
+              warns += "scan_of_ofr_rebalance_band overlaps the OFR dominance threshold; NormalizeOrderFlowFamily() shrinks the rebalance band.\n";
+        }
+     }
+
+     if(cfg.scan_obi_norm_mode == 1 && cfg.scan_obi_z_window < cfg.scan_obi_z_min_samples)
+        warns += "scan_obi_norm_mode=1 but scan_obi_z_window < scan_obi_z_min_samples; NormalizeOrderFlowFamily() aligns the z-window.\n";
+
+     if(cfg.scan_foot_stacked_levels > cfg.scan_foot_max_levels)
+        warns += "scan_foot_stacked_levels > scan_foot_max_levels; NormalizeOrderFlowFamily() clamps stacked levels to available footprint levels.\n";
+
+     if(cfg.scan_foot_absorb_depth_levels > cfg.scan_foot_max_levels)
+        warns += "scan_foot_absorb_depth_levels > scan_foot_max_levels; NormalizeOrderFlowFamily() clamps absorption depth to available footprint levels.\n";
+
+     if(cfg.scan_vp_delta_mode && !_CfgVPDeltaPathSupported(cfg))
+        warns += "scan_vp_delta_mode=true but the active VP path is not footprint-backed; NormalizeOrderFlowFamily() disables VP delta mode.\n";
+
+     if(_CfgVPVisibleRangeRequested(cfg))
+        warns += "visible-range VP is caller-driven only in this codebase; NormalizeOrderFlowFamily() forces scan_vp_profile_mode away from visible-range and clears scan_vp_visible_range_sec unless a real visible-range provider exists.\n";
+  }
+
   inline void Normalize(Settings &cfg)
   {
     ConfigCore::Normalize(cfg);
@@ -4966,6 +5327,15 @@ namespace Config
 
       if(cfg.scan_obi_flip_hysteresis_abs < 0.0) cfg.scan_obi_flip_hysteresis_abs = 0.0;
       if(cfg.scan_obi_flip_hysteresis_abs > 1000.0) cfg.scan_obi_flip_hysteresis_abs = 1000.0;
+
+      if(cfg.scan_obi_proxy_fp_build_mode < 0) cfg.scan_obi_proxy_fp_build_mode = 0;
+      if(cfg.scan_obi_proxy_fp_build_mode > 2) cfg.scan_obi_proxy_fp_build_mode = 2;
+
+      if(cfg.scan_obi_proxy_fp_z_lookback < 2) cfg.scan_obi_proxy_fp_z_lookback = 2;
+      if(cfg.scan_obi_proxy_fp_z_lookback > 5000) cfg.scan_obi_proxy_fp_z_lookback = 5000;
+
+      if(cfg.scan_obi_proxy_fp_z_scale <= 0.0) cfg.scan_obi_proxy_fp_z_scale = 2.0;
+      if(cfg.scan_obi_proxy_fp_z_scale > 100.0) cfg.scan_obi_proxy_fp_z_scale = 100.0;
 
       // OBI institutional extensions clamps (primary sanitize pass)
       if(cfg.scan_obi_weight_mode < 0) cfg.scan_obi_weight_mode = 0;
@@ -6070,7 +6440,7 @@ namespace Config
           cfg.scan_of_ofr_rebalance_band = MathMin(0.49, MathMax(0.00, cfg.scan_of_ofr_rebalance_band));  // 0.00..0.49
           cfg.scan_of_ofr_min_total_vol  = MathMax(0.0, cfg.scan_of_ofr_min_total_vol);                    // >= 0
       #endif
-          // scan_of_show_proxy_labels is boolean; no numeric clamp required
+          // scan_of_show_proxy_labels is diagnostic/export metadata only; boolean field, no numeric clamp required
 
       // --- Liquidity pool clamps (always-present fields)
       cfg.scan_liq_pool_approach_atr    = MathMin(MathMax(cfg.scan_liq_pool_approach_atr,    0.05), 5.0);
@@ -6247,6 +6617,10 @@ namespace Config
         cfg.scan_obi_of_delta_lookback       = MathMin(MathMax(cfg.scan_obi_of_delta_lookback,       1), 5000);
         cfg.scan_obi_of_delta_min_total      = MathMin(MathMax(cfg.scan_obi_of_delta_min_total,      0.0), 1000000000.0);
 
+        cfg.scan_obi_proxy_fp_build_mode  = MathMin(MathMax(cfg.scan_obi_proxy_fp_build_mode, 0), 2);
+        cfg.scan_obi_proxy_fp_z_lookback  = MathMin(MathMax(cfg.scan_obi_proxy_fp_z_lookback, 2), 5000);
+        cfg.scan_obi_proxy_fp_z_scale     = MathMin(MathMax(cfg.scan_obi_proxy_fp_z_scale, 0.0001), 100.0);
+
         cfg.scan_obi_lpi_alpha               = MathMin(MathMax(cfg.scan_obi_lpi_alpha,               0.0), 10.0);
         cfg.scan_obi_lpi_beta                = MathMin(MathMax(cfg.scan_obi_lpi_beta,                0.0), 10.0);
         cfg.scan_obi_lpi_threshold           = MathMin(MathMax(cfg.scan_obi_lpi_threshold,           0.0), 10.0);
@@ -6338,8 +6712,8 @@ namespace Config
         cfg.scan_vp_anchor_minute_utc  = MathMin(MathMax(cfg.scan_vp_anchor_minute_utc,  0), 1439);
         cfg.scan_vp_composite_sessions = MathMin(MathMax(cfg.scan_vp_composite_sessions, 1), 100);
 
-        // Visible range placeholder (seconds); 0 keeps it disabled / caller-driven
-        cfg.scan_vp_visible_range_sec  = MathMin(MathMax(cfg.scan_vp_visible_range_sec,  0), 31536000);
+         // Visible-range request placeholder (seconds); backend-only caller-fed field, not a chart-viewport provider
+         cfg.scan_vp_visible_range_sec  = MathMin(MathMax(cfg.scan_vp_visible_range_sec,  0), 31536000);
 
         // Explicit TIME/FIXED range timestamps (epoch seconds)
         if((long)cfg.scan_vp_range_from_ts < 0) cfg.scan_vp_range_from_ts = 0;
@@ -6393,6 +6767,11 @@ namespace Config
         cfg.scan_vpx_delta_poc_retest_atr  = MathMin(MathMax(cfg.scan_vpx_delta_poc_retest_atr,  0.0), 5.0);
       #endif
 
+      // Canonical order-flow family dependency normalization.
+      // Keep legacy field names/storage intact, but route OF/OBI/VP dependency cleanup through
+      // NormalizeOrderFlowFamily() so downstream code does not invent parallel config semantics.
+      NormalizeOrderFlowFamily(cfg);
+      
       #ifdef CFG_HAS_FVG_LOOKBACK_BARS
         cfg.fvg_lookback_bars = MathMin(MathMax(cfg.fvg_lookback_bars, 50), 3000);
       #endif
@@ -7532,7 +7911,10 @@ namespace Config
     #ifdef CFG_HAS_ORDERFLOW_TH
       if(cfg.orderflow_th < 0.10) warns += "orderflow_th < 0.10; likely too permissive or unstable.\n";
     #endif
-  
+
+    // Canonical OF/OBI/VP family warnings; mirrors NormalizeOrderFlowFamily() semantics.
+    ValidateOrderFlowFamily(cfg, warns);
+    
     // DOM sanity warnings (won't block; just tells you why it may be ineffective)
     #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
       if(cfg.extra_dom_imbalance)
@@ -9156,6 +9538,10 @@ namespace Config
       s+=",scOBIDFP="+BoolStr(c.scan_obi_of_delta_use_fp_ticks_preferred);
       s+=",scOBIDMn="+DoubleToString(c.scan_obi_of_delta_min_total,4);
 
+      s+=",scOBIPFBM="+IntegerToString(c.scan_obi_proxy_fp_build_mode);
+      s+=",scOBIPFZL="+IntegerToString(c.scan_obi_proxy_fp_z_lookback);
+      s+=",scOBIPFZS="+DoubleToString(c.scan_obi_proxy_fp_z_scale,4);
+      
       s+=",scOBILPIOn="+BoolStr(c.scan_obi_lpi_enable);
       s+=",scOBILPa="+DoubleToString(c.scan_obi_lpi_alpha,4);
       s+=",scOBILPb="+DoubleToString(c.scan_obi_lpi_beta,4);
@@ -11342,6 +11728,10 @@ namespace Config
         else if(k=="scOBIDFP")   cfg.scan_obi_of_delta_use_fp_ticks_preferred = ToBool(v);
         else if(k=="scOBIDMn")   cfg.scan_obi_of_delta_min_total = ToDouble(v);
 
+        else if(k=="scOBIPFBM") cfg.scan_obi_proxy_fp_build_mode = ToInt(v);
+        else if(k=="scOBIPFZL") cfg.scan_obi_proxy_fp_z_lookback = ToInt(v);
+        else if(k=="scOBIPFZS") cfg.scan_obi_proxy_fp_z_scale = ToDouble(v);
+        
         else if(k=="scOBILPIOn") cfg.scan_obi_lpi_enable = ToBool(v);
         else if(k=="scOBILPa")   cfg.scan_obi_lpi_alpha = ToDouble(v);
         else if(k=="scOBILPb")   cfg.scan_obi_lpi_beta = ToDouble(v);
@@ -12339,6 +12729,18 @@ struct Settings
    double scan_wyck_evr_absorption_max;         // EVR threshold for absorption event (default 0.5)
    bool   scan_wyck_require_htf_phase_for_wci_signal; // require HTF phase alignment for WCI buy/sell emits   
 
+   // -------------------------------------------------------------------------
+   // Canonical order-flow family
+   // - OBI            = depth / routing / OBI-family settings
+   // - Footprint      = aggressive-flow / footprint backend settings
+   // - OFIS / OFR     = CVD / OFPI / OFM / OFR scanner settings
+   // - VP delta path  = profile-side order-flow distribution settings
+   //
+   // IMPORTANT:
+   // Keep these as one dependency family in Normalize()/Validate().
+   // Runtime DOM capability / route selection still belongs to MarketData/Confluence,
+   // not to static config storage.
+   // -------------------------------------------------------------------------
    bool scan_obi_enable;
    
    // OBI scanner (config-driven)
@@ -12355,9 +12757,9 @@ struct Settings
    // Optional VWAP distance gating (ATR multiples; 0 disables)
    double scan_obi_vwap_dist_atr;
 
-   // OBI runtime auto-routing (MarketData capability advisory; optional)
-   bool   scan_obi_auto_route_enable;   // if true, Confluence may auto-downgrade DOM modes to proxy modes when DOM is unlikely
-   int    scan_obi_auto_route_probe_ms; // optional capability probe in ms (0 = no extra tick probe)
+   // OBI runtime auto-routing (MarketData capability advisory; recommended ON for backend scanner use)
+   bool   scan_obi_auto_route_enable;   // DOM-first intent; advisory may downgrade to proxy-footprint / proxy-delta when true depth is unlikely
+   int    scan_obi_auto_route_probe_ms; // optional capability probe in ms (0 = no extra tick probe; keep light for FX/CFD feeds)
    
    // OBI advanced metric mode / aggregation (Option A: explicit, clean)
    int    scan_obi_mode;                    // 0=symmetric, 1=ratio-1, 2=log-ratio, 3=proxy-footprint fallback, 4=proxy-delta fallback
@@ -12406,6 +12808,11 @@ struct Settings
    // OBI flip / hysteresis helper
    double scan_obi_flip_hysteresis_abs;  // deadband for zero-cross/flip marker
 
+    // OBI proxy-footprint build tuning (de-hardcoded; consumed by OBI proxy fallback path)
+    int    scan_obi_proxy_fp_build_mode;      // 0=auto, 1=ticks, 2=model
+    int    scan_obi_proxy_fp_z_lookback;      // local footprint delta z-lookback for proxy route
+    double scan_obi_proxy_fp_z_scale;         // local z-to-symmetric scale for proxy route
+    
     // OBI institutional extensions (advanced / optional; additive only)
     // Weighting model extensions (beyond legacy weighted_enable + half-life)
     int    scan_obi_weight_mode;                 // 0=back-compat sentinel (Confluence maps with weighted_enable), 1=level-inverse(1/i), 2=exp-half-life, 3=exp-lambda
@@ -12416,8 +12823,8 @@ struct Settings
     int    scan_obi_ma_min_samples;              // minimum samples for MA/z telemetry helpers
     bool   scan_obi_ma_centering_enable;         // subtract MA from raw OBI before normalization telemetry path
 
-    // Order-flow delta source (for NDelta / LPI inputs)
-    int    scan_obi_of_delta_source_mode;        // see OBI::OBIDeltaSourceMode (0..4)
+    // Order-flow delta source (aggressive-flow companion for NDelta / persistence / absorption / score paths)
+    int    scan_obi_of_delta_source_mode;        // see OBI::OBIDeltaSourceMode (0..4); backend default prefers 1=FOOTPRINT_PROXY
     int    scan_obi_of_delta_lookback;           // proxy lookback for Footprint/DeltaProxy z-based sources
     bool   scan_obi_of_delta_use_fp_ticks_preferred; // advisory hint for footprint-proxy tick path
     double scan_obi_of_delta_min_total;          // minimum denominator / total volume floor
@@ -12459,8 +12866,8 @@ struct Settings
     double scan_obi_fx_spread_weight;            // default 0.3
     double scan_obi_fxlpi_threshold;             // scanner threshold when signal metric mode = FXLPI
 
-    // Signal metric selector (scanner/confluence should consume OBI core-selected metric)
-    int    scan_obi_signal_metric_mode;          // 0=base OBI final, 1=LPI, 2=ScoreZ, 3=FXLPI
+    // Signal metric selector (scanner/confluence should consume the OBI core-selected metric)
+    int    scan_obi_signal_metric_mode;          // 0=base OBI final, 1=LPI, 2=ScoreZ (backend default), 3=FXLPI
 
     // OBI scanner institutional classification / emit controls (optional; Confluence OBIX wiring)
     double scan_obi_ndelta_threshold;            // strong-class gate for |NDelta| (spec-style default 0.5)
@@ -12474,8 +12881,11 @@ struct Settings
     bool   scan_obi_emit_strong_class_events;    // emit OBIX strong bull/bear events (gating depends on scan_obi_strong_class_mode)
 
    // NOTE:
-   // - scan_obi_* controls DOM/resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
-   // - OFR (order flow ratio) here is a Footprint/OFIS aggressive-flow proxy and belongs under scan_of_* settings
+   // - scan_obi_* controls DOM / resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
+   // - When true DOM exists, OBI remains the master owner of resting-liquidity semantics
+   // - scan_foot_* is the canonical aggressive-flow / footprint proxy lane reused by OBI / OFIS / DeltaProxy
+   // - scan_of_* controls backend aggressive-flow scanner signals (CVD / OFPI / OFR)
+   // - OFR here is a Footprint/OFIS aggressive-flow proxy, not a second DOM owner
    //   for Confluence footprint/OFIS event emission (not DOM depth imbalance)
     
    // VSA background-hook gating/boost for scanner emits (Confluence-side fusion)
@@ -12526,7 +12936,7 @@ struct Settings
    double scan_of_ofr_buy_share_thr;   // buy dominance threshold in [0.50..0.99]; sell dominance uses (1-threshold)
    double scan_of_ofr_rebalance_band;  // neutral band around 0.50 before emitting rebalance
    double scan_of_ofr_min_total_vol;   // minimum aggressive-flow proxy total volume to evaluate OFR
-   bool   scan_of_show_proxy_labels;   // future UI/panel: show DOM vs proxy provenance labels; no backend signal impact
+   bool   scan_of_show_proxy_labels;   // diagnostic/export metadata only; not a chart-UI requirement and no backend signal impact
    
    bool   scan_corr_enable;
    double scan_corr_threshold;    // abs(corr) threshold to classify "strong"
@@ -12633,13 +13043,13 @@ struct Settings
    int    scan_vp_stale_sec;           // rebuild if cache older than this
    bool   scan_vp_distribute_range;    // distribute bar weight over range (slower)
 
-   // --- Advanced Volume Profile engine settings (backend / Confluence wiring) ---
+   // --- Advanced Volume Profile engine settings (backend range/model selection; not chart-UI wiring) ---
    // Mode / Range
-   int    scan_vp_profile_mode;        // 0=rolling, 1=time-range, 2=fixed, 3=session, 4=visible, 5=composite, 6=anchored, 7=rolling-window
+   int    scan_vp_profile_mode;        // 0=rolling, 1=time-range, 2=fixed, 3=session, 4=visible-requested, 5=composite, 6=anchored, 7=rolling-window
    int    scan_vp_session_mode;        // 0=broker-day, 1=anchored session
    int    scan_vp_anchor_minute_utc;   // 0..1439 (minute-of-day anchor for anchored/session modes)
    int    scan_vp_composite_sessions;  // number of sessions/days to combine
-   int    scan_vp_visible_range_sec;   // backend placeholder; 0=disabled / caller-supplied range preferred
+   int    scan_vp_visible_range_sec;   // caller-driven backend placeholder only; NormalizeOrderFlowFamily() forces this OFF until a real visible-range provider exists
 
    // Explicit time/fixed range inputs (epoch seconds; 0 = unset)
    datetime scan_vp_range_from_ts;    // used by TIME_RANGE / FIXED_RANGE when caller sets an absolute window
@@ -12662,7 +13072,7 @@ struct Settings
    
    // Volume semantics
    int    scan_vp_volume_mode;         // 0=total, 1=buy, 2=sell, 3=delta (same semantic as "volume_type")
-   bool   scan_vp_delta_mode;          // compute/store delta bins if available
+   bool   scan_vp_delta_mode;          // enable only when the active VP path is footprint-backed; NormalizeOrderFlowFamily() enforces this
    bool   scan_vp_use_footprint_ticks; // enable Method C tick/footprint path (via FootprintProxy)
    int    scan_vp_footprint_build_mode;// 0=auto, 1=ticks-only, 2=model-only
    int    scan_vp_footprint_min_bars;  // minimum bars before attempting footprint range build
