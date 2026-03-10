@@ -279,6 +279,25 @@ struct Settings;
 #ifndef CFG_HAS_ORDERFLOW_EFFECTIVE_MODE
   #define CFG_HAS_ORDERFLOW_EFFECTIVE_MODE 1
 #endif
+#ifndef CFG_HAS_SCAN_OBI_MICROPRICE_SETTINGS
+  #define CFG_HAS_SCAN_OBI_MICROPRICE_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_SCAN_OFX_TOXICITY_SETTINGS
+  #define CFG_HAS_SCAN_OFX_TOXICITY_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_SCAN_OBI_RESILIENCY_SETTINGS
+  #define CFG_HAS_SCAN_OBI_RESILIENCY_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_SCAN_OFX_IMPACT_SETTINGS
+  #define CFG_HAS_SCAN_OFX_IMPACT_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_SCAN_OFX_SCANNER_BLEND_SETTINGS
+  #define CFG_HAS_SCAN_OFX_SCANNER_BLEND_SETTINGS 1
+#endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -4156,7 +4175,6 @@ namespace Config
       cfg.scan_obi_fx_obi_weight               = 0.70;
       cfg.scan_obi_fx_spread_weight            = 0.30;
       cfg.scan_obi_fxlpi_threshold             = 0.50;
-
       cfg.scan_obi_signal_metric_mode          = 2;     // canonical precedence: ScoreZ default; LPI / FXLPI remain route-specific alternates
 
       // OBI scanner institutional classification / emit controls (backend scanner defaults: ACTIVE)
@@ -4170,6 +4188,45 @@ namespace Config
       cfg.scan_obi_emit_absorb_events          = true;
       cfg.scan_obi_emit_fx_events              = true;
       cfg.scan_obi_emit_strong_class_events    = true;
+
+      // --- Advanced order-flow state layers (scanner-only; backend transport/fusion)
+      cfg.scan_obi_microprice_enable              = true;
+      cfg.scan_obi_microprice_min_levels          = 1;
+      cfg.scan_obi_microprice_smoothing_mode      = 1;    // EMA
+      cfg.scan_obi_microprice_smoothing_period    = 5;
+
+      cfg.scan_obi_queue_imbalance_clamp_abs      = 1.0;
+      cfg.scan_obi_queue_norm_mode                = 0;    // none
+      cfg.scan_obi_queue_z_window                 = 50;
+      cfg.scan_obi_queue_z_min_samples            = 20;
+
+      cfg.scan_ofx_toxicity_enable                = true;
+      cfg.scan_ofx_toxicity_bucket_mode           = 2;    // rolling-EW proxy
+      cfg.scan_ofx_toxicity_bucket_size           = 50;
+      cfg.scan_ofx_toxicity_lookback              = 50;
+      cfg.scan_ofx_toxicity_fx_proxy_mode         = 0;    // adaptive
+      cfg.scan_ofx_toxicity_min_confidence        = 0.15;
+
+      cfg.scan_obi_resiliency_enable              = true;
+      cfg.scan_obi_resiliency_shock_min_abs       = 0.20;
+      cfg.scan_obi_resiliency_refill_window_sec   = 30;
+      cfg.scan_obi_resiliency_half_life_max_sec   = 300.0;
+      cfg.scan_obi_resiliency_depth_recovery_mode = 0;    // touch-depth
+      cfg.scan_obi_resiliency_spread_recovery_weight = 0.30;
+
+      cfg.scan_ofx_impact_enable                  = true;
+      cfg.scan_ofx_impact_window                  = 50;
+      cfg.scan_ofx_impact_ew_alpha                = 0.10;
+      cfg.scan_ofx_impact_min_samples             = 20;
+      cfg.scan_ofx_impact_depth_adjust_enable     = true;
+      cfg.scan_ofx_impact_smoothing_period        = 5;
+
+      cfg.scan_ofx_weight_toxicity                = 0.20;
+      cfg.scan_ofx_weight_resiliency              = 0.20;
+      cfg.scan_ofx_weight_microprice              = 0.15;
+      cfg.scan_ofx_weight_lambda                  = 0.25;
+      cfg.scan_ofx_weight_beta                    = 0.20;
+      cfg.scan_ofx_backend_quality_min            = 0.20;
       
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
       // Explicit init avoids zero-value ambiguity when feature is later enabled.
@@ -4695,6 +4752,16 @@ namespace Config
      return (cfg.scan_obi_enable && cfg.scan_obi_mode == 3);
   }
 
+  inline bool _CfgVPFootprintPathRequested(const Settings &cfg)
+  {
+     if(!cfg.scan_vp_enable) return false;
+     if(cfg.scan_vp_alloc_mode == 4) return true;
+     if(cfg.scan_vp_use_footprint_ticks) return true;
+     if(cfg.scan_vp_footprint_build_mode == 1) return true;
+     if(cfg.scan_vp_delta_mode) return true;
+     return false;
+  }
+
   inline bool _CfgVPVisibleRangeRequested(const Settings &cfg)
   {
      return (cfg.scan_vp_profile_mode == 4 || cfg.scan_vp_visible_range_sec > 0);
@@ -4724,6 +4791,10 @@ namespace Config
      if(cfg.scan_obi_emit_absorb_events) return true;
      if(cfg.scan_obi_emit_fx_events) return true;
      if(cfg.scan_obi_emit_strong_class_events) return true;
+
+     if(cfg.scan_obi_microprice_enable) return true;
+     if(cfg.scan_obi_resiliency_enable) return true;
+
      return false;
   }
 
@@ -4732,13 +4803,16 @@ namespace Config
      if(cfg.scan_obi_enable)
         return;
 
-     cfg.scan_obi_auto_route_enable    = false;
-     cfg.scan_obi_div_enable           = false;
-     cfg.scan_obi_emit_score_events    = false;
-     cfg.scan_obi_emit_persist_events  = false;
-     cfg.scan_obi_emit_absorb_events   = false;
-     cfg.scan_obi_emit_fx_events       = false;
+     cfg.scan_obi_auto_route_enable        = false;
+     cfg.scan_obi_div_enable               = false;
+     cfg.scan_obi_emit_score_events        = false;
+     cfg.scan_obi_emit_persist_events      = false;
+     cfg.scan_obi_emit_absorb_events       = false;
+     cfg.scan_obi_emit_fx_events           = false;
      cfg.scan_obi_emit_strong_class_events = false;
+
+     cfg.scan_obi_microprice_enable        = false;
+     cfg.scan_obi_resiliency_enable        = false;
   }
 
   inline void _DisableOFChildExtensionsWhenParentOff(Settings &cfg)
@@ -4752,6 +4826,22 @@ namespace Config
      cfg.scan_of_mom_enable = false;
      cfg.scan_of_liqsweep_confirm_enable = false;
      cfg.scan_of_show_proxy_labels = false;
+  }
+
+  inline bool _CfgOFXAdvancedFamilyRequested(const Settings &cfg)
+  {
+     if(cfg.scan_ofx_toxicity_enable) return true;
+     if(cfg.scan_ofx_impact_enable) return true;
+     return false;
+  }
+
+  inline void _DisableOFXAdvancedFamilyWhenParentsOff(Settings &cfg)
+  {
+     if(cfg.scan_obi_enable || cfg.scan_of_enable)
+        return;
+
+     cfg.scan_ofx_toxicity_enable = false;
+     cfg.scan_ofx_impact_enable   = false;
   }
 
   inline int CfgOrderFlowEffectiveMode(const Settings &cfg)
@@ -4789,6 +4879,12 @@ namespace Config
      //     If scan_obi_enable=false, force OBI child toggles OFF instead.
      // ------------------------------------------------------------------------
      _DisableOBIChildExtensionsWhenParentOff(cfg);
+
+     // ------------------------------------------------------------------------
+     // 1c) Advanced OFX family (toxicity / impact) must not wake both parent lanes.
+     //     If both OBI and OF are OFF, force these advanced toggles OFF instead.
+     // ------------------------------------------------------------------------
+     _DisableOFXAdvancedFamilyWhenParentsOff(cfg);
       
      // ------------------------------------------------------------------------
      // 2) OFIS must always have a canonical backend source lane when active.
@@ -4901,6 +4997,141 @@ namespace Config
          }
       }
 
+      // ------------------------------------------------------------------------
+      // 5c) Advanced microprice / queue state clamps
+      // ------------------------------------------------------------------------
+      if(cfg.scan_obi_microprice_min_levels < 1)
+         cfg.scan_obi_microprice_min_levels = 1;
+
+      if(cfg.scan_obi_max_levels > 0 &&
+         cfg.scan_obi_microprice_min_levels > cfg.scan_obi_max_levels)
+         cfg.scan_obi_microprice_min_levels = cfg.scan_obi_max_levels;
+
+      if(cfg.scan_obi_microprice_smoothing_mode < 0 || cfg.scan_obi_microprice_smoothing_mode > 2)
+         cfg.scan_obi_microprice_smoothing_mode = 1;
+
+      if(cfg.scan_obi_microprice_smoothing_mode == 0)
+         cfg.scan_obi_microprice_smoothing_period = 0;
+      else if(cfg.scan_obi_microprice_smoothing_period < 2)
+         cfg.scan_obi_microprice_smoothing_period = 5;
+
+      if(cfg.scan_obi_queue_imbalance_clamp_abs <= 0.0)
+         cfg.scan_obi_queue_imbalance_clamp_abs = 1.0;
+      if(cfg.scan_obi_queue_imbalance_clamp_abs > 1.0)
+         cfg.scan_obi_queue_imbalance_clamp_abs = 1.0;
+
+      if(cfg.scan_obi_queue_norm_mode < 0 || cfg.scan_obi_queue_norm_mode > 1)
+         cfg.scan_obi_queue_norm_mode = 0;
+
+      if(cfg.scan_obi_queue_z_min_samples < 2)
+         cfg.scan_obi_queue_z_min_samples = 20;
+
+      if(cfg.scan_obi_queue_z_window < 2)
+         cfg.scan_obi_queue_z_window = 50;
+
+      if(cfg.scan_obi_queue_z_window < cfg.scan_obi_queue_z_min_samples)
+         cfg.scan_obi_queue_z_window = cfg.scan_obi_queue_z_min_samples;
+
+      // ------------------------------------------------------------------------
+      // 5d) Advanced toxicity / VPIN-lite clamps
+      // ------------------------------------------------------------------------
+      if(cfg.scan_ofx_toxicity_bucket_mode < 0 || cfg.scan_ofx_toxicity_bucket_mode > 2)
+         cfg.scan_ofx_toxicity_bucket_mode = 2;
+
+      if(cfg.scan_ofx_toxicity_bucket_size < 1)
+         cfg.scan_ofx_toxicity_bucket_size = 50;
+
+      if(cfg.scan_ofx_toxicity_lookback < 2)
+         cfg.scan_ofx_toxicity_lookback = 50;
+
+      if(cfg.scan_ofx_toxicity_fx_proxy_mode < 0 || cfg.scan_ofx_toxicity_fx_proxy_mode > 2)
+         cfg.scan_ofx_toxicity_fx_proxy_mode = 0;
+
+      if(cfg.scan_ofx_toxicity_min_confidence < 0.0)
+         cfg.scan_ofx_toxicity_min_confidence = 0.0;
+      if(cfg.scan_ofx_toxicity_min_confidence > 1.0)
+         cfg.scan_ofx_toxicity_min_confidence = 1.0;
+
+      // ------------------------------------------------------------------------
+      // 5e) Advanced resiliency / replenishment clamps
+      // ------------------------------------------------------------------------
+      if(cfg.scan_obi_resiliency_shock_min_abs <= 0.0)
+         cfg.scan_obi_resiliency_shock_min_abs = 0.20;
+
+      if(cfg.scan_obi_resiliency_refill_window_sec < 1)
+         cfg.scan_obi_resiliency_refill_window_sec = 30;
+
+      if(cfg.scan_obi_resiliency_half_life_max_sec <= 0.0)
+         cfg.scan_obi_resiliency_half_life_max_sec = 300.0;
+
+      if(cfg.scan_obi_resiliency_depth_recovery_mode < 0 || cfg.scan_obi_resiliency_depth_recovery_mode > 2)
+         cfg.scan_obi_resiliency_depth_recovery_mode = 0;
+
+      if(cfg.scan_obi_resiliency_spread_recovery_weight < 0.0)
+         cfg.scan_obi_resiliency_spread_recovery_weight = 0.0;
+      if(cfg.scan_obi_resiliency_spread_recovery_weight > 1.0)
+         cfg.scan_obi_resiliency_spread_recovery_weight = 1.0;
+
+      // ------------------------------------------------------------------------
+      // 5f) Advanced impact coefficient clamps
+      // ------------------------------------------------------------------------
+      if(cfg.scan_ofx_impact_window < 5)
+         cfg.scan_ofx_impact_window = 50;
+
+      if(cfg.scan_ofx_impact_min_samples < 5)
+         cfg.scan_ofx_impact_min_samples = 20;
+
+      if(cfg.scan_ofx_impact_min_samples > cfg.scan_ofx_impact_window)
+         cfg.scan_ofx_impact_min_samples = cfg.scan_ofx_impact_window;
+
+      if(cfg.scan_ofx_impact_ew_alpha <= 0.0 || cfg.scan_ofx_impact_ew_alpha > 1.0)
+         cfg.scan_ofx_impact_ew_alpha = 0.10;
+
+      if(cfg.scan_ofx_impact_smoothing_period < 0)
+         cfg.scan_ofx_impact_smoothing_period = 0;
+      else if(cfg.scan_ofx_impact_smoothing_period == 1)
+         cfg.scan_ofx_impact_smoothing_period = 2;
+
+      // ------------------------------------------------------------------------
+      // 5g) Scanner fusion weights / quality gate
+      // ------------------------------------------------------------------------
+      if(cfg.scan_ofx_weight_toxicity < 0.0)   cfg.scan_ofx_weight_toxicity = 0.0;
+      if(cfg.scan_ofx_weight_resiliency < 0.0) cfg.scan_ofx_weight_resiliency = 0.0;
+      if(cfg.scan_ofx_weight_microprice < 0.0) cfg.scan_ofx_weight_microprice = 0.0;
+      if(cfg.scan_ofx_weight_lambda < 0.0)     cfg.scan_ofx_weight_lambda = 0.0;
+      if(cfg.scan_ofx_weight_beta < 0.0)       cfg.scan_ofx_weight_beta = 0.0;
+
+      if(cfg.scan_ofx_backend_quality_min < 0.0)
+         cfg.scan_ofx_backend_quality_min = 0.0;
+      if(cfg.scan_ofx_backend_quality_min > 1.0)
+         cfg.scan_ofx_backend_quality_min = 1.0;
+
+      {
+         double wsum =
+            cfg.scan_ofx_weight_toxicity +
+            cfg.scan_ofx_weight_resiliency +
+            cfg.scan_ofx_weight_microprice +
+            cfg.scan_ofx_weight_lambda +
+            cfg.scan_ofx_weight_beta;
+
+         if(wsum <= 1e-12)
+         {
+            cfg.scan_ofx_weight_toxicity   = 0.20;
+            cfg.scan_ofx_weight_resiliency = 0.20;
+            cfg.scan_ofx_weight_microprice = 0.15;
+            cfg.scan_ofx_weight_lambda     = 0.25;
+            cfg.scan_ofx_weight_beta       = 0.20;
+         }
+         else
+         {
+            cfg.scan_ofx_weight_toxicity   /= wsum;
+            cfg.scan_ofx_weight_resiliency /= wsum;
+            cfg.scan_ofx_weight_microprice /= wsum;
+            cfg.scan_ofx_weight_lambda     /= wsum;
+            cfg.scan_ofx_weight_beta       /= wsum;
+         }
+      }
+
      // ------------------------------------------------------------------------
      // 6) Footprint dependency coherence
      // ------------------------------------------------------------------------
@@ -4962,7 +5193,7 @@ namespace Config
         warns += "scan_of_enable=false while OF child extensions are enabled (OFR / OFM / liqsweep-confirm / proxy-label metadata). NormalizeOrderFlowFamily() forces those child toggles OFF instead of waking the parent OF lane. Current Config.mqh has no standalone CVD emit toggles, so CVD EMA/reset knobs remain inert only.\n";
 
      if(!cfg.scan_obi_enable && _CfgOBIChildExtensionsRequested(cfg))
-        warns += "scan_obi_enable=false while OBI child toggles are enabled (auto-route / divergence / OBIX emits). NormalizeOrderFlowFamily() forces those child toggles OFF instead of waking the OBI parent lane.\n";
+        warns += "scan_obi_enable=false while OBI child toggles are enabled (auto-route / divergence / OBIX emits / microprice / resiliency). NormalizeOrderFlowFamily() forces those child toggles OFF instead of waking the OBI parent lane.\n";
          
      if(_CfgOBIProxyFootprintRequested(cfg) && !cfg.scan_foot_enable)
         warns += "scan_obi_mode=3 (proxy-footprint) but scan_foot_enable=false; OBI footprint-proxy mode requires the footprint backend.\n";
@@ -4975,6 +5206,13 @@ namespace Config
      
      if(!cfg.scan_vp_enable && (cfg.scan_vp_delta_mode || cfg.scan_vp_use_footprint_ticks))
         warns += "scan_vp_enable=false while VP footprint/delta child toggles are enabled; NormalizeOrderFlowFamily() forces VP child toggles OFF instead of waking the VP parent lane.\n";
+
+     if(!(cfg.scan_obi_enable || cfg.scan_of_enable) && _CfgOFXAdvancedFamilyRequested(cfg))
+        warns += "advanced OFX toggles are enabled (toxicity / impact) while both scan_obi_enable=false and scan_of_enable=false; NormalizeOrderFlowFamily() forces those advanced OFX toggles OFF instead of waking parent lanes.\n";
+
+     if(cfg.scan_obi_microprice_enable && cfg.scan_obi_max_levels > 0 &&
+        cfg.scan_obi_microprice_min_levels > cfg.scan_obi_max_levels)
+        warns += "scan_obi_microprice_min_levels exceeds scan_obi_max_levels; NormalizeOrderFlowFamily() clamps the required microprice depth level count.\n";
          
      if(cfg.scan_of_enable && cfg.scan_of_ofr_enable)
      {
@@ -4991,6 +5229,14 @@ namespace Config
      if(cfg.scan_obi_norm_mode == 1 && cfg.scan_obi_z_window < cfg.scan_obi_z_min_samples)
         warns += "scan_obi_norm_mode=1 but scan_obi_z_window < scan_obi_z_min_samples; NormalizeOrderFlowFamily() aligns the z-window.\n";
 
+     if(cfg.scan_obi_queue_norm_mode == 1 &&
+        cfg.scan_obi_queue_z_window < cfg.scan_obi_queue_z_min_samples)
+        warns += "scan_obi_queue_norm_mode=1 but scan_obi_queue_z_window < scan_obi_queue_z_min_samples; NormalizeOrderFlowFamily() aligns the queue z-window.\n";
+
+     if(cfg.scan_ofx_impact_enable &&
+        cfg.scan_ofx_impact_window < cfg.scan_ofx_impact_min_samples)
+        warns += "scan_ofx_impact_enable=true but scan_ofx_impact_window < scan_ofx_impact_min_samples; NormalizeOrderFlowFamily() aligns impact min-sample requirements.\n";
+         
      if(cfg.scan_foot_stacked_levels > cfg.scan_foot_max_levels)
         warns += "scan_foot_stacked_levels > scan_foot_max_levels; NormalizeOrderFlowFamily() clamps stacked levels to available footprint levels.\n";
 
@@ -9585,6 +9831,45 @@ namespace Config
       s+=",scOBIEmAb="+BoolStr(c.scan_obi_emit_absorb_events);
       s+=",scOBIEmFx="+BoolStr(c.scan_obi_emit_fx_events);
       s+=",scOBIEmSt="+BoolStr(c.scan_obi_emit_strong_class_events);
+
+      // Advanced order-flow state layers
+      s+=",scOBIMPOn="+BoolStr(c.scan_obi_microprice_enable);
+      s+=",scOBIMPLv="+IntegerToString(c.scan_obi_microprice_min_levels);
+      s+=",scOBIMPSm="+IntegerToString(c.scan_obi_microprice_smoothing_mode);
+      s+=",scOBIMPSp="+IntegerToString(c.scan_obi_microprice_smoothing_period);
+
+      s+=",scOBIQCl="+DoubleToString(c.scan_obi_queue_imbalance_clamp_abs,4);
+      s+=",scOBIQNm="+IntegerToString(c.scan_obi_queue_norm_mode);
+      s+=",scOBIQZW="+IntegerToString(c.scan_obi_queue_z_window);
+      s+=",scOBIQZN="+IntegerToString(c.scan_obi_queue_z_min_samples);
+
+      s+=",scOFXTxOn="+BoolStr(c.scan_ofx_toxicity_enable);
+      s+=",scOFXTxBm="+IntegerToString(c.scan_ofx_toxicity_bucket_mode);
+      s+=",scOFXTxBs="+IntegerToString(c.scan_ofx_toxicity_bucket_size);
+      s+=",scOFXTxLb="+IntegerToString(c.scan_ofx_toxicity_lookback);
+      s+=",scOFXTxFx="+IntegerToString(c.scan_ofx_toxicity_fx_proxy_mode);
+      s+=",scOFXTxQ="+DoubleToString(c.scan_ofx_toxicity_min_confidence,4);
+
+      s+=",scOBIReOn="+BoolStr(c.scan_obi_resiliency_enable);
+      s+=",scOBIReSh="+DoubleToString(c.scan_obi_resiliency_shock_min_abs,4);
+      s+=",scOBIReRf="+IntegerToString(c.scan_obi_resiliency_refill_window_sec);
+      s+=",scOBIReHL="+DoubleToString(c.scan_obi_resiliency_half_life_max_sec,2);
+      s+=",scOBIReDm="+IntegerToString(c.scan_obi_resiliency_depth_recovery_mode);
+      s+=",scOBIReSw="+DoubleToString(c.scan_obi_resiliency_spread_recovery_weight,4);
+
+      s+=",scOFXImOn="+BoolStr(c.scan_ofx_impact_enable);
+      s+=",scOFXImW="+IntegerToString(c.scan_ofx_impact_window);
+      s+=",scOFXImA="+DoubleToString(c.scan_ofx_impact_ew_alpha,4);
+      s+=",scOFXImN="+IntegerToString(c.scan_ofx_impact_min_samples);
+      s+=",scOFXImD="+BoolStr(c.scan_ofx_impact_depth_adjust_enable);
+      s+=",scOFXImS="+IntegerToString(c.scan_ofx_impact_smoothing_period);
+
+      s+=",scOFXWTx="+DoubleToString(c.scan_ofx_weight_toxicity,4);
+      s+=",scOFXWRe="+DoubleToString(c.scan_ofx_weight_resiliency,4);
+      s+=",scOFXWMp="+DoubleToString(c.scan_ofx_weight_microprice,4);
+      s+=",scOFXWLa="+DoubleToString(c.scan_ofx_weight_lambda,4);
+      s+=",scOFXWBe="+DoubleToString(c.scan_ofx_weight_beta,4);
+      s+=",scOFXQMin="+DoubleToString(c.scan_ofx_backend_quality_min,4);
       
       // VSA background-hook scanner fusion (Confluence-side)
       s+=",scVHOn="+BoolStr(c.scan_vsa_hook_enable);
@@ -11775,6 +12060,45 @@ namespace Config
         else if(k=="scOBIEmAb")  cfg.scan_obi_emit_absorb_events = ToBool(v);
         else if(k=="scOBIEmFx")  cfg.scan_obi_emit_fx_events = ToBool(v);
         else if(k=="scOBIEmSt")  cfg.scan_obi_emit_strong_class_events = ToBool(v);
+
+        // Advanced order-flow state layers
+        else if(k=="scOBIMPOn") cfg.scan_obi_microprice_enable = ToBool(v);
+        else if(k=="scOBIMPLv") cfg.scan_obi_microprice_min_levels = ToInt(v);
+        else if(k=="scOBIMPSm") cfg.scan_obi_microprice_smoothing_mode = ToInt(v);
+        else if(k=="scOBIMPSp") cfg.scan_obi_microprice_smoothing_period = ToInt(v);
+
+        else if(k=="scOBIQCl")  cfg.scan_obi_queue_imbalance_clamp_abs = ToDouble(v);
+        else if(k=="scOBIQNm")  cfg.scan_obi_queue_norm_mode = ToInt(v);
+        else if(k=="scOBIQZW")  cfg.scan_obi_queue_z_window = ToInt(v);
+        else if(k=="scOBIQZN")  cfg.scan_obi_queue_z_min_samples = ToInt(v);
+
+        else if(k=="scOFXTxOn") cfg.scan_ofx_toxicity_enable = ToBool(v);
+        else if(k=="scOFXTxBm") cfg.scan_ofx_toxicity_bucket_mode = ToInt(v);
+        else if(k=="scOFXTxBs") cfg.scan_ofx_toxicity_bucket_size = ToInt(v);
+        else if(k=="scOFXTxLb") cfg.scan_ofx_toxicity_lookback = ToInt(v);
+        else if(k=="scOFXTxFx") cfg.scan_ofx_toxicity_fx_proxy_mode = ToInt(v);
+        else if(k=="scOFXTxQ")  cfg.scan_ofx_toxicity_min_confidence = ToDouble(v);
+
+        else if(k=="scOBIReOn") cfg.scan_obi_resiliency_enable = ToBool(v);
+        else if(k=="scOBIReSh") cfg.scan_obi_resiliency_shock_min_abs = ToDouble(v);
+        else if(k=="scOBIReRf") cfg.scan_obi_resiliency_refill_window_sec = ToInt(v);
+        else if(k=="scOBIReHL") cfg.scan_obi_resiliency_half_life_max_sec = ToDouble(v);
+        else if(k=="scOBIReDm") cfg.scan_obi_resiliency_depth_recovery_mode = ToInt(v);
+        else if(k=="scOBIReSw") cfg.scan_obi_resiliency_spread_recovery_weight = ToDouble(v);
+
+        else if(k=="scOFXImOn") cfg.scan_ofx_impact_enable = ToBool(v);
+        else if(k=="scOFXImW")  cfg.scan_ofx_impact_window = ToInt(v);
+        else if(k=="scOFXImA")  cfg.scan_ofx_impact_ew_alpha = ToDouble(v);
+        else if(k=="scOFXImN")  cfg.scan_ofx_impact_min_samples = ToInt(v);
+        else if(k=="scOFXImD")  cfg.scan_ofx_impact_depth_adjust_enable = ToBool(v);
+        else if(k=="scOFXImS")  cfg.scan_ofx_impact_smoothing_period = ToInt(v);
+
+        else if(k=="scOFXWTx")  cfg.scan_ofx_weight_toxicity = ToDouble(v);
+        else if(k=="scOFXWRe")  cfg.scan_ofx_weight_resiliency = ToDouble(v);
+        else if(k=="scOFXWMp")  cfg.scan_ofx_weight_microprice = ToDouble(v);
+        else if(k=="scOFXWLa")  cfg.scan_ofx_weight_lambda = ToDouble(v);
+        else if(k=="scOFXWBe")  cfg.scan_ofx_weight_beta = ToDouble(v);
+        else if(k=="scOFXQMin") cfg.scan_ofx_backend_quality_min = ToDouble(v);
         
         // VSA background-hook scanner fusion (Confluence-side)
         else if(k=="scVHOn")    cfg.scan_vsa_hook_enable = ToBool(v);
@@ -12880,6 +13204,49 @@ struct Settings
     bool   scan_obi_emit_fx_events;              // emit OBIX FXLPI threshold events
     bool   scan_obi_emit_strong_class_events;    // emit OBIX strong bull/bear events (gating depends on scan_obi_strong_class_mode)
 
+    // Advanced OBI depth-state extensions (backend only; no chart-UI ownership)
+    bool   scan_obi_microprice_enable;              // enable microprice / queue-imbalance state
+    int    scan_obi_microprice_min_levels;          // minimum usable depth levels required for microprice state
+    int    scan_obi_microprice_smoothing_mode;      // 0=off, 1=ema, 2=sma
+    int    scan_obi_microprice_smoothing_period;    // smoothing period when mode != 0
+
+    double scan_obi_queue_imbalance_clamp_abs;      // clamp |queue imbalance| after normalization (0<..<=1)
+    int    scan_obi_queue_norm_mode;                // 0=none, 1=z-score
+    int    scan_obi_queue_z_window;                 // queue-imbalance z window
+    int    scan_obi_queue_z_min_samples;            // minimum samples before queue z is valid
+
+    // Advanced OFX toxicity extensions (DeltaProxy / proxy-flow family)
+    bool   scan_ofx_toxicity_enable;                // enable toxicity / VPIN-lite family
+    int    scan_ofx_toxicity_bucket_mode;           // 0=time, 1=volume-like, 2=rolling-EW proxy
+    int    scan_ofx_toxicity_bucket_size;           // generic bucket size (bars or volume-like units per owner semantics)
+    int    scan_ofx_toxicity_lookback;              // rolling lookback / bucket count
+    int    scan_ofx_toxicity_fx_proxy_mode;         // 0=adaptive, 1=ew-flow, 2=vpin-lite
+    double scan_ofx_toxicity_min_confidence;        // minimum proxy confidence required to trust toxicity state
+
+    // Advanced OBI resiliency / replenishment extensions
+    bool   scan_obi_resiliency_enable;              // enable replenishment / resiliency tracking
+    double scan_obi_resiliency_shock_min_abs;       // minimum absolute shock metric before refill tracking activates
+    int    scan_obi_resiliency_refill_window_sec;   // refill / recovery observation window in seconds
+    double scan_obi_resiliency_half_life_max_sec;   // hard ceiling for reported refill half-life
+    int    scan_obi_resiliency_depth_recovery_mode; // 0=touch, 1=full-depth, 2=best-effort
+    double scan_obi_resiliency_spread_recovery_weight; // blend weight for spread-healing contribution
+
+    // Advanced OFX impact extensions (scanner-only; execution analytics intentionally omitted)
+    bool   scan_ofx_impact_enable;                  // enable local impact coefficient family (lambda / beta)
+    int    scan_ofx_impact_window;                  // rolling window for impact estimation
+    double scan_ofx_impact_ew_alpha;               // EW alpha for faster regime adaptation
+    int    scan_ofx_impact_min_samples;             // minimum samples before impact estimates are valid
+    bool   scan_ofx_impact_depth_adjust_enable;     // enable depth-adjusted impact scaling when depth exists
+    int    scan_ofx_impact_smoothing_period;        // optional output smoothing period (0/1 = off)
+
+    // Scanner fusion weights for advanced OFX state families
+    double scan_ofx_weight_toxicity;                // fusion weight for toxicity penalty
+    double scan_ofx_weight_resiliency;              // fusion weight for resiliency / refill quality
+    double scan_ofx_weight_microprice;              // fusion weight for microprice / queue drift
+    double scan_ofx_weight_lambda;                  // fusion weight for flow-impact lambda
+    double scan_ofx_weight_beta;                    // fusion weight for OFI beta
+    double scan_ofx_backend_quality_min;            // minimum backend quality to allow advanced OFX contribution
+    
    // NOTE:
    // - scan_obi_* controls DOM / resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
    // - When true DOM exists, OBI remains the master owner of resting-liquidity semantics
