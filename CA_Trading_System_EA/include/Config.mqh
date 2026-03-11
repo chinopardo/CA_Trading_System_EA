@@ -4348,7 +4348,7 @@ namespace Config
       cfg.scan_vp_session_mode        = 0;   // broker-day
       cfg.scan_vp_anchor_minute_utc   = 0;   // midnight anchor
       cfg.scan_vp_composite_sessions  = 3;   // sane default for composite mode
-      cfg.scan_vp_visible_range_sec   = 0;   // placeholder forced OFF until a real caller-driven visible-range path exists
+      cfg.scan_vp_visible_range_sec   = 0;   // serialized placeholder only; forced OFF until a real backend visible-range provider exists
 
       // Explicit range inputs for TIME_RANGE / FIXED_RANGE (epoch seconds; 0 = unset)
       cfg.scan_vp_range_from_ts      = 0;
@@ -4844,6 +4844,111 @@ namespace Config
      cfg.scan_ofx_impact_enable   = false;
   }
 
+  inline bool _CfgOFXToxicityContributorActive(const Settings &cfg)
+  {
+     return ((cfg.scan_obi_enable || cfg.scan_of_enable) && cfg.scan_ofx_toxicity_enable);
+  }
+
+  inline bool _CfgOFXImpactContributorActive(const Settings &cfg)
+  {
+     return ((cfg.scan_obi_enable || cfg.scan_of_enable) && cfg.scan_ofx_impact_enable);
+  }
+
+  inline bool _CfgOFXMicropriceContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_obi_enable && cfg.scan_obi_microprice_enable);
+  }
+
+  inline bool _CfgOFXResiliencyContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_obi_enable && cfg.scan_obi_resiliency_enable);
+  }
+
+  inline bool _CfgOFXAnyBlendContributorActive(const Settings &cfg)
+  {
+     if(_CfgOFXToxicityContributorActive(cfg))  return true;
+     if(_CfgOFXImpactContributorActive(cfg))    return true;
+     if(_CfgOFXMicropriceContributorActive(cfg))return true;
+     if(_CfgOFXResiliencyContributorActive(cfg))return true;
+     return false;
+  }
+
+  inline void _NormalizeOFXBlendWeightsForLiveContributors(Settings &cfg)
+  {
+     const bool tox_on = _CfgOFXToxicityContributorActive(cfg);
+     const bool imp_on = _CfgOFXImpactContributorActive(cfg);
+     const bool mp_on  = _CfgOFXMicropriceContributorActive(cfg);
+     const bool res_on = _CfgOFXResiliencyContributorActive(cfg);
+
+     if(cfg.scan_ofx_weight_toxicity < 0.0)   cfg.scan_ofx_weight_toxicity = 0.0;
+     if(cfg.scan_ofx_weight_resiliency < 0.0) cfg.scan_ofx_weight_resiliency = 0.0;
+     if(cfg.scan_ofx_weight_microprice < 0.0) cfg.scan_ofx_weight_microprice = 0.0;
+     if(cfg.scan_ofx_weight_lambda < 0.0)     cfg.scan_ofx_weight_lambda = 0.0;
+     if(cfg.scan_ofx_weight_beta < 0.0)       cfg.scan_ofx_weight_beta = 0.0;
+
+     if(!tox_on) cfg.scan_ofx_weight_toxicity = 0.0;
+     if(!res_on) cfg.scan_ofx_weight_resiliency = 0.0;
+     if(!mp_on)  cfg.scan_ofx_weight_microprice = 0.0;
+
+     if(!imp_on)
+     {
+        cfg.scan_ofx_weight_lambda = 0.0;
+        cfg.scan_ofx_weight_beta   = 0.0;
+     }
+
+     if(cfg.scan_ofx_backend_quality_min < 0.0)
+        cfg.scan_ofx_backend_quality_min = 0.0;
+     if(cfg.scan_ofx_backend_quality_min > 1.0)
+        cfg.scan_ofx_backend_quality_min = 1.0;
+
+     if(!_CfgOFXAnyBlendContributorActive(cfg))
+     {
+        cfg.scan_ofx_weight_toxicity   = 0.0;
+        cfg.scan_ofx_weight_resiliency = 0.0;
+        cfg.scan_ofx_weight_microprice = 0.0;
+        cfg.scan_ofx_weight_lambda     = 0.0;
+        cfg.scan_ofx_weight_beta       = 0.0;
+        cfg.scan_ofx_backend_quality_min = 0.0;
+        return;
+     }
+
+     double wsum =
+        cfg.scan_ofx_weight_toxicity +
+        cfg.scan_ofx_weight_resiliency +
+        cfg.scan_ofx_weight_microprice +
+        cfg.scan_ofx_weight_lambda +
+        cfg.scan_ofx_weight_beta;
+
+     if(wsum <= 1e-12)
+     {
+        if(tox_on) cfg.scan_ofx_weight_toxicity   = 0.20;
+        if(res_on) cfg.scan_ofx_weight_resiliency = 0.20;
+        if(mp_on)  cfg.scan_ofx_weight_microprice = 0.15;
+
+        if(imp_on)
+        {
+           cfg.scan_ofx_weight_lambda = 0.25;
+           cfg.scan_ofx_weight_beta   = 0.20;
+        }
+
+        wsum =
+           cfg.scan_ofx_weight_toxicity +
+           cfg.scan_ofx_weight_resiliency +
+           cfg.scan_ofx_weight_microprice +
+           cfg.scan_ofx_weight_lambda +
+           cfg.scan_ofx_weight_beta;
+     }
+
+     if(wsum > 1e-12)
+     {
+        cfg.scan_ofx_weight_toxicity   /= wsum;
+        cfg.scan_ofx_weight_resiliency /= wsum;
+        cfg.scan_ofx_weight_microprice /= wsum;
+        cfg.scan_ofx_weight_lambda     /= wsum;
+        cfg.scan_ofx_weight_beta       /= wsum;
+     }
+  }
+
   inline int CfgOrderFlowEffectiveMode(const Settings &cfg)
   {
      // Canonical internal access path:
@@ -5093,44 +5198,11 @@ namespace Config
          cfg.scan_ofx_impact_smoothing_period = 2;
 
       // ------------------------------------------------------------------------
-      // 5g) Scanner fusion weights / quality gate
+      // 5g) Scanner fusion weights / backend quality gate
+      //     Keep non-live contributors at zero so config toggles never imply
+      //     unavailable advanced OFX paths.
       // ------------------------------------------------------------------------
-      if(cfg.scan_ofx_weight_toxicity < 0.0)   cfg.scan_ofx_weight_toxicity = 0.0;
-      if(cfg.scan_ofx_weight_resiliency < 0.0) cfg.scan_ofx_weight_resiliency = 0.0;
-      if(cfg.scan_ofx_weight_microprice < 0.0) cfg.scan_ofx_weight_microprice = 0.0;
-      if(cfg.scan_ofx_weight_lambda < 0.0)     cfg.scan_ofx_weight_lambda = 0.0;
-      if(cfg.scan_ofx_weight_beta < 0.0)       cfg.scan_ofx_weight_beta = 0.0;
-
-      if(cfg.scan_ofx_backend_quality_min < 0.0)
-         cfg.scan_ofx_backend_quality_min = 0.0;
-      if(cfg.scan_ofx_backend_quality_min > 1.0)
-         cfg.scan_ofx_backend_quality_min = 1.0;
-
-      {
-         double wsum =
-            cfg.scan_ofx_weight_toxicity +
-            cfg.scan_ofx_weight_resiliency +
-            cfg.scan_ofx_weight_microprice +
-            cfg.scan_ofx_weight_lambda +
-            cfg.scan_ofx_weight_beta;
-
-         if(wsum <= 1e-12)
-         {
-            cfg.scan_ofx_weight_toxicity   = 0.20;
-            cfg.scan_ofx_weight_resiliency = 0.20;
-            cfg.scan_ofx_weight_microprice = 0.15;
-            cfg.scan_ofx_weight_lambda     = 0.25;
-            cfg.scan_ofx_weight_beta       = 0.20;
-         }
-         else
-         {
-            cfg.scan_ofx_weight_toxicity   /= wsum;
-            cfg.scan_ofx_weight_resiliency /= wsum;
-            cfg.scan_ofx_weight_microprice /= wsum;
-            cfg.scan_ofx_weight_lambda     /= wsum;
-            cfg.scan_ofx_weight_beta       /= wsum;
-         }
-      }
+      _NormalizeOFXBlendWeightsForLiveContributors(cfg);
 
      // ------------------------------------------------------------------------
      // 6) Footprint dependency coherence
@@ -5209,6 +5281,50 @@ namespace Config
 
      if(!(cfg.scan_obi_enable || cfg.scan_of_enable) && _CfgOFXAdvancedFamilyRequested(cfg))
         warns += "advanced OFX toggles are enabled (toxicity / impact) while both scan_obi_enable=false and scan_of_enable=false; NormalizeOrderFlowFamily() forces those advanced OFX toggles OFF instead of waking parent lanes.\n";
+
+     if(cfg.scan_ofx_weight_toxicity > 0.0 && !_CfgOFXToxicityContributorActive(cfg))
+        warns += "scan_ofx_weight_toxicity>0 but no live toxicity contributor path exists (requires scan_ofx_toxicity_enable plus scan_obi_enable or scan_of_enable); NormalizeOrderFlowFamily() zeros that weight.\n";
+
+     if(cfg.scan_ofx_weight_resiliency > 0.0 && !_CfgOFXResiliencyContributorActive(cfg))
+        warns += "scan_ofx_weight_resiliency>0 but no live resiliency contributor path exists (requires scan_obi_enable and scan_obi_resiliency_enable); NormalizeOrderFlowFamily() zeros that weight.\n";
+
+     if(cfg.scan_ofx_weight_microprice > 0.0 && !_CfgOFXMicropriceContributorActive(cfg))
+        warns += "scan_ofx_weight_microprice>0 but no live microprice contributor path exists (requires scan_obi_enable and scan_obi_microprice_enable); NormalizeOrderFlowFamily() zeros that weight.\n";
+
+     if((cfg.scan_ofx_weight_lambda > 0.0 || cfg.scan_ofx_weight_beta > 0.0) &&
+        !_CfgOFXImpactContributorActive(cfg))
+        warns += "scan_ofx_weight_lambda/beta are >0 but no live impact contributor path exists (requires scan_ofx_impact_enable plus scan_obi_enable or scan_of_enable); NormalizeOrderFlowFamily() zeros those impact weights.\n";
+
+     if(!_CfgOFXAnyBlendContributorActive(cfg) &&
+        (cfg.scan_ofx_weight_toxicity > 0.0 ||
+         cfg.scan_ofx_weight_resiliency > 0.0 ||
+         cfg.scan_ofx_weight_microprice > 0.0 ||
+         cfg.scan_ofx_weight_lambda > 0.0 ||
+         cfg.scan_ofx_weight_beta > 0.0 ||
+         cfg.scan_ofx_backend_quality_min > 0.0))
+        warns += "advanced OFX blend weights/quality gate are configured but no live advanced OFX contributor path is enabled; NormalizeOrderFlowFamily() zeros those inert blend settings.\n";
+
+     {
+        const bool tox_on = _CfgOFXToxicityContributorActive(cfg);
+        const bool imp_on = _CfgOFXImpactContributorActive(cfg);
+        const bool mp_on  = _CfgOFXMicropriceContributorActive(cfg);
+        const bool res_on = _CfgOFXResiliencyContributorActive(cfg);
+
+        double live_wsum = 0.0;
+
+        if(tox_on) live_wsum += MathMax(0.0, cfg.scan_ofx_weight_toxicity);
+        if(res_on) live_wsum += MathMax(0.0, cfg.scan_ofx_weight_resiliency);
+        if(mp_on)  live_wsum += MathMax(0.0, cfg.scan_ofx_weight_microprice);
+
+        if(imp_on)
+        {
+           live_wsum += MathMax(0.0, cfg.scan_ofx_weight_lambda);
+           live_wsum += MathMax(0.0, cfg.scan_ofx_weight_beta);
+        }
+
+        if(_CfgOFXAnyBlendContributorActive(cfg) && live_wsum <= 1e-12)
+           warns += "all live advanced OFX blend contributors have zero effective weight; NormalizeOrderFlowFamily() reseeds canonical defaults and renormalizes across active contributors only.\n";
+     }
 
      if(cfg.scan_obi_microprice_enable && cfg.scan_obi_max_levels > 0 &&
         cfg.scan_obi_microprice_min_levels > cfg.scan_obi_max_levels)
@@ -13116,7 +13232,7 @@ struct Settings
 
    // OBI divergence / signal extras
    bool   scan_obi_div_enable;           // emit OBI divergence events (SC_OBI_DIV_*)
-   int    scan_obi_div_lookback;         // reserved / future richer divergence logic
+   int    scan_obi_div_lookback;         // live divergence compare lookback in samples (1 = previous sample)
    double scan_obi_div_min_price_atr;    // min price move in ATR units (scanner converts to points)
    double scan_obi_div_min_obi_move;     // min OBI metric delta for divergence
    int    scan_obi_div_cooldown_sec;     // cooldown between repeated divergence emits
@@ -13416,7 +13532,7 @@ struct Settings
    int    scan_vp_session_mode;        // 0=broker-day, 1=anchored session
    int    scan_vp_anchor_minute_utc;   // 0..1439 (minute-of-day anchor for anchored/session modes)
    int    scan_vp_composite_sessions;  // number of sessions/days to combine
-   int    scan_vp_visible_range_sec;   // caller-driven backend placeholder only; NormalizeOrderFlowFamily() forces this OFF until a real visible-range provider exists
+   int    scan_vp_visible_range_sec;   // serialized caller placeholder only; NormalizeOrderFlowFamily() forces this OFF because no live backend visible-range provider exists
 
    // Explicit time/fixed range inputs (epoch seconds; 0 = unset)
    datetime scan_vp_range_from_ts;    // used by TIME_RANGE / FIXED_RANGE when caller sets an absolute window
