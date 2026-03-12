@@ -1264,7 +1264,31 @@ namespace Config
      AUTOC_PATT_EMIT_TOP_CHANGE    = 1,
      AUTOC_PATT_EMIT_ALWAYS        = 2
   };
-  
+
+  enum AssetClassPreset
+  {
+     CFG_ASSET_PRESET_FX_XAU_OTC        = 0,
+     CFG_ASSET_PRESET_FUTURES_CLOB      = 1,
+     CFG_ASSET_PRESET_EQUITIES_FRAGMENTED = 2,
+     CFG_ASSET_PRESET_CRYPTO_EXCHANGE   = 3
+  };
+
+  enum TruthPolicyPreset
+  {
+     CFG_TRUTH_STRICT_INSTITUTIONAL = 0,
+     CFG_TRUTH_PROXY_ALLOWED_FX     = 1,
+     CFG_TRUTH_RESEARCH_MODE        = 2
+  };
+
+  enum VolatilityEstimatorMode
+  {
+     CFG_VOL_EST_RV         = 0,
+     CFG_VOL_EST_PARKINSON  = 1,
+     CFG_VOL_EST_GK         = 2,
+     CFG_VOL_EST_RS         = 3,
+     CFG_VOL_EST_YZ         = 4
+  };
+
   inline string Join(const string &arr[], const string sep)
   {
     const int n=ArraySize(arr);
@@ -4622,6 +4646,7 @@ namespace Config
     cfg.auto_vol_lookback_days     = 180;
     cfg.auto_vol_horizon_minutes   = 60;
     cfg.auto_vol_min_range_atr     = 0.90;
+    cfg.auto_vol_estimator_mode    = CFG_VOL_EST_RV;
    
     // PowerStats-like knobs (default conservative)
     cfg.auto_vol_use_m15              = true;
@@ -6474,6 +6499,14 @@ namespace Config
     cfg.tokyo_close_utc=ClampMinute(cfg.tokyo_close_utc);
     cfg.sydney_open_utc=ClampMinute(cfg.sydney_open_utc);
 
+    if(cfg.asset_class_preset < CFG_ASSET_PRESET_FX_XAU_OTC ||
+       cfg.asset_class_preset > CFG_ASSET_PRESET_CRYPTO_EXCHANGE)
+       cfg.asset_class_preset = CFG_ASSET_PRESET_FX_XAU_OTC;
+
+    if(cfg.truth_policy_preset < CFG_TRUTH_STRICT_INSTITUTIONAL ||
+       cfg.truth_policy_preset > CFG_TRUTH_RESEARCH_MODE)
+       cfg.truth_policy_preset = CFG_TRUTH_PROXY_ALLOWED_FX;
+
     // News
     if(cfg.block_pre_m<0) cfg.block_pre_m=0;
     if(cfg.block_post_m<0) cfg.block_post_m=0;
@@ -7499,6 +7532,10 @@ namespace Config
       // Normalized 0..1
       cfg.auto_vol_breakout_adx01 = MathMin(MathMax(cfg.auto_vol_breakout_adx01, 0.0), 1.0);
 
+      if(cfg.auto_vol_estimator_mode < CFG_VOL_EST_RV ||
+         cfg.auto_vol_estimator_mode > CFG_VOL_EST_YZ)
+         cfg.auto_vol_estimator_mode = CFG_VOL_EST_RV;
+
       // Ensure breakout cap is not accidentally tighter than non-breakout cap
       if(cfg.auto_vol_tp_cap_breakout_mult < cfg.auto_vol_tp_cap_mult)
         cfg.auto_vol_tp_cap_breakout_mult = cfg.auto_vol_tp_cap_mult;
@@ -8276,7 +8313,23 @@ namespace Config
 
     // Canonical OF/OBI/VP family warnings; mirrors NormalizeOrderFlowFamily() semantics.
     ValidateOrderFlowFamily(cfg, warns);
-    
+
+    if(cfg.asset_class_preset < CFG_ASSET_PRESET_FX_XAU_OTC ||
+       cfg.asset_class_preset > CFG_ASSET_PRESET_CRYPTO_EXCHANGE)
+      warns += "asset_class_preset out of range; Normalize() will clamp to FX_XAU_OTC.\n";
+
+    if(cfg.truth_policy_preset < CFG_TRUTH_STRICT_INSTITUTIONAL ||
+       cfg.truth_policy_preset > CFG_TRUTH_RESEARCH_MODE)
+      warns += "truth_policy_preset out of range; Normalize() will clamp to PROXY_ALLOWED_FX.\n";
+
+    if(cfg.auto_vol_estimator_mode < CFG_VOL_EST_RV ||
+       cfg.auto_vol_estimator_mode > CFG_VOL_EST_YZ)
+      warns += "auto_vol_estimator_mode out of range; Normalize() will clamp to RV.\n";
+
+    if(cfg.asset_class_preset == CFG_ASSET_PRESET_FX_XAU_OTC &&
+       cfg.truth_policy_preset == CFG_TRUTH_STRICT_INSTITUTIONAL)
+      warns += "FX_XAU_OTC + STRICT_INSTITUTIONAL may suppress most proxy-capable order-flow paths on OTC feeds.\n";
+
     // DOM sanity warnings (won't block; just tells you why it may be ineffective)
     #ifdef CFG_HAS_EXTRA_DOM_IMBALANCE
       if(cfg.extra_dom_imbalance)
@@ -8429,6 +8482,10 @@ namespace Config
      cfg.session_preset  = SESS_OFF;
      cfg.tokyo_close_utc = 6*60;   // 06:00 UTC
      cfg.sydney_open_utc = 21*60;  // 21:00 UTC
+
+     cfg.asset_class_preset  = CFG_ASSET_PRESET_FX_XAU_OTC;
+     cfg.truth_policy_preset = CFG_TRUTH_PROXY_ALLOWED_FX;
+      
      // If you have an enum profile, prefer a guard in Types.mqh; otherwise this is fine as bool.
      #ifdef CFG_HAS_PROFILE_ENUM
         cfg.profile = (int)PROF_DEFAULT;
@@ -8950,6 +9007,293 @@ namespace Config
     Normalize(cfg);
   }
 
+  inline int _ClampAssetClassPresetInt(const int v)
+  {
+    if(v < CFG_ASSET_PRESET_FX_XAU_OTC || v > CFG_ASSET_PRESET_CRYPTO_EXCHANGE)
+      return CFG_ASSET_PRESET_FX_XAU_OTC;
+    return v;
+  }
+
+  inline int _ClampTruthPolicyPresetInt(const int v)
+  {
+    if(v < CFG_TRUTH_STRICT_INSTITUTIONAL || v > CFG_TRUTH_RESEARCH_MODE)
+      return CFG_TRUTH_PROXY_ALLOWED_FX;
+    return v;
+  }
+
+  inline int _ClampVolatilityEstimatorModeInt(const int v)
+  {
+    if(v < CFG_VOL_EST_RV || v > CFG_VOL_EST_YZ)
+      return CFG_VOL_EST_RV;
+    return v;
+  }
+
+  inline AssetClassPreset CfgAssetClassPreset(const Settings &cfg)
+  {
+    return (AssetClassPreset)_ClampAssetClassPresetInt(cfg.asset_class_preset);
+  }
+
+  inline TruthPolicyPreset CfgTruthPolicyPreset(const Settings &cfg)
+  {
+    return (TruthPolicyPreset)_ClampTruthPolicyPresetInt(cfg.truth_policy_preset);
+  }
+
+  inline VolatilityEstimatorMode CfgVolatilityEstimatorMode(const Settings &cfg)
+  {
+    return (VolatilityEstimatorMode)_ClampVolatilityEstimatorModeInt(cfg.auto_vol_estimator_mode);
+  }
+
+  inline string AssetClassPresetName(const AssetClassPreset p)
+  {
+    switch(p)
+    {
+      case CFG_ASSET_PRESET_FUTURES_CLOB:        return "FUTURES_CLOB";
+      case CFG_ASSET_PRESET_EQUITIES_FRAGMENTED: return "EQUITIES_FRAGMENTED";
+      case CFG_ASSET_PRESET_CRYPTO_EXCHANGE:     return "CRYPTO_EXCHANGE";
+      case CFG_ASSET_PRESET_FX_XAU_OTC:
+      default:                                   return "FX_XAU_OTC";
+    }
+  }
+
+  inline string TruthPolicyPresetName(const TruthPolicyPreset p)
+  {
+    switch(p)
+    {
+      case CFG_TRUTH_STRICT_INSTITUTIONAL: return "STRICT_INSTITUTIONAL";
+      case CFG_TRUTH_RESEARCH_MODE:        return "RESEARCH_MODE";
+      case CFG_TRUTH_PROXY_ALLOWED_FX:
+      default:                             return "PROXY_ALLOWED_FX";
+    }
+  }
+
+  inline string VolatilityEstimatorModeName(const VolatilityEstimatorMode p)
+  {
+    switch(p)
+    {
+      case CFG_VOL_EST_PARKINSON: return "PARKINSON";
+      case CFG_VOL_EST_GK:        return "GK";
+      case CFG_VOL_EST_RS:        return "RS";
+      case CFG_VOL_EST_YZ:        return "YZ";
+      case CFG_VOL_EST_RV:
+      default:                    return "RV";
+    }
+  }
+
+  inline void _ForceVPVisibleRangeOff_NoNormalize(Settings &cfg)
+  {
+    if(cfg.scan_vp_profile_mode == 4)
+      cfg.scan_vp_profile_mode = 0;
+
+    cfg.scan_vp_visible_range_sec = 0;
+  }
+
+  inline void _ApplyAssetClassPreset_NoNormalize(Settings &cfg,
+                                                 const AssetClassPreset preset)
+  {
+    cfg.asset_class_preset = _ClampAssetClassPresetInt((int)preset);
+
+    if(preset == CFG_ASSET_PRESET_FX_XAU_OTC)
+    {
+      cfg.scan_foot_strict_trade_ticks_only = false;
+      cfg.scan_foot_allow_quote_proxy_ticks = true;
+      cfg.scan_foot_use_atr_proxy = true;
+
+      cfg.scan_obi_weighted_enable = false;
+      cfg.scan_obi_top_levels = 0;
+      cfg.scan_obi_signal_metric_mode = 3;
+      cfg.scan_obi_fx_fxlpi_enable = true;
+      cfg.scan_obi_ofi_mode = 0;
+      if(cfg.scan_obi_ofi_levels < 2) cfg.scan_obi_ofi_levels = 2;
+
+      cfg.scan_vp_use_footprint_ticks = false;
+      cfg.scan_vp_footprint_build_mode = 0;
+      cfg.scan_vp_force_tick_volume = true;
+    }
+    else if(preset == CFG_ASSET_PRESET_FUTURES_CLOB)
+    {
+      cfg.scan_foot_strict_trade_ticks_only = true;
+      cfg.scan_foot_allow_quote_proxy_ticks = false;
+      cfg.scan_foot_use_atr_proxy = false;
+
+      cfg.scan_obi_weighted_enable = true;
+      if(cfg.scan_obi_weight_mode == 0) cfg.scan_obi_weight_mode = 2;
+      if(cfg.scan_obi_top_levels < 8) cfg.scan_obi_top_levels = 8;
+      cfg.scan_obi_signal_metric_mode = 2;
+      cfg.scan_obi_ofi_mode = 1;
+      if(cfg.scan_obi_ofi_levels < 8) cfg.scan_obi_ofi_levels = 8;
+
+      cfg.scan_vp_use_footprint_ticks = true;
+      cfg.scan_vp_footprint_build_mode = 1;
+      cfg.scan_vp_force_tick_volume = false;
+    }
+    else if(preset == CFG_ASSET_PRESET_EQUITIES_FRAGMENTED)
+    {
+      cfg.scan_foot_strict_trade_ticks_only = true;
+      cfg.scan_foot_allow_quote_proxy_ticks = false;
+      cfg.scan_foot_use_atr_proxy = false;
+
+      cfg.scan_obi_weighted_enable = true;
+      if(cfg.scan_obi_weight_mode == 0) cfg.scan_obi_weight_mode = 1;
+      if(cfg.scan_obi_top_levels < 4) cfg.scan_obi_top_levels = 4;
+      cfg.scan_obi_signal_metric_mode = 2;
+      cfg.scan_obi_ofi_mode = 0;
+      if(cfg.scan_obi_ofi_levels < 4) cfg.scan_obi_ofi_levels = 4;
+
+      cfg.scan_vp_use_footprint_ticks = true;
+      cfg.scan_vp_footprint_build_mode = 1;
+      cfg.scan_vp_force_tick_volume = false;
+    }
+    else
+    {
+      cfg.scan_foot_strict_trade_ticks_only = true;
+      cfg.scan_foot_allow_quote_proxy_ticks = false;
+      cfg.scan_foot_use_atr_proxy = false;
+
+      cfg.scan_obi_weighted_enable = true;
+      if(cfg.scan_obi_weight_mode == 0) cfg.scan_obi_weight_mode = 2;
+      if(cfg.scan_obi_top_levels < 6) cfg.scan_obi_top_levels = 6;
+      cfg.scan_obi_signal_metric_mode = 2;
+      cfg.scan_obi_ofi_mode = 1;
+      if(cfg.scan_obi_ofi_levels < 6) cfg.scan_obi_ofi_levels = 6;
+
+      cfg.scan_vp_use_footprint_ticks = true;
+      cfg.scan_vp_footprint_build_mode = 1;
+      cfg.scan_vp_force_tick_volume = false;
+    }
+
+    _ForceVPVisibleRangeOff_NoNormalize(cfg);
+  }
+
+  inline void _ApplyTruthPolicyPreset_NoNormalize(Settings &cfg,
+                                                  const TruthPolicyPreset preset)
+  {
+    cfg.truth_policy_preset = _ClampTruthPolicyPresetInt((int)preset);
+
+    cfg.scan_obi_enable  = true;
+    cfg.scan_foot_enable = true;
+    cfg.scan_of_enable   = true;
+
+    if(preset == CFG_TRUTH_STRICT_INSTITUTIONAL)
+    {
+      cfg.scan_foot_strict_trade_ticks_only = true;
+      cfg.scan_foot_allow_quote_proxy_ticks = false;
+      cfg.scan_foot_use_atr_proxy = false;
+
+      cfg.scan_obi_weighted_enable = true;
+      if(cfg.scan_obi_weight_mode == 0) cfg.scan_obi_weight_mode = 2;
+      if(cfg.scan_obi_top_levels < 6) cfg.scan_obi_top_levels = 6;
+      cfg.scan_obi_signal_metric_mode = 2;
+
+      cfg.scan_vp_use_footprint_ticks = true;
+      if(cfg.scan_vp_footprint_build_mode == 0)
+         cfg.scan_vp_footprint_build_mode = 1;
+      cfg.scan_vp_force_tick_volume = false;
+    }
+    else if(preset == CFG_TRUTH_PROXY_ALLOWED_FX)
+    {
+      cfg.scan_foot_strict_trade_ticks_only = false;
+      cfg.scan_foot_allow_quote_proxy_ticks = true;
+      cfg.scan_foot_use_atr_proxy = true;
+
+      cfg.scan_obi_signal_metric_mode = 3;
+      cfg.scan_obi_fx_fxlpi_enable = true;
+
+      cfg.scan_vp_use_footprint_ticks = false;
+      cfg.scan_vp_footprint_build_mode = 0;
+      cfg.scan_vp_force_tick_volume = true;
+    }
+    else
+    {
+      cfg.scan_foot_strict_trade_ticks_only = false;
+      cfg.scan_foot_allow_quote_proxy_ticks = true;
+      cfg.scan_foot_use_atr_proxy = true;
+
+      cfg.scan_obi_weighted_enable = true;
+      if(cfg.scan_obi_weight_mode == 0) cfg.scan_obi_weight_mode = 2;
+      if(cfg.scan_obi_top_levels < 4) cfg.scan_obi_top_levels = 4;
+      if(cfg.scan_obi_signal_metric_mode <= 0) cfg.scan_obi_signal_metric_mode = 2;
+
+      cfg.scan_vp_use_footprint_ticks = true;
+      cfg.scan_vp_footprint_build_mode = 0;
+    }
+
+    _ForceVPVisibleRangeOff_NoNormalize(cfg);
+  }
+
+  inline void _ApplyVolatilityEstimatorMode_NoNormalize(Settings &cfg,
+                                                        const VolatilityEstimatorMode mode)
+  {
+    cfg.auto_vol_estimator_mode = _ClampVolatilityEstimatorModeInt((int)mode);
+  }
+
+  inline void ApplyAssetClassPreset(Settings &cfg,
+                                    const AssetClassPreset preset,
+                                    const bool log_summary=true)
+  {
+    _ApplyAssetClassPreset_NoNormalize(cfg, preset);
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyAssetClassPreset | %s | footStrict=%s | quoteProxy=%s | obiSigMode=%d | vpVisibleOff=%d",
+                  AssetClassPresetName(preset),
+                  BoolStr(cfg.scan_foot_strict_trade_ticks_only),
+                  BoolStr(cfg.scan_foot_allow_quote_proxy_ticks),
+                  cfg.scan_obi_signal_metric_mode,
+                  cfg.scan_vp_visible_range_sec);
+  }
+
+  inline void ApplyTruthPolicyPreset(Settings &cfg,
+                                     const TruthPolicyPreset preset,
+                                     const bool log_summary=true)
+  {
+    _ApplyTruthPolicyPreset_NoNormalize(cfg, preset);
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyTruthPolicyPreset | %s | footStrict=%s | quoteProxy=%s | vpTickVol=%s | vpVisibleOff=%d",
+                  TruthPolicyPresetName(preset),
+                  BoolStr(cfg.scan_foot_strict_trade_ticks_only),
+                  BoolStr(cfg.scan_foot_allow_quote_proxy_ticks),
+                  BoolStr(cfg.scan_vp_force_tick_volume),
+                  cfg.scan_vp_visible_range_sec);
+  }
+
+  inline void ApplyVolatilityEstimatorMode(Settings &cfg,
+                                           const VolatilityEstimatorMode mode,
+                                           const bool log_summary=true)
+  {
+    _ApplyVolatilityEstimatorMode_NoNormalize(cfg, mode);
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyVolatilityEstimatorMode | %s",
+                  VolatilityEstimatorModeName(mode));
+  }
+
+  inline void ApplyMarketStructurePresetTriplet(Settings &cfg,
+                                                const AssetClassPreset asset_preset,
+                                                const TruthPolicyPreset truth_preset,
+                                                const VolatilityEstimatorMode vol_mode,
+                                                const bool log_summary=true)
+  {
+    _ApplyAssetClassPreset_NoNormalize(cfg, asset_preset);
+    _ApplyTruthPolicyPreset_NoNormalize(cfg, truth_preset);
+    _ApplyVolatilityEstimatorMode_NoNormalize(cfg, vol_mode);
+
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyMarketStructurePresetTriplet | asset=%s | truth=%s | vol=%s | vpVisibleOff=%d",
+                  AssetClassPresetName(asset_preset),
+                  TruthPolicyPresetName(truth_preset),
+                  VolatilityEstimatorModeName(vol_mode),
+                  cfg.scan_vp_visible_range_sec);
+  }
+
   inline void ApplyStrategyVetoKnobs(Settings &cfg,
                                      const bool   struct_on,
                                      const bool   liq_on,
@@ -9069,7 +9413,11 @@ namespace Config
     s+=",preset="+IntegerToString((int)c.session_preset);
     s+=",tkyC="+IntegerToString(c.tokyo_close_utc);
     s+=",sydO="+IntegerToString(c.sydney_open_utc);
-    
+
+    s+=",assetPreset="+IntegerToString(c.asset_class_preset);
+    s+=",truthPreset="+IntegerToString(c.truth_policy_preset);
+    s+=",volEst="+IntegerToString(c.auto_vol_estimator_mode);
+
     #ifdef CFG_HAS_STRAT_MODE
       s+=",sMode="+IntegerToString((int)CfgStrategyMode(c));
     #endif
@@ -11340,6 +11688,21 @@ namespace Config
       #endif
       else if(k=="tkyC") cfg.tokyo_close_utc=ToInt(v);
       else if(k=="sydO") cfg.sydney_open_utc=ToInt(v);
+      else if(k=="assetPreset")
+      {
+        cfg.asset_class_preset = _ClampAssetClassPresetInt(ToInt(v));
+        _ApplyAssetClassPreset_NoNormalize(cfg, (AssetClassPreset)cfg.asset_class_preset);
+      }
+      else if(k=="truthPreset")
+      {
+        cfg.truth_policy_preset = _ClampTruthPolicyPresetInt(ToInt(v));
+        _ApplyTruthPolicyPreset_NoNormalize(cfg, (TruthPolicyPreset)cfg.truth_policy_preset);
+      }
+      else if(k=="volEst")
+      {
+        cfg.auto_vol_estimator_mode = _ClampVolatilityEstimatorModeInt(ToInt(v));
+        _ApplyVolatilityEstimatorMode_NoNormalize(cfg, (VolatilityEstimatorMode)cfg.auto_vol_estimator_mode);
+      }
 
       // Directional bias mode (manual vs ICT auto)
       else if(k=="dirBias")
@@ -12978,6 +13341,8 @@ struct Settings
   SessionPreset     session_preset;      // OFF or one of the presets
   int               tokyo_close_utc;     // minutes-of-day UTC
   int               sydney_open_utc;     // minutes-of-day UTC
+  int               asset_class_preset;  // Config::AssetClassPreset
+  int               truth_policy_preset; // Config::TruthPolicyPreset
   
   // ===== Base Confluence Gate =====
    int    cf_min_needed;     // how many checks must pass
@@ -13731,6 +14096,7 @@ struct Settings
    int    auto_vol_lookback_days;
    int    auto_vol_horizon_minutes;
    double auto_vol_min_range_atr;
+   int    auto_vol_estimator_mode;    // Config::VolatilityEstimatorMode
    
    // PowerStats-like extensions (used by Autochartist vol + RiskEngine sanity)
    bool   auto_vol_use_m15;                 // true => include 15m/30m bands (more realism)

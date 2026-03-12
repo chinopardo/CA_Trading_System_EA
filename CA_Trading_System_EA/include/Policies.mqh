@@ -55,6 +55,32 @@
 #include "CAEA_dbg.mqh"
 #include "ICTWyckoffPlaybook.mqh"
 
+#ifndef POLICIES_HAS_RISKENGINE_DIAG_BRIDGE
+  #ifdef RISKENGINE_HAS_GETLASTDIAG_API
+    #define POLICIES_HAS_RISKENGINE_DIAG_BRIDGE 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_RISKENGINE_DIAG_SYMBOL_BRIDGE
+  #ifdef RISKENGINE_HAS_GETLASTDIAG_SYMBOL_API
+    #define POLICIES_HAS_RISKENGINE_DIAG_SYMBOL_BRIDGE 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_CAEA_DBG_BRIDGE
+  #ifdef CAEA_DBG_AVAILABLE
+    #define POLICIES_HAS_CAEA_DBG_BRIDGE 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_POLICY_RISK_SCALING
+  #define POLICIES_HAS_POLICY_RISK_SCALING 1
+#endif
+
+#ifndef POLICIES_SIZING_RESET_MULT_DEFAULT
+  #define POLICIES_SIZING_RESET_MULT_DEFAULT 0.50
+#endif
+
 // ---------------------------------------------
 // Local window test in "minutes since midnight"
 // Handles normal and wrap-around windows (e.g., 23:00->02:00)
@@ -258,6 +284,9 @@ namespace Policies
     // Daily DD
     double day_dd_pct;
     double day_dd_limit_pct;
+    double day_dd_strict_pct;
+    bool   sizing_reset_active;
+    int    sizing_reset_sec_left;
 
     // Account DD
     bool   acct_stop_latched;
@@ -459,6 +488,20 @@ namespace Policies
     #endif
   }
 
+  inline double CfgSizingResetMult(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_BIGLOSS_RESET_MULT
+       const double m = cfg.bigloss_reset_mult;
+       return Clamp((m > 0.0 ? m : POLICIES_SIZING_RESET_MULT_DEFAULT), 0.05, 1.0);
+     #else
+       #ifdef CFG_HAS_SIZING_RESET_MULT
+         const double m = cfg.sizing_reset_mult;
+         return Clamp((m > 0.0 ? m : POLICIES_SIZING_RESET_MULT_DEFAULT), 0.05, 1.0);
+       #else
+         return POLICIES_SIZING_RESET_MULT_DEFAULT;
+       #endif
+     #endif
+   }
   inline long CfgMagicNumber(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAGIC_NUMBER
@@ -1086,6 +1129,8 @@ namespace Policies
   static string   s_last_eval_sym   = "";    // last symbol passed to _EvaluateCoreEx/_EvaluateFullEx (telemetry)
   static long     s_login           = 0;
   static long     s_magic_cached    = 0;
+  static double   s_last_day_dd_active_pct = 0.0;
+  static double   s_last_day_dd_strict_pct = 0.0;
 
   // ----------------------------------------------------------------------------
   // Router confluence-pool telemetry frame (non-persistent; set by Router)
@@ -1645,15 +1690,18 @@ namespace Policies
 
    // For logs/diagnostics: report the ACTIVE mode (adaptive when enabled, else fixed)
    dd_pct_out = (adaptive_on ? adaptive_now_pct : fixed_pct);
-   
-   // (Optional) strictest dd% (debug/telemetry only)
-   const double dd_pct_strict = MathMax(fixed_pct, adaptive_now_pct);
-   if(false) { Print(dd_pct_strict); } // placeholder to silence unused warnings if you later log it
+
+   // Centralized telemetry for HUD / policy consumers.
+   s_last_day_dd_active_pct = dd_pct_out;
+   s_last_day_dd_strict_pct = MathMax(fixed_pct, adaptive_now_pct);
    
    // Option B: when adaptive is enabled, it REPLACES fixed-base DD for the daily equity stop.
    return (adaptive_on ? adaptive_hit : fixed_hit);
   }
-  
+
+  inline double LastDailyDDActivePct(){ return s_last_day_dd_active_pct; }
+  inline double LastDailyDDStrictPct(){ return s_last_day_dd_strict_pct; }
+
   // ----------------------------------------------------------------------------
    // Account-wide (challenge) equity drawdown floor
    // Measures against fixed challenge baseline (never re-anchors).
@@ -2558,6 +2606,10 @@ inline void NotifyTradeResult(const double r_multiple)
 
     out.day_eq0           = s_dayEqStart;
     out.day_dd_limit_pct  = CfgMaxDailyDDPct(cfg);
+    out.day_dd_pct          = LastDailyDDActivePct();
+    out.day_dd_strict_pct   = LastDailyDDStrictPct();
+    out.sizing_reset_active = SizingResetActive();
+    out.sizing_reset_sec_left = SizingResetSecondsLeft();
 
     out.acct_eq0          = s_acctEqStart;
     out.acct_dd_limit_pct = CfgMaxAccountDDPct(cfg);
@@ -2589,9 +2641,13 @@ inline void NotifyTradeResult(const double r_multiple)
     // 2) Daily equity DD
     {
       double dd_pct=0.0;
-      if(DailyEquityDDHit(cfg, dd_pct))
+      const bool dd_hit = DailyEquityDDHit(cfg, dd_pct);
+
+      out.day_dd_pct        = dd_pct;
+      out.day_dd_strict_pct = LastDailyDDStrictPct();
+
+      if(dd_hit)
       {
-        out.day_dd_pct = dd_pct;
         _PolicyVeto(out, GATE_DAILYDD, CA_POLMASK_DAILYDD);
         if(!audit) return false;
       }
@@ -3016,7 +3072,51 @@ inline void NotifyTradeResult(const double r_multiple)
 
   inline bool RegimeConsensusOK(const Settings &cfg)
    { return RegimeConsensusOK(cfg, _Symbol); }
-   
+
+
+  inline ENUM_TIMEFRAMES CfgTFH4Safe(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_TF_H4
+      if((int)cfg.tf_h4 >= (int)PERIOD_M1)
+        return cfg.tf_h4;
+    #endif
+    return PERIOD_H4;
+  }
+
+  inline double PolicyRegimeRiskMultiplier(const Settings &cfg, const string sym)
+  {
+    const ENUM_TIMEFRAMES tfEntry = CfgTFEntry(cfg);
+    const ENUM_TIMEFRAMES tfH4    = CfgTFH4Safe(cfg);
+
+    const double tqMin = CfgRegimeTQMin(cfg);
+    const double sgMin = CfgRegimeSGMin(cfg);
+
+    const double tqEntry = RegimeX::TrendQuality(sym, tfEntry, 60);
+    const double sgEntry = Corr::HysteresisSlopeGuard(sym, tfEntry, 14, 23.0, 15.0);
+
+    double mult = 1.0;
+
+    // Entry-TF regime quality
+    if(tqEntry < tqMin && sgEntry < sgMin)
+      mult = 0.75;
+    else if(tqEntry < tqMin || sgEntry < sgMin)
+      mult = 0.90;
+
+    // H4 confirmation can only tighten, never loosen
+    if(tfH4 != tfEntry)
+    {
+      const double tqH4 = RegimeX::TrendQuality(sym, tfH4, 60);
+      const double sgH4 = Corr::HysteresisSlopeGuard(sym, tfH4, 14, 23.0, 15.0);
+
+      if(tqH4 < tqMin && sgH4 < sgMin)
+        mult = MathMin(mult, 0.85);
+      else if(tqH4 < tqMin || sgH4 < sgMin)
+        mult = MathMin(mult, 0.95);
+    }
+
+    return Clamp(mult, 0.10, 1.0);
+  }
+  
   // ----------------------------------------------------------------------------
   // Liquidity (ATR:Spread) floor
   // ----------------------------------------------------------------------------
@@ -3101,6 +3201,32 @@ inline void NotifyTradeResult(const double r_multiple)
        if(false) { Print(sym); Print(bd.score_final); }
      #endif
    }
+
+  inline void ApplyPolicyRiskOverlays(const Settings &cfg, const string sym,
+                                      StratScore &ss, ConfluenceBreakdown &bd, bool &skip_out)
+  {
+    skip_out = false;
+
+    // 1) News remains a veto / risk modifier only.
+    ApplyNewsScaling(cfg, sym, ss, bd, skip_out);
+    if(skip_out) return;
+
+    // 2) Big-loss sizing reset latch — shrink sizing centrally, do not clone this in strategies.
+    if(SizingResetActive())
+    {
+      const double reset_mult = CfgSizingResetMult(cfg);
+      ss.risk_mult = Clamp01(ss.risk_mult * Clamp(reset_mult, 0.05, 1.0));
+    }
+
+    // 3) Regime derisk — context/risk only, not signal ownership.
+    if(CfgRegimeGateOn(cfg))
+    {
+      const double regime_mult = PolicyRegimeRiskMultiplier(cfg, sym);
+      ss.risk_mult = Clamp01(ss.risk_mult * regime_mult);
+    }
+
+    bd.score_final = ss.score;
+  }
 
   // ----------------------------------------------------------------------------
   // Core gates: Check / CheckFull / AllowedByPolicies
@@ -3322,13 +3448,13 @@ inline void NotifyTradeResult(const double r_multiple)
     const int spr_pts = (int)MathRound(MarketData::SpreadPoints(sym));
     int cap_pts = EffMaxSpreadPts(cfg, sym);          // honor overrides
     if(cap_pts > 0)
-    {
-      double adj_cap = (double)cap_pts;
-      if(CfgWeeklyRampOn(cfg))
-        adj_cap = AdjustSpreadCapWeeklyOpenPts(cfg, adj_cap);
-      cap_pts = (int)MathFloor(adj_cap);
-      if(spr_pts > cap_pts){ code_out = POLICY_SPREAD_HIGH; return false; }
-    }
+    StratScore SS = in_ss; ConfluenceBreakdown BD = in_bd;
+    bool skip=false; ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
+    if(skip){ gate_reason=GATE_NEWS; out_intent.reason=gate_reason; return false; }
+
+    OrderPlan plan; ZeroMemory(plan);
+    if(!Risk::ComputeOrderForSymbol(symbol, dir, cfg, SS, plan, BD))
+    { gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
 
     // 5) Unified cooldown (persisted)
     if(LossCooldownActive() || TradeCooldownActive())
@@ -3413,7 +3539,47 @@ inline void NotifyTradeResult(const double r_multiple)
     bool     month_target_hit;
     double   month_start_equity;
     double   month_profit_pct;  // 0–100 %, +10.0 == +10 %
+
+    double   day_dd_strict_pct;
+    bool     sizing_reset_active;
+    int      sizing_reset_sec_left;
+
+    int      risk_reject_code;
+    double   risk_money_base;
+    double   risk_money_final;
+    double   risk_taper;
+    double   risk_throttle;
+    double   risk_news_mult;
+    double   risk_eff_mult;
+    double   risk_lots_final;
   };
+
+  inline void _FillRiskTelemetryFromEngine(const string sym, Telemetry &t)
+  {
+    #ifdef POLICIES_HAS_RISKENGINE_DIAG_BRIDGE
+      Risk::RiskDiag rd;
+      bool have = false;
+
+      #ifdef POLICIES_HAS_RISKENGINE_DIAG_SYMBOL_BRIDGE
+        have = Risk::GetLastDiagForSymbol(sym, rd);
+      #else
+        Risk::GetLastDiag(rd);
+        have = (StringLen(rd.sym) > 0 && StringCompare(rd.sym, sym, false) == 0);
+      #endif
+
+      if(!have)
+        return;
+
+      t.risk_reject_code = rd.reject_code;
+      t.risk_money_base  = rd.risk_money_base;
+      t.risk_money_final = rd.risk_money_final;
+      t.risk_taper       = rd.taper;
+      t.risk_throttle    = rd.throttle;
+      t.risk_news_mult   = rd.news_mult;
+      t.risk_eff_mult    = rd.eff_mult;
+      t.risk_lots_final  = rd.lots_final;
+    #endif
+  }
 
    inline void TelemetrySnapshot(const Settings &cfg, Telemetry &t)
   {
@@ -3455,7 +3621,9 @@ inline void NotifyTradeResult(const double r_multiple)
     t.month_target_hit   = pr.month_target_hit;
     t.month_start_equity = pr.month_eq0;
     t.month_profit_pct   = pr.month_profit_pct;
-
+    t.day_dd_strict_pct   = pr.day_dd_strict_pct;
+    t.sizing_reset_active = pr.sizing_reset_active;
+    t.sizing_reset_sec_left = pr.sizing_reset_sec_left;
 
     // day PL & stops
     double pl=0.0; int w=0,l=0;
@@ -3465,6 +3633,10 @@ inline void NotifyTradeResult(const double r_multiple)
     t.attempts_today = _GVGetI(_Key("ATTEMPTS_D"), 0);
     t.last_attempt_ts= (datetime)_GVGetD(_Key("LAST_ATTEMPT_TS"), 0.0);
     t.last_retcode   = (uint)_GVGetI(_Key("LAST_EXEC_RC"), 0);
+    {
+      const string risk_sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
+      _FillRiskTelemetryFromEngine(risk_sym, t);
+    }
   }
 
   // ----------------------------------------------------------------------------
@@ -3523,11 +3695,11 @@ inline void NotifyTradeResult(const double r_multiple)
     { out_intent.reason=gate_reason; return false; }
 
     StratScore SS = in_ss; ConfluenceBreakdown BD = in_bd;
-    bool skip=false; ApplyNewsScaling(cfg, symbol, SS, BD, skip);
+    bool skip=false; ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
     if(skip){ gate_reason=GATE_NEWS; out_intent.reason=gate_reason; return false; }
 
     OrderPlan plan; ZeroMemory(plan);
-    if(!Risk::ComputeOrder(dir, cfg, SS, plan, BD))
+    if(!Risk::ComputeOrderForSymbol(symbol, dir, cfg, SS, plan, BD))
     { gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
 
     out_intent.ok        = true;
