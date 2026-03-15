@@ -298,6 +298,9 @@ struct Settings;
 #ifndef CFG_HAS_SCAN_OFX_SCANNER_BLEND_SETTINGS
   #define CFG_HAS_SCAN_OFX_SCANNER_BLEND_SETTINGS 1
 #endif
+#ifndef CFG_HAS_SCAN_INST_STATE_SETTINGS
+  #define CFG_HAS_SCAN_INST_STATE_SETTINGS 1
+#endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -4251,7 +4254,52 @@ namespace Config
       cfg.scan_ofx_weight_lambda                  = 0.25;
       cfg.scan_ofx_weight_beta                    = 0.20;
       cfg.scan_ofx_backend_quality_min            = 0.20;
-      
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      // --- Institutional-state transport family (scanner/backend only; OFF by default to preserve behavior)
+      cfg.scan_inst_state_enable                 = false;
+
+      cfg.scan_inst_twap_lookback                = 60;
+      cfg.scan_inst_twap_session_mode            = 0;    // 0=broker-day, 1=session-anchor, 2=rolling
+
+      cfg.scan_inst_pov_gap_mode                 = 1;    // 0=off/simple, 1=participation-proxy, 2=benchmark-gap proxy
+      cfg.scan_inst_pov_target_participation01   = 0.10; // 10% participation proxy target
+
+      cfg.scan_inst_bv_lookback                  = 50;
+      cfg.scan_inst_jump_proxy_enable            = true;
+      cfg.scan_inst_jump_proxy_threshold_z       = 1.00;
+
+      cfg.scan_inst_market_profile_enable        = false;
+      cfg.scan_inst_tpo_bin_mode                 = 0;    // 0=use VP bin_points, 1=use VP bin_count
+      cfg.scan_inst_tpo_session_mode             = 0;    // 0=broker-day, 1=session-anchor
+
+      cfg.scan_inst_spread_shock_z_lookback      = 50;
+      cfg.scan_inst_depth_fade_baseline_lookback = 50;
+
+      // Contributor weights for the institutional state vector (seeded for later normalization)
+      cfg.scan_inst_weight_microprice            = 0.10;
+      cfg.scan_inst_weight_resiliency            = 0.10;
+      cfg.scan_inst_weight_depth_fade            = 0.08;
+      cfg.scan_inst_weight_cvd                   = 0.12;
+      cfg.scan_inst_weight_toxicity              = 0.12;
+      cfg.scan_inst_weight_impact                = 0.12;
+      cfg.scan_inst_weight_profile_acceptance    = 0.10;
+      cfg.scan_inst_weight_market_profile        = 0.08;
+      cfg.scan_inst_weight_benchmark             = 0.10;
+      cfg.scan_inst_weight_jump                  = 0.05;
+      cfg.scan_inst_weight_sweep                 = 0.03;
+
+      // Final head-combiner weights
+      cfg.scan_inst_head_weight_alpha            = 0.50;
+      cfg.scan_inst_head_weight_execution        = 0.25;
+      cfg.scan_inst_head_weight_risk             = 0.25;
+
+      // Scanner-grade thresholds for the three fused heads
+      cfg.scan_inst_alpha_threshold              = 0.55;
+      cfg.scan_inst_execution_threshold          = 0.40;
+      cfg.scan_inst_risk_threshold               = 0.60;
+#endif
+
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
       // Explicit init avoids zero-value ambiguity when feature is later enabled.
       cfg.scan_vsa_hook_enable                = false;
@@ -4974,6 +5022,222 @@ namespace Config
      }
   }
 
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+  inline bool _CfgInstMicropriceContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_obi_enable && cfg.scan_obi_microprice_enable);
+  }
+
+  inline bool _CfgInstResiliencyContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_obi_enable && cfg.scan_obi_resiliency_enable);
+  }
+
+  inline bool _CfgInstDepthFadeContributorActive(const Settings &cfg)
+  {
+     // Depth-fade / spread-shock transport is book/liquidity-owned in this stack.
+     // Until a separate transport family is wired, keep the ownership anchored to the OBI parent lane.
+     return cfg.scan_obi_enable;
+  }
+
+  inline bool _CfgInstCVDContributorActive(const Settings &cfg)
+  {
+     // In this codebase, the user's requested "scan_of_delta_enable" maps to scan_of_enable.
+     return cfg.scan_of_enable;
+  }
+
+  inline bool _CfgInstToxicityContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_of_enable && cfg.scan_ofx_toxicity_enable);
+  }
+
+  inline bool _CfgInstImpactContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_of_enable && cfg.scan_ofx_impact_enable);
+  }
+
+  inline bool _CfgInstProfileAcceptanceContributorActive(const Settings &cfg)
+  {
+     // In this codebase, the user's requested "scan_profile_enable" maps to scan_vp_enable.
+     return cfg.scan_vp_enable;
+  }
+
+  inline bool _CfgInstMarketProfileContributorActive(const Settings &cfg)
+  {
+     return (cfg.scan_vp_enable && cfg.scan_inst_market_profile_enable);
+  }
+
+  inline bool _CfgInstBenchmarkContributorActive(const Settings &cfg)
+  {
+     // Benchmark transport (VWAP/TWAP/POV-gap) is intentionally independent from VP ownership.
+     return true;
+  }
+
+  inline bool _CfgInstJumpContributorActive(const Settings &cfg)
+  {
+     return cfg.scan_inst_jump_proxy_enable;
+  }
+
+  inline bool _CfgInstSweepContributorActive(const Settings &cfg)
+  {
+     return cfg.scan_liq_enable;
+  }
+
+  inline void _NormalizeInstitutionalContributorWeightsForLiveSources(Settings &cfg)
+  {
+     if(cfg.scan_inst_weight_microprice < 0.0)         cfg.scan_inst_weight_microprice = 0.0;
+     if(cfg.scan_inst_weight_resiliency < 0.0)         cfg.scan_inst_weight_resiliency = 0.0;
+     if(cfg.scan_inst_weight_depth_fade < 0.0)         cfg.scan_inst_weight_depth_fade = 0.0;
+     if(cfg.scan_inst_weight_cvd < 0.0)                cfg.scan_inst_weight_cvd = 0.0;
+     if(cfg.scan_inst_weight_toxicity < 0.0)           cfg.scan_inst_weight_toxicity = 0.0;
+     if(cfg.scan_inst_weight_impact < 0.0)             cfg.scan_inst_weight_impact = 0.0;
+     if(cfg.scan_inst_weight_profile_acceptance < 0.0) cfg.scan_inst_weight_profile_acceptance = 0.0;
+     if(cfg.scan_inst_weight_market_profile < 0.0)     cfg.scan_inst_weight_market_profile = 0.0;
+     if(cfg.scan_inst_weight_benchmark < 0.0)          cfg.scan_inst_weight_benchmark = 0.0;
+     if(cfg.scan_inst_weight_jump < 0.0)               cfg.scan_inst_weight_jump = 0.0;
+     if(cfg.scan_inst_weight_sweep < 0.0)              cfg.scan_inst_weight_sweep = 0.0;
+
+     if(!_CfgInstMicropriceContributorActive(cfg))         cfg.scan_inst_weight_microprice = 0.0;
+     if(!_CfgInstResiliencyContributorActive(cfg))         cfg.scan_inst_weight_resiliency = 0.0;
+     if(!_CfgInstDepthFadeContributorActive(cfg))          cfg.scan_inst_weight_depth_fade = 0.0;
+     if(!_CfgInstCVDContributorActive(cfg))                cfg.scan_inst_weight_cvd = 0.0;
+     if(!_CfgInstToxicityContributorActive(cfg))           cfg.scan_inst_weight_toxicity = 0.0;
+     if(!_CfgInstImpactContributorActive(cfg))             cfg.scan_inst_weight_impact = 0.0;
+     if(!_CfgInstProfileAcceptanceContributorActive(cfg))  cfg.scan_inst_weight_profile_acceptance = 0.0;
+     if(!_CfgInstMarketProfileContributorActive(cfg))      cfg.scan_inst_weight_market_profile = 0.0;
+     if(!_CfgInstBenchmarkContributorActive(cfg))          cfg.scan_inst_weight_benchmark = 0.0;
+     if(!_CfgInstJumpContributorActive(cfg))               cfg.scan_inst_weight_jump = 0.0;
+     if(!_CfgInstSweepContributorActive(cfg))              cfg.scan_inst_weight_sweep = 0.0;
+
+     double wsum =
+        cfg.scan_inst_weight_microprice +
+        cfg.scan_inst_weight_resiliency +
+        cfg.scan_inst_weight_depth_fade +
+        cfg.scan_inst_weight_cvd +
+        cfg.scan_inst_weight_toxicity +
+        cfg.scan_inst_weight_impact +
+        cfg.scan_inst_weight_profile_acceptance +
+        cfg.scan_inst_weight_market_profile +
+        cfg.scan_inst_weight_benchmark +
+        cfg.scan_inst_weight_jump +
+        cfg.scan_inst_weight_sweep;
+
+     if(wsum <= 1e-12)
+     {
+        if(_CfgInstBenchmarkContributorActive(cfg)) cfg.scan_inst_weight_benchmark = 0.40;
+        if(_CfgInstCVDContributorActive(cfg))       cfg.scan_inst_weight_cvd = 0.20;
+        if(_CfgInstToxicityContributorActive(cfg))  cfg.scan_inst_weight_toxicity = 0.10;
+        if(_CfgInstImpactContributorActive(cfg))    cfg.scan_inst_weight_impact = 0.10;
+        if(_CfgInstMicropriceContributorActive(cfg))cfg.scan_inst_weight_microprice = 0.08;
+        if(_CfgInstResiliencyContributorActive(cfg))cfg.scan_inst_weight_resiliency = 0.05;
+        if(_CfgInstDepthFadeContributorActive(cfg)) cfg.scan_inst_weight_depth_fade = 0.03;
+        if(_CfgInstProfileAcceptanceContributorActive(cfg)) cfg.scan_inst_weight_profile_acceptance = 0.02;
+        if(_CfgInstMarketProfileContributorActive(cfg))     cfg.scan_inst_weight_market_profile = 0.01;
+        if(_CfgInstJumpContributorActive(cfg))      cfg.scan_inst_weight_jump = 0.005;
+        if(_CfgInstSweepContributorActive(cfg))     cfg.scan_inst_weight_sweep = 0.005;
+
+        wsum =
+           cfg.scan_inst_weight_microprice +
+           cfg.scan_inst_weight_resiliency +
+           cfg.scan_inst_weight_depth_fade +
+           cfg.scan_inst_weight_cvd +
+           cfg.scan_inst_weight_toxicity +
+           cfg.scan_inst_weight_impact +
+           cfg.scan_inst_weight_profile_acceptance +
+           cfg.scan_inst_weight_market_profile +
+           cfg.scan_inst_weight_benchmark +
+           cfg.scan_inst_weight_jump +
+           cfg.scan_inst_weight_sweep;
+     }
+
+     if(wsum > 1e-12)
+     {
+        cfg.scan_inst_weight_microprice         /= wsum;
+        cfg.scan_inst_weight_resiliency         /= wsum;
+        cfg.scan_inst_weight_depth_fade         /= wsum;
+        cfg.scan_inst_weight_cvd                /= wsum;
+        cfg.scan_inst_weight_toxicity           /= wsum;
+        cfg.scan_inst_weight_impact             /= wsum;
+        cfg.scan_inst_weight_profile_acceptance /= wsum;
+        cfg.scan_inst_weight_market_profile     /= wsum;
+        cfg.scan_inst_weight_benchmark          /= wsum;
+        cfg.scan_inst_weight_jump               /= wsum;
+        cfg.scan_inst_weight_sweep              /= wsum;
+     }
+  }
+
+  inline void NormalizeInstitutionalStateFamily(Settings &cfg)
+  {
+     if(cfg.scan_inst_twap_lookback < 2)
+        cfg.scan_inst_twap_lookback = 60;
+
+     cfg.scan_inst_twap_session_mode = MathMin(MathMax(cfg.scan_inst_twap_session_mode, 0), 2);
+     cfg.scan_inst_pov_gap_mode      = MathMin(MathMax(cfg.scan_inst_pov_gap_mode,      0), 2);
+
+     if(cfg.scan_inst_pov_target_participation01 < 0.0)
+        cfg.scan_inst_pov_target_participation01 = 0.0;
+     if(cfg.scan_inst_pov_target_participation01 > 1.0)
+        cfg.scan_inst_pov_target_participation01 = 1.0;
+
+     if(cfg.scan_inst_bv_lookback < 2)
+        cfg.scan_inst_bv_lookback = 50;
+
+     if(cfg.scan_inst_jump_proxy_threshold_z < 0.0)
+        cfg.scan_inst_jump_proxy_threshold_z = 0.0;
+
+     cfg.scan_inst_tpo_bin_mode     = MathMin(MathMax(cfg.scan_inst_tpo_bin_mode,     0), 1);
+     cfg.scan_inst_tpo_session_mode = MathMin(MathMax(cfg.scan_inst_tpo_session_mode, 0), 1);
+
+     if(cfg.scan_inst_spread_shock_z_lookback < 5)
+        cfg.scan_inst_spread_shock_z_lookback = 50;
+
+     if(cfg.scan_inst_depth_fade_baseline_lookback < 5)
+        cfg.scan_inst_depth_fade_baseline_lookback = 50;
+
+     if(cfg.scan_inst_head_weight_alpha < 0.0)     cfg.scan_inst_head_weight_alpha = 0.0;
+     if(cfg.scan_inst_head_weight_execution < 0.0) cfg.scan_inst_head_weight_execution = 0.0;
+     if(cfg.scan_inst_head_weight_risk < 0.0)      cfg.scan_inst_head_weight_risk = 0.0;
+
+     double hsum =
+        cfg.scan_inst_head_weight_alpha +
+        cfg.scan_inst_head_weight_execution +
+        cfg.scan_inst_head_weight_risk;
+
+     if(hsum <= 1e-12)
+     {
+        cfg.scan_inst_head_weight_alpha     = 0.50;
+        cfg.scan_inst_head_weight_execution = 0.25;
+        cfg.scan_inst_head_weight_risk      = 0.25;
+        hsum = 1.0;
+     }
+
+     cfg.scan_inst_head_weight_alpha     /= hsum;
+     cfg.scan_inst_head_weight_execution /= hsum;
+     cfg.scan_inst_head_weight_risk      /= hsum;
+
+     if(cfg.scan_inst_alpha_threshold < 0.0)     cfg.scan_inst_alpha_threshold = 0.0;
+     if(cfg.scan_inst_alpha_threshold > 1.0)     cfg.scan_inst_alpha_threshold = 1.0;
+
+     if(cfg.scan_inst_execution_threshold < 0.0) cfg.scan_inst_execution_threshold = 0.0;
+     if(cfg.scan_inst_execution_threshold > 1.0) cfg.scan_inst_execution_threshold = 1.0;
+
+     if(cfg.scan_inst_risk_threshold < 0.0)      cfg.scan_inst_risk_threshold = 0.0;
+     if(cfg.scan_inst_risk_threshold > 1.0)      cfg.scan_inst_risk_threshold = 1.0;
+
+     // If the family is OFF, keep tuning intact but inert.
+     if(!cfg.scan_inst_state_enable)
+        return;
+
+     // Ownership clamps:
+     // - user-requested scan_of_delta_enable maps to scan_of_enable here
+     // - user-requested scan_profile_enable maps to scan_vp_enable here
+     if(!cfg.scan_vp_enable)
+        cfg.scan_inst_market_profile_enable = false;
+
+     _NormalizeInstitutionalContributorWeightsForLiveSources(cfg);
+  }
+#endif
+
   inline int CfgOrderFlowEffectiveMode(const Settings &cfg)
   {
      // Canonical internal access path:
@@ -5390,6 +5654,44 @@ namespace Config
      if(_CfgVPVisibleRangeRequested(cfg))
         warns += "visible-range VP is caller-driven only in this codebase; NormalizeOrderFlowFamily() forces scan_vp_profile_mode away from visible-range and clears scan_vp_visible_range_sec unless a real visible-range provider exists.\n";
   }
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+  inline void ValidateInstitutionalStateFamily(const Settings &cfg, string &warns)
+  {
+     // Mapping note:
+     // - requested scan_of_delta_enable  => current codebase field scan_of_enable
+     // - requested scan_profile_enable   => current codebase field scan_vp_enable
+
+     if(cfg.scan_inst_state_enable &&
+        !cfg.scan_obi_enable &&
+        (cfg.scan_inst_weight_microprice > 0.0 ||
+         cfg.scan_inst_weight_resiliency > 0.0 ||
+         cfg.scan_inst_weight_depth_fade > 0.0))
+        warns += "institutional-state OBI-owned contributors are weighted while scan_obi_enable=false; NormalizeInstitutionalStateFamily() zeros microprice / resiliency / depth-fade contributor weights.\n";
+
+     if(cfg.scan_inst_state_enable &&
+        !cfg.scan_of_enable &&
+        (cfg.scan_inst_weight_cvd > 0.0 ||
+         cfg.scan_inst_weight_toxicity > 0.0 ||
+         cfg.scan_inst_weight_impact > 0.0))
+        warns += "institutional-state delta/flow-owned contributors are weighted while scan_of_enable=false; NormalizeInstitutionalStateFamily() zeros CVD / toxicity / impact contributor weights.\n";
+
+     if(cfg.scan_inst_state_enable &&
+        !cfg.scan_vp_enable &&
+        (cfg.scan_inst_weight_profile_acceptance > 0.0 ||
+         cfg.scan_inst_weight_market_profile > 0.0 ||
+         cfg.scan_inst_market_profile_enable))
+        warns += "institutional-state profile contributors are configured while scan_vp_enable=false; NormalizeInstitutionalStateFamily() disables market-profile transport and zeros profile-acceptance / market-profile contributor weights.\n";
+
+     if(cfg.scan_inst_jump_proxy_enable && cfg.scan_inst_bv_lookback < 2)
+        warns += "scan_inst_jump_proxy_enable=true but scan_inst_bv_lookback<2; NormalizeInstitutionalStateFamily() aligns the BV lookback.\n";
+
+     if((cfg.scan_inst_head_weight_alpha +
+         cfg.scan_inst_head_weight_execution +
+         cfg.scan_inst_head_weight_risk) <= 1e-12)
+        warns += "all institutional head weights are zero; NormalizeInstitutionalStateFamily() reseeds canonical alpha / execution / risk head weights.\n";
+  }
+#endif
 
   inline void Normalize(Settings &cfg)
   {
@@ -7166,7 +7468,13 @@ namespace Config
       // Keep legacy field names/storage intact, but route OF/OBI/VP dependency cleanup through
       // NormalizeOrderFlowFamily() so downstream code does not invent parallel config semantics.
       NormalizeOrderFlowFamily(cfg);
-      
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      // Consolidated institutional-state family normalization.
+      // Must run AFTER NormalizeOrderFlowFamily() because ownership gates depend on the
+      // final parent-lane state (OBI / OF / VP) already being coherent.
+      NormalizeInstitutionalStateFamily(cfg);
+#endif
+
       #ifdef CFG_HAS_FVG_LOOKBACK_BARS
         cfg.fvg_lookback_bars = MathMin(MathMax(cfg.fvg_lookback_bars, 50), 3000);
       #endif
@@ -8313,6 +8621,9 @@ namespace Config
 
     // Canonical OF/OBI/VP family warnings; mirrors NormalizeOrderFlowFamily() semantics.
     ValidateOrderFlowFamily(cfg, warns);
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+    ValidateInstitutionalStateFamily(cfg, warns);
+#endif
 
     if(cfg.asset_class_preset < CFG_ASSET_PRESET_FX_XAU_OTC ||
        cfg.asset_class_preset > CFG_ASSET_PRESET_CRYPTO_EXCHANGE)
@@ -10334,7 +10645,48 @@ namespace Config
       s+=",scOFXWLa="+DoubleToString(c.scan_ofx_weight_lambda,4);
       s+=",scOFXWBe="+DoubleToString(c.scan_ofx_weight_beta,4);
       s+=",scOFXQMin="+DoubleToString(c.scan_ofx_backend_quality_min,4);
-      
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      s+=",scInstOn="+BoolStr(c.scan_inst_state_enable);
+
+      s+=",scInstTwLb="+IntegerToString(c.scan_inst_twap_lookback);
+      s+=",scInstTwSm="+IntegerToString(c.scan_inst_twap_session_mode);
+
+      s+=",scInstPvGm="+IntegerToString(c.scan_inst_pov_gap_mode);
+      s+=",scInstPvPt="+DoubleToString(c.scan_inst_pov_target_participation01,4);
+
+      s+=",scInstBVLb="+IntegerToString(c.scan_inst_bv_lookback);
+      s+=",scInstJOn="+BoolStr(c.scan_inst_jump_proxy_enable);
+      s+=",scInstJZ="+DoubleToString(c.scan_inst_jump_proxy_threshold_z,4);
+
+      s+=",scInstMPOn="+BoolStr(c.scan_inst_market_profile_enable);
+      s+=",scInstTPOBm="+IntegerToString(c.scan_inst_tpo_bin_mode);
+      s+=",scInstTPOSm="+IntegerToString(c.scan_inst_tpo_session_mode);
+
+      s+=",scInstSpZW="+IntegerToString(c.scan_inst_spread_shock_z_lookback);
+      s+=",scInstDfLb="+IntegerToString(c.scan_inst_depth_fade_baseline_lookback);
+
+      s+=",scInstWMp="+DoubleToString(c.scan_inst_weight_microprice,4);
+      s+=",scInstWRe="+DoubleToString(c.scan_inst_weight_resiliency,4);
+      s+=",scInstWDf="+DoubleToString(c.scan_inst_weight_depth_fade,4);
+      s+=",scInstWCv="+DoubleToString(c.scan_inst_weight_cvd,4);
+      s+=",scInstWTx="+DoubleToString(c.scan_inst_weight_toxicity,4);
+      s+=",scInstWIm="+DoubleToString(c.scan_inst_weight_impact,4);
+      s+=",scInstWPa="+DoubleToString(c.scan_inst_weight_profile_acceptance,4);
+      s+=",scInstWMPr="+DoubleToString(c.scan_inst_weight_market_profile,4);
+      s+=",scInstWBm="+DoubleToString(c.scan_inst_weight_benchmark,4);
+      s+=",scInstWJp="+DoubleToString(c.scan_inst_weight_jump,4);
+      s+=",scInstWSw="+DoubleToString(c.scan_inst_weight_sweep,4);
+
+      s+=",scInstHWA="+DoubleToString(c.scan_inst_head_weight_alpha,4);
+      s+=",scInstHWE="+DoubleToString(c.scan_inst_head_weight_execution,4);
+      s+=",scInstHWR="+DoubleToString(c.scan_inst_head_weight_risk,4);
+
+      s+=",scInstATh="+DoubleToString(c.scan_inst_alpha_threshold,4);
+      s+=",scInstETh="+DoubleToString(c.scan_inst_execution_threshold,4);
+      s+=",scInstRTh="+DoubleToString(c.scan_inst_risk_threshold,4);
+#endif
+
       // VSA background-hook scanner fusion (Confluence-side)
       s+=",scVHOn="+BoolStr(c.scan_vsa_hook_enable);
       s+=",scVHOBI="+BoolStr(c.scan_vsa_hook_apply_to_obi);
@@ -12578,7 +12930,48 @@ namespace Config
         else if(k=="scOFXWLa")  cfg.scan_ofx_weight_lambda = ToDouble(v);
         else if(k=="scOFXWBe")  cfg.scan_ofx_weight_beta = ToDouble(v);
         else if(k=="scOFXQMin") cfg.scan_ofx_backend_quality_min = ToDouble(v);
-        
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+        else if(k=="scInstOn")   cfg.scan_inst_state_enable = ToBool(v);
+
+        else if(k=="scInstTwLb") cfg.scan_inst_twap_lookback = ToInt(v);
+        else if(k=="scInstTwSm") cfg.scan_inst_twap_session_mode = ToInt(v);
+
+        else if(k=="scInstPvGm") cfg.scan_inst_pov_gap_mode = ToInt(v);
+        else if(k=="scInstPvPt") cfg.scan_inst_pov_target_participation01 = ToDouble(v);
+
+        else if(k=="scInstBVLb") cfg.scan_inst_bv_lookback = ToInt(v);
+        else if(k=="scInstJOn")  cfg.scan_inst_jump_proxy_enable = ToBool(v);
+        else if(k=="scInstJZ")   cfg.scan_inst_jump_proxy_threshold_z = ToDouble(v);
+
+        else if(k=="scInstMPOn") cfg.scan_inst_market_profile_enable = ToBool(v);
+        else if(k=="scInstTPOBm") cfg.scan_inst_tpo_bin_mode = ToInt(v);
+        else if(k=="scInstTPOSm") cfg.scan_inst_tpo_session_mode = ToInt(v);
+
+        else if(k=="scInstSpZW") cfg.scan_inst_spread_shock_z_lookback = ToInt(v);
+        else if(k=="scInstDfLb") cfg.scan_inst_depth_fade_baseline_lookback = ToInt(v);
+
+        else if(k=="scInstWMp")  cfg.scan_inst_weight_microprice = ToDouble(v);
+        else if(k=="scInstWRe")  cfg.scan_inst_weight_resiliency = ToDouble(v);
+        else if(k=="scInstWDf")  cfg.scan_inst_weight_depth_fade = ToDouble(v);
+        else if(k=="scInstWCv")  cfg.scan_inst_weight_cvd = ToDouble(v);
+        else if(k=="scInstWTx")  cfg.scan_inst_weight_toxicity = ToDouble(v);
+        else if(k=="scInstWIm")  cfg.scan_inst_weight_impact = ToDouble(v);
+        else if(k=="scInstWPa")  cfg.scan_inst_weight_profile_acceptance = ToDouble(v);
+        else if(k=="scInstWMPr") cfg.scan_inst_weight_market_profile = ToDouble(v);
+        else if(k=="scInstWBm")  cfg.scan_inst_weight_benchmark = ToDouble(v);
+        else if(k=="scInstWJp")  cfg.scan_inst_weight_jump = ToDouble(v);
+        else if(k=="scInstWSw")  cfg.scan_inst_weight_sweep = ToDouble(v);
+
+        else if(k=="scInstHWA")  cfg.scan_inst_head_weight_alpha = ToDouble(v);
+        else if(k=="scInstHWE")  cfg.scan_inst_head_weight_execution = ToDouble(v);
+        else if(k=="scInstHWR")  cfg.scan_inst_head_weight_risk = ToDouble(v);
+
+        else if(k=="scInstATh")  cfg.scan_inst_alpha_threshold = ToDouble(v);
+        else if(k=="scInstETh")  cfg.scan_inst_execution_threshold = ToDouble(v);
+        else if(k=="scInstRTh")  cfg.scan_inst_risk_threshold = ToDouble(v);
+#endif
+
         // VSA background-hook scanner fusion (Confluence-side)
         else if(k=="scVHOn")    cfg.scan_vsa_hook_enable = ToBool(v);
         else if(k=="scVHOBI")   cfg.scan_vsa_hook_apply_to_obi = ToBool(v);
@@ -13727,7 +14120,55 @@ struct Settings
     double scan_ofx_weight_lambda;                  // fusion weight for flow-impact lambda
     double scan_ofx_weight_beta;                    // fusion weight for OFI beta
     double scan_ofx_backend_quality_min;            // minimum backend quality to allow advanced OFX contribution
-    
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+    // Institutional-state transport family (scanner/backend only; transport+fusion config, not raw signal ownership)
+    bool   scan_inst_state_enable;                  // master enable for canonical institutional-state transport/fusion
+
+    // Benchmark / execution-proxy inputs
+    int    scan_inst_twap_lookback;                 // TWAP lookback in bars
+    int    scan_inst_twap_session_mode;             // 0=broker-day, 1=session-anchor, 2=rolling
+    int    scan_inst_pov_gap_mode;                  // 0=off/simple, 1=participation-proxy, 2=benchmark-gap proxy
+    double scan_inst_pov_target_participation01;    // 0..1 target participation for POV-gap proxy
+
+    // Volatility / jump inputs
+    int    scan_inst_bv_lookback;                   // bipower-variation lookback
+    bool   scan_inst_jump_proxy_enable;             // enable RV-BV jump proxy family
+    double scan_inst_jump_proxy_threshold_z;        // normalized jump proxy threshold
+
+    // Market profile / TPO transport
+    bool   scan_inst_market_profile_enable;         // enable TPO/market-profile transport family
+    int    scan_inst_tpo_bin_mode;                  // 0=use VP bin_points, 1=use VP bin_count
+    int    scan_inst_tpo_session_mode;              // 0=broker-day, 1=session-anchor
+
+    // Liquidity stress transport
+    int    scan_inst_spread_shock_z_lookback;       // lookback for spread-shock z normalization
+    int    scan_inst_depth_fade_baseline_lookback;  // baseline lookback for depth-fade normalization
+
+    // Contributor weights used by Confluence's institutional state-vector build
+    double scan_inst_weight_microprice;             // OBI-owned
+    double scan_inst_weight_resiliency;             // OBI-owned
+    double scan_inst_weight_depth_fade;             // OBI/liquidity-owned
+    double scan_inst_weight_cvd;                    // OF/Delta-owned
+    double scan_inst_weight_toxicity;               // OFX toxicity-owned
+    double scan_inst_weight_impact;                 // OFX impact-owned
+    double scan_inst_weight_profile_acceptance;     // VP-owned
+    double scan_inst_weight_market_profile;         // TPO / profile-acceptance owned
+    double scan_inst_weight_benchmark;              // VWAP/TWAP/POV-gap owned
+    double scan_inst_weight_jump;                   // RV-BV jump proxy owned
+    double scan_inst_weight_sweep;                  // liquidity sweep-owned
+
+    // Final head combiner weights
+    double scan_inst_head_weight_alpha;             // fused alpha head contribution
+    double scan_inst_head_weight_execution;         // fused execution head contribution
+    double scan_inst_head_weight_risk;              // fused risk head contribution
+
+    // Final head thresholds
+    double scan_inst_alpha_threshold;               // trade only when alpha head exceeds threshold
+    double scan_inst_execution_threshold;           // trade only when execution head exceeds threshold
+    double scan_inst_risk_threshold;                // trade only when risk head remains <= threshold
+#endif
+
    // NOTE:
    // - scan_obi_* controls DOM / resting-liquidity imbalance scanner behavior (OrderBookImbalance / OBI family)
    // - When true DOM exists, OBI remains the master owner of resting-liquidity semantics

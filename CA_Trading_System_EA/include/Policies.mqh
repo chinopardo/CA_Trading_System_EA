@@ -77,6 +77,26 @@
   #define POLICIES_HAS_POLICY_RISK_SCALING 1
 #endif
 
+#ifndef POLICIES_HAS_INSTITUTIONAL_STATE_GATE
+  #define POLICIES_HAS_INSTITUTIONAL_STATE_GATE 1
+#endif
+
+#ifndef POLICIES_INST_MIN_STATE_QUALITY01
+  #define POLICIES_INST_MIN_STATE_QUALITY01 0.35
+#endif
+
+#ifndef POLICIES_INST_DELAY_EXECUTION_SCORE01
+  #define POLICIES_INST_DELAY_EXECUTION_SCORE01 0.35
+#endif
+
+#ifndef POLICIES_INST_DERISK_RISK_SCORE01
+  #define POLICIES_INST_DERISK_RISK_SCORE01 0.60
+#endif
+
+#ifndef POLICIES_INST_VETO_RISK_SCORE01
+  #define POLICIES_INST_VETO_RISK_SCORE01 0.20
+#endif
+
 #ifndef POLICIES_SIZING_RESET_MULT_DEFAULT
   #define POLICIES_SIZING_RESET_MULT_DEFAULT 0.50
 #endif
@@ -123,10 +143,11 @@ enum PolicyBlockCode
   POLICY_DAYLOSS_STOP    = 14,
   POLICY_LIQUIDITY_FAIL  = 15,
   POLICY_CONFLICT        = 16,
-  POLICY_ADR_CAP         = 17,
-  POLICY_SB_NOT_IN_WINDOW = 20,
-  POLICY_SB_ALREADY_USED  = 21,
-  POLICY_BLOCKED_OTHER = 99
+  POLICY_ADR_CAP           = 17,
+  POLICY_INSTITUTIONAL_GATE= 18,
+  POLICY_SB_NOT_IN_WINDOW  = 20,
+  POLICY_SB_ALREADY_USED   = 21,
+  POLICY_BLOCKED_OTHER     = 99
 };
 
 namespace Policies
@@ -150,7 +171,8 @@ namespace Policies
     GATE_ACCOUNT_DD = 23,
     GATE_MONTH_TARGET = 24,
     GATE_MAX_LOSSES_DAY = 25,
-    GATE_MAX_TRADES_DAY = 26
+    GATE_MAX_TRADES_DAY = 26,
+    GATE_INSTITUTIONAL = 27
   };
 
   inline string ReasonString(const int r)
@@ -174,6 +196,7 @@ namespace Policies
       case GATE_MONTH_TARGET: return "MONTH_TARGET";
       case GATE_MAX_LOSSES_DAY: return "MAX_LOSSES_DAY";
       case GATE_MAX_TRADES_DAY: return "MAX_TRADES_DAY";
+      case GATE_INSTITUTIONAL: return "INSTITUTIONAL_STATE";
       default:              return "UNKNOWN";
     }
   }
@@ -205,6 +228,7 @@ namespace Policies
        case GATE_LIQUIDITY:     return POLICY_LIQUIDITY_FAIL;
        case GATE_CONFLICT:      return POLICY_CONFLICT;
        case GATE_ADR:           return POLICY_ADR_CAP;
+       case GATE_INSTITUTIONAL: return POLICY_INSTITUTIONAL_GATE;
    
        default:                 return POLICY_BLOCKED_OTHER;
      }
@@ -3229,6 +3253,107 @@ inline void NotifyTradeResult(const double r_multiple)
   }
 
   // ----------------------------------------------------------------------------
+  // Canonical institutional-state consumer helpers
+  //
+  // Boundary:
+  // - Policies consumes the final state transport from Confluence.
+  // - Policies decides allow/veto, derisk/full-size, and delay/no-delay.
+  // - Policies does NOT infer pseudo-state from scattered upstream fields.
+  // - Policies does NOT rebuild alpha / execution / risk heads locally.
+  // ----------------------------------------------------------------------------
+  struct InstitutionalStatePolicyView
+  {
+    bool   valid;
+    bool   trade_gate_pass;
+    bool   delay_recommended;
+    bool   derisk_recommended;
+
+    double alpha_score;
+    double execution_score;
+    double risk_score;
+    double state_quality01;
+  };
+
+  inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
+  {
+    ZeroMemory(v);
+    v.trade_gate_pass = true; // neutral compat default until canonical transport is present
+  }
+
+  inline bool LoadInstitutionalStateFromConfluence(const string sym,
+                                                   const ENUM_TIMEFRAMES tf,
+                                                   InstitutionalStatePolicyView &out_view)
+  {
+    ResetInstitutionalStatePolicyView(out_view);
+
+    #ifdef CFG_HAS_CONFLUENCE
+      #ifdef CONFL_HAS_MACHINE_STATE_TRANSPORT
+        Confl::InstitutionalStateTransport inst;
+        inst.Clear();
+
+        if(!Scan::GetInstitutionalStateTransport(sym, tf, inst))
+          return false;
+
+        if(!inst.valid)
+          return false;
+
+        out_view.valid             = true;
+        out_view.trade_gate_pass   = (bool)inst.trade_gate_pass;
+        out_view.alpha_score       = Clamp01(inst.alpha_score);
+        out_view.execution_score   = Clamp01(inst.execution_score);
+        out_view.risk_score        = Clamp01(inst.risk_score);
+        out_view.state_quality01   = Clamp01(inst.state_quality01);
+
+        return true;
+      #endif
+    #endif
+
+    return false;
+  }
+
+  inline bool ApplyInstitutionalStatePolicy(const Settings &cfg,
+                                            const string sym,
+                                            StratScore &ss,
+                                            InstitutionalStatePolicyView &out_view)
+  {
+    ResetInstitutionalStatePolicyView(out_view);
+
+    if(!LoadInstitutionalStateFromConfluence(sym, CfgTFEntry(cfg), out_view))
+      return true; // no canonical transport yet => do not invent pseudo-state here
+
+    // Hard canonical veto from the fused transport
+    if(!out_view.trade_gate_pass)
+      return false;
+
+    // Low-quality fused state => delay / no-trade-now, not a local pseudo override
+    if(out_view.state_quality01 < (double)POLICIES_INST_MIN_STATE_QUALITY01)
+    {
+      out_view.delay_recommended = true;
+      return false;
+    }
+
+    // Weak execution head => delay / no-trade-now
+    if(out_view.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
+    {
+      out_view.delay_recommended = true;
+      return false;
+    }
+
+    // Risk head says "too dangerous" => veto
+    if(out_view.risk_score <= (double)POLICIES_INST_VETO_RISK_SCORE01)
+      return false;
+
+    // Risk head says "allowed, but smaller" => derisk
+    if(out_view.risk_score < (double)POLICIES_INST_DERISK_RISK_SCORE01)
+    {
+      out_view.derisk_recommended = true;
+      ss.risk_mult = Clamp01(ss.risk_mult * Clamp(out_view.risk_score, 0.25, 1.0));
+    }
+
+    return true;
+  }
+
+  // ----------------------------------------------------------------------------
   // Core gates: Check / CheckFull / AllowedByPolicies
   // ----------------------------------------------------------------------------
   inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news)
@@ -3655,6 +3780,11 @@ inline void NotifyTradeResult(const double r_multiple)
     double      sl;
     double      tp;
     double      lots;
+    double      alpha_score;
+    double      execution_score;
+    double      risk_score;
+    double      state_quality01;
+    bool        institutional_gate_pass;
     string      tag;
     StratScore  ss;
     ConfluenceBreakdown bd;
@@ -3665,7 +3795,10 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     ZeroMemory(ti);
     ti.ok=false; ti.symbol=""; ti.dir=DIR_BUY; ti.score=0.0; ti.risk_mult=1.0;
-    ti.entry=0.0; ti.sl=0.0; ti.tp=0.0; ti.lots=0.0; ti.reason=GATE_OK;
+    ti.entry=0.0; ti.sl=0.0; ti.tp=0.0; ti.lots=0.0;
+    ti.alpha_score=0.0; ti.execution_score=0.0; ti.risk_score=0.0; ti.state_quality01=0.0;
+    ti.institutional_gate_pass=true;
+    ti.reason=GATE_OK;
   }
 
   inline string MakeTag(const string sym, const string strat_name, const Direction d, const double sc)
@@ -3698,6 +3831,22 @@ inline void NotifyTradeResult(const double r_multiple)
     bool skip=false; ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
     if(skip){ gate_reason=GATE_NEWS; out_intent.reason=gate_reason; return false; }
 
+    InstitutionalStatePolicyView inst_view;
+    ResetInstitutionalStatePolicyView(inst_view);
+
+    if(!ApplyInstitutionalStatePolicy(cfg, symbol, SS, inst_view))
+    {
+      out_intent.alpha_score             = inst_view.alpha_score;
+      out_intent.execution_score         = inst_view.execution_score;
+      out_intent.risk_score              = inst_view.risk_score;
+      out_intent.state_quality01         = inst_view.state_quality01;
+      out_intent.institutional_gate_pass = inst_view.trade_gate_pass;
+
+      gate_reason      = GATE_INSTITUTIONAL;
+      out_intent.reason= gate_reason;
+      return false;
+    }
+
     OrderPlan plan; ZeroMemory(plan);
     if(!Risk::ComputeOrderForSymbol(symbol, dir, cfg, SS, plan, BD))
     { gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
@@ -3712,6 +3861,11 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.sl        = plan.sl;
     out_intent.tp        = plan.tp;
     out_intent.lots      = plan.lots;
+    out_intent.alpha_score             = inst_view.alpha_score;
+    out_intent.execution_score         = inst_view.execution_score;
+    out_intent.risk_score              = inst_view.risk_score;
+    out_intent.state_quality01         = inst_view.state_quality01;
+    out_intent.institutional_gate_pass = inst_view.trade_gate_pass;
     out_intent.ss        = SS;
     out_intent.bd        = BD;
     out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
