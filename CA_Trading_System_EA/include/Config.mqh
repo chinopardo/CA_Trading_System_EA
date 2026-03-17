@@ -301,6 +301,18 @@ struct Settings;
 #ifndef CFG_HAS_SCAN_INST_STATE_SETTINGS
   #define CFG_HAS_SCAN_INST_STATE_SETTINGS 1
 #endif
+#ifndef CFG_INST_EXEC_SCHEDULE_PASSIVE
+  #define CFG_INST_EXEC_SCHEDULE_PASSIVE 0
+#endif
+#ifndef CFG_INST_EXEC_SCHEDULE_POV
+  #define CFG_INST_EXEC_SCHEDULE_POV 1
+#endif
+#ifndef CFG_INST_EXEC_SCHEDULE_VWAP
+  #define CFG_INST_EXEC_SCHEDULE_VWAP 2
+#endif
+#ifndef CFG_INST_EXEC_SCHEDULE_URGENCY
+  #define CFG_INST_EXEC_SCHEDULE_URGENCY 3
+#endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -4256,8 +4268,13 @@ namespace Config
       cfg.scan_ofx_backend_quality_min            = 0.20;
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
-      // --- Institutional-state transport family (scanner/backend only; OFF by default to preserve behavior)
+      // --- Institutional-state transport family (scanner/backend only; canonical transport/fusion)
+      // Strict institutional production defaults this ON. Non-strict profiles keep the legacy-safe OFF default.
+#ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+      cfg.scan_inst_state_enable                 = true;
+#else
       cfg.scan_inst_state_enable                 = false;
+#endif
 
       cfg.scan_inst_twap_lookback                = 60;
       cfg.scan_inst_twap_session_mode            = 0;    // 0=broker-day, 1=session-anchor, 2=rolling
@@ -4275,6 +4292,21 @@ namespace Config
 
       cfg.scan_inst_spread_shock_z_lookback      = 50;
       cfg.scan_inst_depth_fade_baseline_lookback = 50;
+
+      // Post-fusion penalty scalars (not contributor-normalized weights)
+      cfg.scan_inst_venue_coverage_penalty_enable        = true;
+      cfg.scan_inst_venue_coverage_penalty_weight        = 0.30;
+
+      cfg.scan_inst_observability_penalty_enable         = true;
+      cfg.scan_inst_observability_penalty_weight         = 0.35;
+
+      cfg.scan_inst_xvenue_dislocation_penalty_enable    = true;
+      cfg.scan_inst_xvenue_dislocation_penalty_weight    = 0.20;
+
+      // Execution-policy extension knobs
+      cfg.scan_inst_exec_sqrt_impact_enable       = true;
+      cfg.scan_inst_exec_schedule_mode            = CFG_INST_EXEC_SCHEDULE_PASSIVE;
+      cfg.scan_inst_exec_is_aggressiveness01      = 0.35;
 
       // Contributor weights for the institutional state vector (seeded for later normalization)
       cfg.scan_inst_weight_microprice            = 0.10;
@@ -5083,6 +5115,10 @@ namespace Config
      return cfg.scan_liq_enable;
   }
 
+  // NOTE:
+  // - scan_inst_weight_* fields below are contributor-combiner weights for live transport inputs.
+  // - venue-coverage / observability / cross-venue-dislocation penalties are post-fusion penalty
+  //   scalars and must NOT be mixed into this contributor normalization path.
   inline void _NormalizeInstitutionalContributorWeightsForLiveSources(Settings &cfg)
   {
      if(cfg.scan_inst_weight_microprice < 0.0)         cfg.scan_inst_weight_microprice = 0.0;
@@ -5193,6 +5229,32 @@ namespace Config
 
      if(cfg.scan_inst_depth_fade_baseline_lookback < 5)
         cfg.scan_inst_depth_fade_baseline_lookback = 50;
+
+     // Post-fusion penalty scalars
+     if(cfg.scan_inst_venue_coverage_penalty_weight < 0.0)
+        cfg.scan_inst_venue_coverage_penalty_weight = 0.0;
+     if(cfg.scan_inst_venue_coverage_penalty_weight > 1.0)
+        cfg.scan_inst_venue_coverage_penalty_weight = 1.0;
+
+     if(cfg.scan_inst_observability_penalty_weight < 0.0)
+        cfg.scan_inst_observability_penalty_weight = 0.0;
+     if(cfg.scan_inst_observability_penalty_weight > 1.0)
+        cfg.scan_inst_observability_penalty_weight = 1.0;
+
+     if(cfg.scan_inst_xvenue_dislocation_penalty_weight < 0.0)
+        cfg.scan_inst_xvenue_dislocation_penalty_weight = 0.0;
+     if(cfg.scan_inst_xvenue_dislocation_penalty_weight > 1.0)
+        cfg.scan_inst_xvenue_dislocation_penalty_weight = 1.0;
+
+     // Execution-policy extension knobs
+     cfg.scan_inst_exec_schedule_mode =
+        MathMin(MathMax(cfg.scan_inst_exec_schedule_mode, CFG_INST_EXEC_SCHEDULE_PASSIVE),
+                CFG_INST_EXEC_SCHEDULE_URGENCY);
+
+     if(cfg.scan_inst_exec_is_aggressiveness01 < 0.0)
+        cfg.scan_inst_exec_is_aggressiveness01 = 0.0;
+     if(cfg.scan_inst_exec_is_aggressiveness01 > 1.0)
+        cfg.scan_inst_exec_is_aggressiveness01 = 1.0;
 
      if(cfg.scan_inst_head_weight_alpha < 0.0)     cfg.scan_inst_head_weight_alpha = 0.0;
      if(cfg.scan_inst_head_weight_execution < 0.0) cfg.scan_inst_head_weight_execution = 0.0;
@@ -5662,6 +5724,11 @@ namespace Config
      // - requested scan_of_delta_enable  => current codebase field scan_of_enable
      // - requested scan_profile_enable   => current codebase field scan_vp_enable
 
+#ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+     if(!cfg.scan_inst_state_enable)
+        warns += "strict institutional build is running with scan_inst_state_enable=false; this disables the canonical institutional transport even though strict profile defaults seed it ON.\n";
+#endif
+
      if(cfg.scan_inst_state_enable &&
         !cfg.scan_obi_enable &&
         (cfg.scan_inst_weight_microprice > 0.0 ||
@@ -5690,6 +5757,29 @@ namespace Config
          cfg.scan_inst_head_weight_execution +
          cfg.scan_inst_head_weight_risk) <= 1e-12)
         warns += "all institutional head weights are zero; NormalizeInstitutionalStateFamily() reseeds canonical alpha / execution / risk head weights.\n";
+
+     if(!cfg.scan_inst_venue_coverage_penalty_enable &&
+        cfg.scan_inst_venue_coverage_penalty_weight > 0.0)
+        warns += "venue-coverage penalty weight is set while scan_inst_venue_coverage_penalty_enable=false; the knob remains inert until enabled.\n";
+
+     if(!cfg.scan_inst_observability_penalty_enable &&
+        cfg.scan_inst_observability_penalty_weight > 0.0)
+        warns += "observability penalty weight is set while scan_inst_observability_penalty_enable=false; the knob remains inert until enabled.\n";
+
+     if(!cfg.scan_inst_xvenue_dislocation_penalty_enable &&
+        cfg.scan_inst_xvenue_dislocation_penalty_weight > 0.0)
+        warns += "cross-venue dislocation penalty weight is set while scan_inst_xvenue_dislocation_penalty_enable=false; the knob remains inert until enabled.\n";
+
+     if(cfg.scan_inst_exec_sqrt_impact_enable && !cfg.scan_ofx_impact_enable)
+        warns += "institutional execution square-root impact is enabled while scan_ofx_impact_enable=false; the knob remains inert until OFX impact transport is available.\n";
+
+     if(cfg.scan_inst_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
+        cfg.scan_inst_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
+        warns += "scan_inst_exec_schedule_mode out of range; NormalizeInstitutionalStateFamily() clamps it to PASSIVE / POV / VWAP / URGENCY.\n";
+
+     if(cfg.scan_inst_exec_is_aggressiveness01 < 0.0 ||
+        cfg.scan_inst_exec_is_aggressiveness01 > 1.0)
+        warns += "scan_inst_exec_is_aggressiveness01 out of range; NormalizeInstitutionalStateFamily() clamps it to 0..1.\n";
   }
 #endif
 
@@ -10666,6 +10756,19 @@ namespace Config
       s+=",scInstSpZW="+IntegerToString(c.scan_inst_spread_shock_z_lookback);
       s+=",scInstDfLb="+IntegerToString(c.scan_inst_depth_fade_baseline_lookback);
 
+      s+=",scInstVCOn="+BoolStr(c.scan_inst_venue_coverage_penalty_enable);
+      s+=",scInstVCW="+DoubleToString(c.scan_inst_venue_coverage_penalty_weight,4);
+
+      s+=",scInstObOn="+BoolStr(c.scan_inst_observability_penalty_enable);
+      s+=",scInstObW="+DoubleToString(c.scan_inst_observability_penalty_weight,4);
+
+      s+=",scInstXDOn="+BoolStr(c.scan_inst_xvenue_dislocation_penalty_enable);
+      s+=",scInstXDW="+DoubleToString(c.scan_inst_xvenue_dislocation_penalty_weight,4);
+
+      s+=",scInstSqIm="+BoolStr(c.scan_inst_exec_sqrt_impact_enable);
+      s+=",scInstSch="+IntegerToString(c.scan_inst_exec_schedule_mode);
+      s+=",scInstISAg="+DoubleToString(c.scan_inst_exec_is_aggressiveness01,4);
+
       s+=",scInstWMp="+DoubleToString(c.scan_inst_weight_microprice,4);
       s+=",scInstWRe="+DoubleToString(c.scan_inst_weight_resiliency,4);
       s+=",scInstWDf="+DoubleToString(c.scan_inst_weight_depth_fade,4);
@@ -12951,6 +13054,19 @@ namespace Config
         else if(k=="scInstSpZW") cfg.scan_inst_spread_shock_z_lookback = ToInt(v);
         else if(k=="scInstDfLb") cfg.scan_inst_depth_fade_baseline_lookback = ToInt(v);
 
+        else if(k=="scInstVCOn") cfg.scan_inst_venue_coverage_penalty_enable = ToBool(v);
+        else if(k=="scInstVCW")  cfg.scan_inst_venue_coverage_penalty_weight = ToDouble(v);
+
+        else if(k=="scInstObOn") cfg.scan_inst_observability_penalty_enable = ToBool(v);
+        else if(k=="scInstObW")  cfg.scan_inst_observability_penalty_weight = ToDouble(v);
+
+        else if(k=="scInstXDOn") cfg.scan_inst_xvenue_dislocation_penalty_enable = ToBool(v);
+        else if(k=="scInstXDW")  cfg.scan_inst_xvenue_dislocation_penalty_weight = ToDouble(v);
+
+        else if(k=="scInstSqIm") cfg.scan_inst_exec_sqrt_impact_enable = ToBool(v);
+        else if(k=="scInstSch")  cfg.scan_inst_exec_schedule_mode = ToInt(v);
+        else if(k=="scInstISAg") cfg.scan_inst_exec_is_aggressiveness01 = ToDouble(v);
+
         else if(k=="scInstWMp")  cfg.scan_inst_weight_microprice = ToDouble(v);
         else if(k=="scInstWRe")  cfg.scan_inst_weight_resiliency = ToDouble(v);
         else if(k=="scInstWDf")  cfg.scan_inst_weight_depth_fade = ToDouble(v);
@@ -14144,6 +14260,19 @@ struct Settings
     // Liquidity stress transport
     int    scan_inst_spread_shock_z_lookback;       // lookback for spread-shock z normalization
     int    scan_inst_depth_fade_baseline_lookback;  // baseline lookback for depth-fade normalization
+
+    // Post-fusion penalty scalars
+    bool   scan_inst_venue_coverage_penalty_enable;     // penalize low venue / venue-scope coverage
+    double scan_inst_venue_coverage_penalty_weight;     // 0..1 penalty scalar for weak venue coverage
+    bool   scan_inst_observability_penalty_enable;      // penalize low observability / low confidence transport states
+    double scan_inst_observability_penalty_weight;      // 0..1 penalty scalar for weak observability
+    bool   scan_inst_xvenue_dislocation_penalty_enable; // penalize cross-venue dislocation / incoherent venue pricing
+    double scan_inst_xvenue_dislocation_penalty_weight; // 0..1 penalty scalar for cross-venue dislocation
+
+    // Execution-policy extension knobs
+    bool   scan_inst_exec_sqrt_impact_enable;       // enable square-root impact policy branch for execution estimates
+    int    scan_inst_exec_schedule_mode;            // 0=PASSIVE, 1=POV, 2=VWAP, 3=URGENCY
+    double scan_inst_exec_is_aggressiveness01;      // 0..1 implementation-shortfall aggressiveness scalar
 
     // Contributor weights used by Confluence's institutional state-vector build
     double scan_inst_weight_microprice;             // OBI-owned

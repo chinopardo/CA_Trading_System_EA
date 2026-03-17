@@ -13,22 +13,38 @@
 #define __BUILD_FLAGS_MQH__
 
 // -------------------------------------------------------------------
-// 1) Build profile selection (optional)
+// 1) Build profile selection
 // -------------------------------------------------------------------
-// Default is PRODUCTION unless you explicitly define BUILD_PROFILE_TESTER.
+// Default live build is STRICT institutional unless you explicitly opt into
+// TESTER or explicitly force classic production for staged migration.
 //
 // To enable tester profile:
 //   Uncomment the next line OR define it in MetaEditor project settings.
 //#define BUILD_PROFILE_TESTER
-// Optional: strict production institutional bundle.
-// Keeps production posture, but hardens ownership boundaries and compile-time discipline.
-// Uncomment the next line OR define it in MetaEditor project settings.
-//#define BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+//
+// Optional: force classic non-strict production during staged migration.
+//   Uncomment the next line OR define it in MetaEditor project settings.
+//#define BUILD_PROFILE_PRODUCTION_CLASSIC
 
-// Do NOT define both.
+// Do NOT define conflicting profiles.
 #ifdef BUILD_PROFILE_TESTER
-   #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
-      #error "BUILD_PROFILE_TESTER and BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL must not both be enabled"
+   #ifdef BUILD_PROFILE_PRODUCTION_CLASSIC
+      #error "BUILD_PROFILE_TESTER and BUILD_PROFILE_PRODUCTION_CLASSIC must not both be enabled"
+   #endif
+#endif
+
+#ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+   #ifdef BUILD_PROFILE_PRODUCTION_CLASSIC
+      #error "BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL and BUILD_PROFILE_PRODUCTION_CLASSIC must not both be enabled"
+   #endif
+#endif
+
+// Default non-tester live build = strict institutional.
+#ifndef BUILD_PROFILE_TESTER
+   #ifndef BUILD_PROFILE_PRODUCTION_CLASSIC
+      #ifndef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+         #define BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+      #endif
    #endif
 #endif
 
@@ -38,34 +54,46 @@
    #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
       #define BUILD_PROFILE_NAME "PRODUCTION_STRICT_INSTITUTIONAL"
    #else
-      #define BUILD_PROFILE_NAME "PRODUCTION"
+      #define BUILD_PROFILE_NAME "PRODUCTION_CLASSIC"
    #endif
 #endif
 
 // -------------------------------------------------------------------
-// 1A) Institutional ownership guards (manual opt-in)
+// 1A) Institutional ownership guards (manual opt-in / manual override)
 // -------------------------------------------------------------------
 // Normally you should prefer the strict production institutional bundle below.
 // These individual switches remain available for staged migration or targeted testing.
 //
+//// Core ownership / state discipline
 //#define BUILD_STRICT_CANONICAL_OFX_ONLY
 //#define BUILD_REQUIRE_SINGLE_SCAN_OWNER
 //#define BUILD_DISABLE_LEGACY_OFX_COMPAT
 //#define BUILD_REQUIRE_STATE_HEADS
 //#define BUILD_REQUIRE_CANONICAL_SESSION_RESETS
 //#define ROUTER_SCAN_OWNER_IS_MSH
+//
+//// Confluence / Types ownership contract
+//#define CONFLUENCE_TRANSPORT_IS_PRESENT
+//#define BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+//#define CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+//#define BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+//#define TYPES_SNAPSHOT_IS_MIRROR_ONLY
 
 // -------------------------------------------------------------------
 // 1B) Strict production institutional bundle
 // -------------------------------------------------------------------
-// This is the preferred live-trading ownership profile.
+// This is the default live-trading ownership profile unless TESTER or
+// explicit classic production is selected.
 // It centralizes:
 //   - canonical OFX-only discipline
 //   - a single scan owner
 //   - no legacy OFX compatibility path
 //   - required state heads
 //   - required canonical session resets
-//   - explicit scan-owner macro ownership here, not ad hoc elsewhere
+//   - Confluence transport as the canonical fusion path
+//   - Confluence as the sole fusion owner
+//   - Types snapshot as mirror/export-only when Confluence transport exists
+//   - explicit owner macros declared here, not ad hoc elsewhere
 #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
    #ifndef BUILD_STRICT_CANONICAL_OFX_ONLY
       #define BUILD_STRICT_CANONICAL_OFX_ONLY
@@ -85,6 +113,26 @@
 
    #ifndef BUILD_REQUIRE_CANONICAL_SESSION_RESETS
       #define BUILD_REQUIRE_CANONICAL_SESSION_RESETS
+   #endif
+
+   #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #define CONFLUENCE_TRANSPORT_IS_PRESENT
+   #endif
+
+   #ifndef BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+      #define BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+   #endif
+
+   #ifndef CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+      #define CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+   #endif
+
+   #ifndef BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+      #define BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+   #endif
+
+   #ifndef TYPES_SNAPSHOT_IS_MIRROR_ONLY
+      #define TYPES_SNAPSHOT_IS_MIRROR_ONLY
    #endif
 
    #ifndef ROUTER_SCAN_OWNER_IS_MSH
@@ -163,6 +211,26 @@
    #endif
 #endif
 
+#ifdef CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+   #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #error "CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE requires CONFLUENCE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+   #ifndef CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+      #error "BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER requires CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE"
+   #endif
+#endif
+
+#ifdef BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+   #ifdef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #ifndef TYPES_SNAPSHOT_IS_MIRROR_ONLY
+         #error "BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY requires TYPES_SNAPSHOT_IS_MIRROR_ONLY when CONFLUENCE_TRANSPORT_IS_PRESENT is enabled"
+      #endif
+   #endif
+#endif
+
 #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
    #ifndef BUILD_STRICT_CANONICAL_OFX_ONLY
       #error "Strict production institutional bundle requires BUILD_STRICT_CANONICAL_OFX_ONLY"
@@ -182,6 +250,26 @@
 
    #ifndef BUILD_REQUIRE_CANONICAL_SESSION_RESETS
       #error "Strict production institutional bundle requires BUILD_REQUIRE_CANONICAL_SESSION_RESETS"
+   #endif
+
+   #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #error "Strict production institutional bundle requires CONFLUENCE_TRANSPORT_IS_PRESENT"
+   #endif
+
+   #ifndef BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+      #error "Strict production institutional bundle requires BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER"
+   #endif
+
+   #ifndef CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+      #error "Strict production institutional bundle requires CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE"
+   #endif
+
+   #ifndef BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+      #error "Strict production institutional bundle requires BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY"
+   #endif
+
+   #ifndef TYPES_SNAPSHOT_IS_MIRROR_ONLY
+      #error "Strict production institutional bundle requires TYPES_SNAPSHOT_IS_MIRROR_ONLY"
    #endif
 
    #ifndef ROUTER_SCAN_OWNER_IS_MSH
@@ -256,6 +344,36 @@ inline void BuildFlags_PrintSummary()
 #endif
    Print(BUILD_TAG, " Canonical session resets: ", session_resets);
 
+   string confluence_transport = "OFF";
+#ifdef CONFLUENCE_TRANSPORT_IS_PRESENT
+   confluence_transport = "ON";
+#endif
+   Print(BUILD_TAG, " Confluence transport present: ", confluence_transport);
+
+   string fusion_owner = "FLEXIBLE";
+#ifdef CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
+   fusion_owner = "CONFLUENCE";
+#endif
+#ifdef BUILD_REQUIRE_CONFLUENCE_SOLE_FUSION_OWNER
+   if(fusion_owner == "CONFLUENCE")
+      fusion_owner = "SOLE=CONFLUENCE";
+   else
+      fusion_owner = "SOLE_REQUIRED";
+#endif
+   Print(BUILD_TAG, " Fusion owner discipline: ", fusion_owner);
+
+   string snapshot_policy = "FLEXIBLE";
+#ifdef TYPES_SNAPSHOT_IS_MIRROR_ONLY
+   snapshot_policy = "MIRROR_ONLY";
+#endif
+#ifdef BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
+   if(snapshot_policy == "MIRROR_ONLY")
+      snapshot_policy = "MIRROR_ONLY_REQUIRED";
+   else
+      snapshot_policy = "MIRROR_ONLY_REQUIRED_IF_TRANSPORT";
+#endif
+   Print(BUILD_TAG, " Types snapshot policy: ", snapshot_policy);
+
    Print(BUILD_TAG, " Log level INFO=", (string)BUILD_LOG_LEVEL_INFO,
                  " DEBUG=", (string)BUILD_LOG_LEVEL_DEBUG);
 }
@@ -274,8 +392,12 @@ inline void BuildFlags_PrintSummary()
 // This ensures all macros are consistent across compilation units.
 
 // Institutional ownership note:
-//   - Define ROUTER_SCAN_OWNER_IS_MSH here only, not ad hoc in downstream files.
-//   - Downstream modules should consume BUILD_* ownership flags, not re-declare policy.
-//   - BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL is the preferred live-trading posture
-//     when you want compile-time enforcement of canonical ownership boundaries.
+//   - Define ROUTER_SCAN_OWNER_IS_MSH, CONFLUENCE_TRANSPORT_IS_PRESENT,
+//     CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE, and TYPES_SNAPSHOT_IS_MIRROR_ONLY
+//     here only, not ad hoc in downstream files.
+//   - Downstream modules should consume BUILD_* and *_IS_* ownership flags,
+//     not re-declare policy locally.
+//   - BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL is now the default
+//     live-trading posture unless BUILD_PROFILE_TESTER or
+//     BUILD_PROFILE_PRODUCTION_CLASSIC is explicitly selected.
 #endif // __BUILD_FLAGS_MQH__

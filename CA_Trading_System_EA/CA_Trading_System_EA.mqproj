@@ -340,11 +340,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\AutoFibHarmonics.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\AutoVolatility.mqh",
       "compile":false,
       "relative_to_project":true
@@ -446,6 +441,11 @@
     },
     {
       "path":"include\\Policies.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\AutoFibHarmonics.mqh",
       "compile":false,
       "relative_to_project":true
     }

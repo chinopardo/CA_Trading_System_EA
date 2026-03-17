@@ -85,6 +85,14 @@
   #define POLICIES_INST_MIN_STATE_QUALITY01 0.35
 #endif
 
+#ifndef POLICIES_INST_MIN_OBSERVABILITY01
+  #define POLICIES_INST_MIN_OBSERVABILITY01 0.35
+#endif
+
+#ifndef POLICIES_INST_MIN_VENUE_COVERAGE01
+  #define POLICIES_INST_MIN_VENUE_COVERAGE01 0.30
+#endif
+
 #ifndef POLICIES_INST_DELAY_EXECUTION_SCORE01
   #define POLICIES_INST_DELAY_EXECUTION_SCORE01 0.35
 #endif
@@ -95,6 +103,56 @@
 
 #ifndef POLICIES_INST_VETO_RISK_SCORE01
   #define POLICIES_INST_VETO_RISK_SCORE01 0.20
+#endif
+
+#ifndef POLICIES_INST_VETO_XVENUE_DISLOCATION01
+  #define POLICIES_INST_VETO_XVENUE_DISLOCATION01 0.75
+#endif
+
+#ifndef POLICIES_INST_ENABLE_OBSERVABILITY_GATE
+  #define POLICIES_INST_ENABLE_OBSERVABILITY_GATE 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_VENUE_COVERAGE_GATE
+  #define POLICIES_INST_ENABLE_VENUE_COVERAGE_GATE 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_XVENUE_DISLOCATION_VETO
+  #define POLICIES_INST_ENABLE_XVENUE_DISLOCATION_VETO 1
+#endif
+
+// Neutral defaults for optional downstream diagnostics.
+// Policies must not fabricate these from unrelated fields.
+#ifndef POLICIES_INST_DEFAULT_OBSERVABILITY01
+  #define POLICIES_INST_DEFAULT_OBSERVABILITY01 1.0
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_VENUE_COVERAGE01
+  #define POLICIES_INST_DEFAULT_VENUE_COVERAGE01 1.0
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01
+  #define POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01 0.0
+#endif
+
+// Optional transport field bridges.
+// These stay OFF unless Confluence transport explicitly exposes the fields.
+#ifndef POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OBSERVABILITY01
+    #define POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY01 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_VENUE_COVERAGE01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VENUE_COVERAGE01
+    #define POLICIES_HAS_INST_TRANSPORT_VENUE_COVERAGE01 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_XVENUE_DISLOCATION01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_XVENUE_DISLOCATION01
+    #define POLICIES_HAS_INST_TRANSPORT_XVENUE_DISLOCATION01 1
+  #endif
 #endif
 
 #ifndef POLICIES_SIZING_RESET_MULT_DEFAULT
@@ -3260,6 +3318,7 @@ inline void NotifyTradeResult(const double r_multiple)
   // - Policies decides allow/veto, derisk/full-size, and delay/no-delay.
   // - Policies does NOT infer pseudo-state from scattered upstream fields.
   // - Policies does NOT rebuild alpha / execution / risk heads locally.
+  // - Policies does NOT replace or absorb the independent news policy lane.
   // ----------------------------------------------------------------------------
   struct InstitutionalStatePolicyView
   {
@@ -3272,12 +3331,19 @@ inline void NotifyTradeResult(const double r_multiple)
     double execution_score;
     double risk_score;
     double state_quality01;
+
+    double observability_confidence01;
+    double venue_coverage01;
+    double cross_venue_dislocation01;
   };
 
   inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
   {
     ZeroMemory(v);
-    v.trade_gate_pass = true; // neutral compat default until canonical transport is present
+    v.trade_gate_pass            = true;  // neutral compat default until canonical transport is present
+    v.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    v.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
+    v.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
   }
 
   inline bool LoadInstitutionalStateFromConfluence(const string sym,
@@ -3304,6 +3370,21 @@ inline void NotifyTradeResult(const double r_multiple)
         out_view.risk_score        = Clamp01(inst.risk_score);
         out_view.state_quality01   = Clamp01(inst.state_quality01);
 
+        // Optional downstream diagnostics.
+        // Policies consumes them only if the canonical transport exposes them.
+        // It does NOT derive substitutes locally.
+        #ifdef POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY01
+          out_view.observability_confidence01 = Clamp01(inst.observability_confidence01);
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_VENUE_COVERAGE01
+          out_view.venue_coverage01 = Clamp01(inst.venue_coverage01);
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_XVENUE_DISLOCATION01
+          out_view.cross_venue_dislocation01 = Clamp01(inst.cross_venue_dislocation01);
+        #endif
+
         return true;
       #endif
     #endif
@@ -3325,12 +3406,36 @@ inline void NotifyTradeResult(const double r_multiple)
     if(!out_view.trade_gate_pass)
       return false;
 
-    // Low-quality fused state => delay / no-trade-now, not a local pseudo override
+    // State quality gate
     if(out_view.state_quality01 < (double)POLICIES_INST_MIN_STATE_QUALITY01)
     {
       out_view.delay_recommended = true;
       return false;
     }
+
+    // Observability gate (consumer-only; neutral if transport does not expose it)
+    #ifdef POLICIES_INST_ENABLE_OBSERVABILITY_GATE
+      if(out_view.observability_confidence01 < (double)POLICIES_INST_MIN_OBSERVABILITY01)
+      {
+        out_view.delay_recommended = true;
+        return false;
+      }
+    #endif
+
+    // Venue-coverage gate (consumer-only; neutral if transport does not expose it)
+    #ifdef POLICIES_INST_ENABLE_VENUE_COVERAGE_GATE
+      if(out_view.venue_coverage01 < (double)POLICIES_INST_MIN_VENUE_COVERAGE01)
+      {
+        out_view.delay_recommended = true;
+        return false;
+      }
+    #endif
+
+    // Cross-venue dislocation veto (only meaningful once the transport exposes it)
+    #ifdef POLICIES_INST_ENABLE_XVENUE_DISLOCATION_VETO
+      if(out_view.cross_venue_dislocation01 >= (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01)
+        return false;
+    #endif
 
     // Weak execution head => delay / no-trade-now
     if(out_view.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
@@ -3780,11 +3885,19 @@ inline void NotifyTradeResult(const double r_multiple)
     double      sl;
     double      tp;
     double      lots;
+
     double      alpha_score;
     double      execution_score;
     double      risk_score;
     double      state_quality01;
+    double      observability_confidence01;
+    double      venue_coverage01;
+    double      cross_venue_dislocation01;
+
     bool        institutional_gate_pass;
+    bool        institutional_delay_recommended;
+    bool        institutional_derisk_recommended;
+
     string      tag;
     StratScore  ss;
     ConfluenceBreakdown bd;
@@ -3796,8 +3909,16 @@ inline void NotifyTradeResult(const double r_multiple)
     ZeroMemory(ti);
     ti.ok=false; ti.symbol=""; ti.dir=DIR_BUY; ti.score=0.0; ti.risk_mult=1.0;
     ti.entry=0.0; ti.sl=0.0; ti.tp=0.0; ti.lots=0.0;
+
     ti.alpha_score=0.0; ti.execution_score=0.0; ti.risk_score=0.0; ti.state_quality01=0.0;
+    ti.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    ti.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
+    ti.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
+
     ti.institutional_gate_pass=true;
+    ti.institutional_delay_recommended=false;
+    ti.institutional_derisk_recommended=false;
+
     ti.reason=GATE_OK;
   }
 
@@ -3828,7 +3949,11 @@ inline void NotifyTradeResult(const double r_multiple)
     { out_intent.reason=gate_reason; return false; }
 
     StratScore SS = in_ss; ConfluenceBreakdown BD = in_bd;
-    bool skip=false; ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
+
+    // Keep news / global policy overlays independent and first.
+    // Institutional state is a downstream consumer gate; it must not replace news policy.
+    bool skip=false;
+    ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
     if(skip){ gate_reason=GATE_NEWS; out_intent.reason=gate_reason; return false; }
 
     InstitutionalStatePolicyView inst_view;
@@ -3836,14 +3961,19 @@ inline void NotifyTradeResult(const double r_multiple)
 
     if(!ApplyInstitutionalStatePolicy(cfg, symbol, SS, inst_view))
     {
-      out_intent.alpha_score             = inst_view.alpha_score;
-      out_intent.execution_score         = inst_view.execution_score;
-      out_intent.risk_score              = inst_view.risk_score;
-      out_intent.state_quality01         = inst_view.state_quality01;
-      out_intent.institutional_gate_pass = inst_view.trade_gate_pass;
+      out_intent.alpha_score                    = inst_view.alpha_score;
+      out_intent.execution_score                = inst_view.execution_score;
+      out_intent.risk_score                     = inst_view.risk_score;
+      out_intent.state_quality01                = inst_view.state_quality01;
+      out_intent.observability_confidence01     = inst_view.observability_confidence01;
+      out_intent.venue_coverage01               = inst_view.venue_coverage01;
+      out_intent.cross_venue_dislocation01      = inst_view.cross_venue_dislocation01;
+      out_intent.institutional_gate_pass        = inst_view.trade_gate_pass;
+      out_intent.institutional_delay_recommended= inst_view.delay_recommended;
+      out_intent.institutional_derisk_recommended= inst_view.derisk_recommended;
 
-      gate_reason      = GATE_INSTITUTIONAL;
-      out_intent.reason= gate_reason;
+      gate_reason       = GATE_INSTITUTIONAL;
+      out_intent.reason = gate_reason;
       return false;
     }
 
@@ -3861,11 +3991,22 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.sl        = plan.sl;
     out_intent.tp        = plan.tp;
     out_intent.lots      = plan.lots;
-    out_intent.alpha_score             = inst_view.alpha_score;
-    out_intent.execution_score         = inst_view.execution_score;
-    out_intent.risk_score              = inst_view.risk_score;
-    out_intent.state_quality01         = inst_view.state_quality01;
-    out_intent.institutional_gate_pass = inst_view.trade_gate_pass;
+
+    out_intent.alpha_score                    = inst_view.alpha_score;
+    out_intent.execution_score                = inst_view.execution_score;
+    out_intent.risk_score                     = inst_view.risk_score;
+    out_intent.state_quality01                = inst_view.state_quality01;
+    out_intent.observability_confidence01     = inst_view.observability_confidence01;
+    out_intent.venue_coverage01               = inst_view.venue_coverage01;
+    out_intent.cross_venue_dislocation01      = inst_view.cross_venue_dislocation01;
+    out_intent.institutional_gate_pass        = inst_view.trade_gate_pass;
+    out_intent.institutional_delay_recommended= inst_view.delay_recommended;
+    out_intent.institutional_derisk_recommended= inst_view.derisk_recommended;
+
+    out_intent.ss        = SS;
+    out_intent.bd        = BD;
+    out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
+    out_intent.reason    = GATE_OK;
     out_intent.ss        = SS;
     out_intent.bd        = BD;
     out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
