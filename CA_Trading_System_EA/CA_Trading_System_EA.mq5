@@ -1789,12 +1789,6 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.extra_adx_regime   = InpExtra_ADXRegime;  cfg.w_adx_regime = InpW_ADXRegime;
   cfg.extra_correlation  = InpExtra_Correlation;// weight reuses base
   cfg.extra_dom_imbalance = InpExtra_DOMImbalance;
-  cfg.ms_runtime_gate_enable = InpMS_EnableRuntimeGate;
-  cfg.ms_min_ofi_abs         = InpMS_MinOFIAbs;
-  cfg.ms_min_obi_abs         = InpMS_MinOBIAbs;
-  cfg.ms_max_vpin            = InpMS_MaxVPIN;
-  cfg.ms_min_resiliency      = InpMS_MinResiliency;
-  cfg.ms_refresh_min_ms      = InpMS_RefreshMinMs;
   cfg.extra_news         = InpExtra_News;       // weight reuses base
 
   // ---- ADX / StochRSI / MACD params ----
@@ -2744,12 +2738,6 @@ void FinalizeRuntimeSettings()
 
    // Keep DOM imbalance flag in the snapshot (move from OnInit line 2277, S->cfg)
    cfg.extra_dom_imbalance = (cfg.extra_dom_imbalance || InpExtra_DOMImbalance);
-   cfg.ms_runtime_gate_enable = InpMS_EnableRuntimeGate;
-   cfg.ms_min_ofi_abs         = InpMS_MinOFIAbs;
-   cfg.ms_min_obi_abs         = InpMS_MinOBIAbs;
-   cfg.ms_max_vpin            = InpMS_MaxVPIN;
-   cfg.ms_min_resiliency      = InpMS_MinResiliency;
-   cfg.ms_refresh_min_ms      = InpMS_RefreshMinMs;
 
    // 3) Build profile spec + apply profile (MOVE OnInit lines 2389–2457, replace S->cfg)
    const TradingProfile prof = (TradingProfile)InpProfileType;
@@ -3134,10 +3122,9 @@ void PublishMicrostructureSnapshot(const string sym)
    if(!g_ms_last_ok)
       return;
 
-   // Add these functions in Router.mqh / StrategyRegistry.mqh / State.mqh
-   // so the EA entry point remains orchestration-only.
-   StratReg::SetGlobalMicrostructureSnapshot(sym, g_ms_last, g_ms_gate_pass);
-   RouterSetMicrostructureSnapshot(g_router, sym, g_ms_last, g_ms_gate_pass);
+   // Current attached branch has no Router/StrategyRegistry snapshot setter API.
+   // Keep this EA bridge compile-safe and backend-only until those module-owned
+   // setters are added in their owning files.
 }
 
 //--------------------------------------------------------------------
@@ -3926,8 +3913,7 @@ void OnTimer()
    }
    
    // Normal UI hooks
-   Panel::PublishBreakdown(pick_out.bd);
-   Panel::PublishScores(pick_out.ss);
+   UI_PublishDecision(pick_out.bd, pick_out.ss);
    
    #ifdef TELEMETRY_HAS_EVENT
    string j_intent = "{";
