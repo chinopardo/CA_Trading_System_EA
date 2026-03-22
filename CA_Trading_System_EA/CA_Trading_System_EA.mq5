@@ -75,11 +75,11 @@ void MSH_RouteEvent(const Scan::ScanEvent &e);
 #include "include/Integration.mqh"
 #include "include/Router.mqh"
 
-// Persistence & UX
+// Persistence & backend-only runtime
 #include "include/State.mqh"      // persistent day cache / last signal context
-#include "include/Panel.mqh"
-#include "include/Telemetry.mqh"  // HUD/Events CSV/JSON (guarded)
-#include "include/ReviewUI.mqh"
+// #include "include/Panel.mqh"    // backend-only live build: disabled
+#include "include/Telemetry.mqh"  // keep only if using file/JSON telemetry
+// #include "include/ReviewUI.mqh" // backend-only live build: disabled
 #include "include/Tester.mqh"
 #include "include/Logging.mqh"
 #include "include/Warmup.mqh"
@@ -104,17 +104,29 @@ string RuntimeSettingsHashHex(const Settings &cfg);
 void   DriftAlarm_SetApproved(const string reason);
 void   DriftAlarm_Check(const string where);
 
-// Full-detail variant used from OnTick()
+// Backend-safe telemetry publisher (no chart UI dependency)
 void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
                                 const double       classicalScore,
                                 const double       ictScore,
                                 const string      &armedName);
 
-// Convenience overload: no scores / armed name
 inline void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
 {
    PushICTTelemetryToReviewUI(ictCtx, 0.0, 0.0, "-");
 }
+
+// Backend-only UI wrappers (no-op unless BUILD_WITH_UI is defined elsewhere)
+void UI_Render(const Settings &cfg);
+void UI_SetGate(const int gate_reason);
+void UI_Init(const Settings &cfg);
+void UI_Deinit();
+void UI_PublishDecision(const ConfluenceBreakdown &bd, const StratScore &ss);
+void UI_OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeResult &rs);
+void UI_Screenshot(const string tag);
+
+// EA-side microstructure refresh bridge
+bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh=false);
+void PublishMicrostructureSnapshot(const string sym);
 
 void RefreshICTContext(EAState &st);
 
@@ -874,6 +886,14 @@ input double           InpDbgChkMinScore        = 0.55;    // Debug: testing thr
 input double           InpDbgChkZoneProxATR     = 0.35;    // Debug: zone proximity (ATR multiples)
 input double           InpDbgChkOBProxATR       = 0.30;    // Debug: order-block proximity (ATR multiples)
 
+// --------- Microstructure runtime gates ----------
+input bool             InpMS_EnableRuntimeGate = true;   // backend-only: enable OFI/OBI/VPIN/resil gates
+input double           InpMS_MinOFIAbs         = 0.10;   // minimum |OFI| required
+input double           InpMS_MinOBIAbs         = 0.10;   // minimum |OBI| required
+input double           InpMS_MaxVPIN           = 0.65;   // block when VPIN is above this
+input double           InpMS_MinResiliency     = 0.35;   // block when resiliency is below this
+input int              InpMS_RefreshMinMs      = 250;    // local throttle for EA-side refresh helper
+
 // --------- Tester / Optimization ----------
 enum TesterScoreMode { TESTER_SCORE_MIX=0, TESTER_SCORE_SHARPE=1, TESTER_SCORE_EXPECT=2 }; // Tester / Optimization: Score
 input TesterScoreMode InpTesterScore  = TESTER_SCORE_MIX; // Tester / Optimization: Score Mode
@@ -883,9 +903,9 @@ input string          InpTestCase      = "none";  // see TesterCases::ScenarioLi
 input string          InpTesterPreset  = "";
 
 // ================== Globals ==================
-//g_cfg = canonical runtime snapshot
-//S = UI mirror (read-mostly)
-//After init, only OnChartEvent hotkeys may mutate S, and must immediately mirror to g_cfg
+// g_cfg = canonical runtime snapshot
+// S     = finalized runtime mirror retained for legacy read paths
+// After FinalizeRuntimeSettings(), S must be treated as read-only in backend-only mode.
 Settings S;
 
 static bool g_show_breakdown = true;
@@ -894,7 +914,7 @@ static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 static bool g_use_registry = false; // legacy registry routing enabled (tester only)
 
-// ---- Runtime drift alarm (S must match g_cfg; only hotkeys may change S) ----
+// ---- Runtime drift alarm (S must match g_cfg; S is read-only after finalize in backend-only mode) ----
 static bool     g_drift_armed          = false;   // set true after finalize/approved commit
 static datetime g_drift_last_check     = 0;       // throttle checks (seconds)
 static datetime g_drift_last_alert     = 0;       // throttle alerts (seconds)
@@ -917,6 +937,14 @@ static int      g_msh_dirty_n = 0;
 static string   g_msh_dirty_sym[MSH_DIRTY_MAX];
 static int      g_msh_dirty_tf[MSH_DIRTY_MAX];
 static datetime g_msh_dirty_ts[MSH_DIRTY_MAX];
+
+// ================== Backend-only microstructure cache ==================
+// Requires MicrostructureStats in Types.mqh
+MicrostructureStats g_ms_last;
+static datetime     g_ms_last_refresh = 0;
+static string       g_ms_last_symbol  = "";
+static bool         g_ms_last_ok      = false;
+static bool         g_ms_gate_pass    = true;
 
 void MSH_DirtyClear()
 {
@@ -977,6 +1005,10 @@ void MSH_RouteEvent(const Scan::ScanEvent &e)
    // Scan::ScanEvent fields (confirmed from MarketScannerHub.mqh RouteEventDefault):
    // e.sym, e.tf, e.ts, ...
    MSH_DirtyTouch(e.sym, (int)e.tf, e.ts);
+
+   // Backend-only: refresh microstructure on scanner dirties so Router consumes fresh state.
+   RefreshMicrostructureSnapshot(e.sym, true);
+   PublishMicrostructureSnapshot(e.sym);
 }
 
 // Price/time gates state
@@ -1336,7 +1368,7 @@ void EvaluateOneSymbol(const string sym)
    ZeroMemory(pick);
    if(!TryMinimalPathIntent(sym, cur, pick))
      {
-      Panel::Render(S);
+      UI_Render(S);
       return;
      }
 
@@ -1356,7 +1388,7 @@ void EvaluateOneSymbol(const string sym)
       if(InpResetStreakOnNewsDerisk)
          ResetStreakCounters();
          
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -1374,15 +1406,14 @@ void EvaluateOneSymbol(const string sym)
    if(trade_cfg.carry_enable && InpCarry_StrictRiskOnly)
       StrategiesCarry::RiskMod01(pick.dir, trade_cfg, ss.risk_mult);
 
-   Panel::PublishBreakdown(pick.bd);
-   Panel::PublishScores(ss);
+   UI_PublishDecision(pick.bd, ss);
 
 // 3) Risk sizing → plan
    OrderPlan plan;
    ZeroMemory(plan);
    if(!Risk::ComputeOrder(pick.dir, trade_cfg, ss, plan, pick.bd))
      {
-      Panel::Render(S);
+      UI_Render(S);
       return;
      }
 
@@ -1390,7 +1421,7 @@ void EvaluateOneSymbol(const string sym)
    const StrategyID sid = (StrategyID)pick.id;
    if(!Router_GateWinnerByMode(S, sid))
    {
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -1423,7 +1454,7 @@ void EvaluateOneSymbol(const string sym)
    Telemetry::TradePlan(sym, side, plan.lots, plan.price, plan.sl, plan.tp, ss.score);
 #endif
 
-   Panel::Render(S);
+   UI_Render(S);
   }
 
 // ================================== Inputs → Settings mirror ==================================
@@ -1758,6 +1789,12 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.extra_adx_regime   = InpExtra_ADXRegime;  cfg.w_adx_regime = InpW_ADXRegime;
   cfg.extra_correlation  = InpExtra_Correlation;// weight reuses base
   cfg.extra_dom_imbalance = InpExtra_DOMImbalance;
+  cfg.ms_runtime_gate_enable = InpMS_EnableRuntimeGate;
+  cfg.ms_min_ofi_abs         = InpMS_MinOFIAbs;
+  cfg.ms_min_obi_abs         = InpMS_MinOBIAbs;
+  cfg.ms_max_vpin            = InpMS_MaxVPIN;
+  cfg.ms_min_resiliency      = InpMS_MinResiliency;
+  cfg.ms_refresh_min_ms      = InpMS_RefreshMinMs;
   cfg.extra_news         = InpExtra_News;       // weight reuses base
 
   // ---- ADX / StochRSI / MACD params ----
@@ -2409,7 +2446,8 @@ void RunIndicatorBenchmarks()
 
 inline void UpdateRegistryRoutingFlag()
 {
-   g_use_registry = InpUseRegistryRouting;
+   // Legacy registry path is tester-only.
+   g_use_registry = (InpUseRegistryRouting && g_is_tester);
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
@@ -2419,12 +2457,15 @@ inline void UpdateRegistryRoutingFlag()
 // --- One-eval-per-bar dispatcher (RouterX) ---
 void MaybeEvaluate()
   {
+   // Backend-only live build: alternate dispatcher is tester-only.
+   if(!g_is_tester)
+      return;
+
    // Unified warmup gate (tester-safe; single source of truth)
    if(!WarmupGateOK())
       return;
    
    // Short series gate is handled inside WarmupGateOK() (RT non-blocking). No duplicate gate here.
-
    static datetime last_bar = 0;
    const datetime bt = iTime(_Symbol, Warmup::TF_Entry(g_cfg), 0);
 
@@ -2703,6 +2744,12 @@ void FinalizeRuntimeSettings()
 
    // Keep DOM imbalance flag in the snapshot (move from OnInit line 2277, S->cfg)
    cfg.extra_dom_imbalance = (cfg.extra_dom_imbalance || InpExtra_DOMImbalance);
+   cfg.ms_runtime_gate_enable = InpMS_EnableRuntimeGate;
+   cfg.ms_min_ofi_abs         = InpMS_MinOFIAbs;
+   cfg.ms_min_obi_abs         = InpMS_MinOBIAbs;
+   cfg.ms_max_vpin            = InpMS_MaxVPIN;
+   cfg.ms_min_resiliency      = InpMS_MinResiliency;
+   cfg.ms_refresh_min_ms      = InpMS_RefreshMinMs;
 
    // 3) Build profile spec + apply profile (MOVE OnInit lines 2389–2457, replace S->cfg)
    const TradingProfile prof = (TradingProfile)InpProfileType;
@@ -2950,7 +2997,7 @@ void DriftAlarm_Check(const string where)
    g_drift_hash_last_cfg = hc;
 
    string msg = StringFormat(
-      "DRIFT_ALARM[%s] Settings drift detected. Only UI hotkeys may mutate S. "
+      "DRIFT_ALARM[%s] Settings drift detected. S must remain read-only after finalize. "
       "S_hash=%s g_cfg_hash=%s approved=%s alerts=%d",
       where, hs, hc, g_drift_hash_approved, g_drift_alert_count
    );
@@ -2983,42 +3030,136 @@ void RefreshICTContext(EAState &st)
 }
 
 //--------------------------------------------------------------------
+// Backend-only UI wrappers
+//--------------------------------------------------------------------
+void UI_Render(const Settings &cfg)
+{
+#ifdef BUILD_WITH_UI
+   Panel::Render(cfg);
+#endif
+}
+
+void UI_SetGate(const int gate_reason)
+{
+#ifdef BUILD_WITH_UI
+   Panel::SetGate(gate_reason);
+#endif
+}
+
+void UI_Init(const Settings &cfg)
+{
+#ifdef BUILD_WITH_UI
+   Panel::Init(cfg);
+   Panel::ShowBreakdown(g_show_breakdown);
+   Panel::SetCalmMode(g_calm_mode);
+   Review::EnableScreenshots(InpReviewScreenshots, InpReviewSS_W, InpReviewSS_H);
+#endif
+}
+
+void UI_Deinit()
+{
+#ifdef BUILD_WITH_UI
+   Panel::Deinit();
+   ReviewUI_ICT_Deinit();
+   ReviewUI_Deinit();
+#endif
+}
+
+void UI_PublishDecision(const ConfluenceBreakdown &bd, const StratScore &ss)
+{
+#ifdef BUILD_WITH_UI
+   Panel::PublishBreakdown(bd);
+   Panel::PublishScores(ss);
+#endif
+}
+
+void UI_OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeResult &rs)
+{
+#ifdef BUILD_WITH_UI
+   Review::OnTx(tx, rs);
+#endif
+}
+
+void UI_Screenshot(const string tag)
+{
+#ifdef BUILD_WITH_UI
+   Review::Screenshot(tag);
+#endif
+}
+
+//--------------------------------------------------------------------
+// RefreshMicrostructureSnapshot()
+// Requires MarketData::UpdateMicrostructureStats(...) and MicrostructureStats.
+//--------------------------------------------------------------------
+bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh)
+{
+   datetime now_srv = TimeUtils::NowServer();
+
+   if(!force_refresh && g_ms_last_symbol == sym && g_ms_last_refresh != 0)
+   {
+      long age_ms = (long)(now_srv - g_ms_last_refresh) * 1000;
+      if(age_ms >= 0 && age_ms < InpMS_RefreshMinMs)
+         return g_ms_last_ok;
+   }
+
+   ZeroMemory(g_ms_last);
+   g_ms_last_ok = MarketData::UpdateMicrostructureStats(sym, g_cfg, g_ms_last);
+   g_ms_last_symbol = sym;
+   g_ms_last_refresh = now_srv;
+
+   if(!g_ms_last_ok)
+   {
+      g_ms_gate_pass = false;
+      return false;
+   }
+
+   g_ms_gate_pass = true;
+   if(InpMS_EnableRuntimeGate)
+   {
+      if(MathAbs(g_ms_last.ofi_norm) < InpMS_MinOFIAbs)      g_ms_gate_pass = false;
+      if(MathAbs(g_ms_last.obi_norm) < InpMS_MinOBIAbs)      g_ms_gate_pass = false;
+      if(g_ms_last.vpin > InpMS_MaxVPIN)                     g_ms_gate_pass = false;
+      if(g_ms_last.resiliency < InpMS_MinResiliency)         g_ms_gate_pass = false;
+   }
+
+   return true;
+}
+
+//--------------------------------------------------------------------
+// PublishMicrostructureSnapshot()
+// Bridge into Router / StrategyRegistry / State-side consumers.
+//--------------------------------------------------------------------
+void PublishMicrostructureSnapshot(const string sym)
+{
+   if(!g_ms_last_ok)
+      return;
+
+   // Add these functions in Router.mqh / StrategyRegistry.mqh / State.mqh
+   // so the EA entry point remains orchestration-only.
+   StratReg::SetGlobalMicrostructureSnapshot(sym, g_ms_last, g_ms_gate_pass);
+   RouterSetMicrostructureSnapshot(g_router, sym, g_ms_last, g_ms_gate_pass);
+}
+
+//--------------------------------------------------------------------
 // PushICTTelemetryToReviewUI()
-// Sends contextual state to your panel / telemetry layer so you can
-// *see* what the model thinks: Wyckoff phase, bias, killzone, etc.
+// Backend-only: keep telemetry/log export, remove chart ReviewUI dependency.
 //--------------------------------------------------------------------
 void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
                                 const double      classicalScore,
                                 const double      ictScore,
                                 const string     &armedName)
 {
-   ConfluenceBreakdown bd;
-   ZeroMemory(bd);
-   StratScore ss;
-   ZeroMemory(ss);
-
-   Review::ReviewUI_UpdateICTContext(ictCtx,
-                                     bd,
-                                     ss,
-                                     armedName,
-                                     classicalScore,
-                                     ictScore);
-
-   #ifdef PANEL_HAS_PUBLISH_FIB_CONTEXT
-      Panel::PublishFibContext(ictCtx);
-   #endif
-
    string j = "{";
-   j += "\"sym\":\""      + Telemetry::_Esc(_Symbol)           + "\",";
-   j += "\"tf\":"         + IntegerToString(Period())          + ",";
-   j += "\"ict_score\":"  + DoubleToString(ictScore,3)         + ",";
-   j += "\"classical_score\":" + DoubleToString(classicalScore,3) + ",";
-   j += "\"armed\":\""    + Telemetry::_Esc(armedName)         + "\"";
+   j += "\"sym\":\"" + Telemetry::_Esc(_Symbol) + "\",";
+   j += "\"tf\":" + IntegerToString(Period()) + ",";
+   j += "\"ict_score\":" + DoubleToString(ictScore, 3) + ",";
+   j += "\"classical_score\":" + DoubleToString(classicalScore, 3) + ",";
+   j += "\"armed\":\"" + Telemetry::_Esc(armedName) + "\"";
    j += "}";
 
-   #ifdef TELEMETRY_HAS_KV
-      Telemetry::KV("ict.ctx", j);
-   #endif
+#ifdef TELEMETRY_HAS_KV
+   Telemetry::KV("ict.ctx", j);
+#endif
 }
 
 // ================== Lifecycle ==================
@@ -3038,21 +3179,14 @@ int OnInit()
    FinalizeRuntimeSettings();
    Config::LogSettingsWithHash(S, "CFG");
 
-   // --- Routing mode diagnostics (post-FinalizeRuntimeSettings; g_use_registry is final) ---
-   if(InpUseRegistryRouting)
-   {
-      if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
-         LogX::Warn("[Routing] Registry routing requested, but forced OFF (STRAT_MAIN_ONLY). Using RouterEvaluateAll().");
-      else
-         LogX::Info("[Routing] Registry routing ACTIVE (InpUseRegistryRouting=true). Using LEGACY ProcessSymbol/StratReg.");
-   }
+   // Backend-only live runtime: legacy registry path is tester-only.
+   if(!g_is_tester)
+      g_use_registry = false;
+
+   if(g_is_tester && g_use_registry)
+      LogX::Warn("[Routing] TESTER registry path enabled. Live remains RouterEvaluateAll-only.");
    else
-   {
-      LogX::Info("[Routing] RouterEvaluateAll ACTIVE (InpUseRegistryRouting=false).");
-   }
-   
-   LogX::Info(StringFormat("Execution path: %s",
-                           (g_use_registry ? "LEGACY ProcessSymbol/StratReg" : "ICT RouterEvaluateAll")));
+      LogX::Info("[Routing] RouterEvaluateAll ACTIVE.");
                         
    #ifdef CA_USE_HANDLE_REGISTRY
       HR::Init();
@@ -3095,10 +3229,7 @@ int OnInit()
       News::Init();
    Risk::InitDayCache();
    Policies::Init(S);
-   Panel::Init(S);
-   Panel::ShowBreakdown(g_show_breakdown);
-   Panel::SetCalmMode(g_calm_mode);
-   Review::EnableScreenshots(InpReviewScreenshots, InpReviewSS_W, InpReviewSS_H);
+   UI_Init(S);
 
    // ----- Persistent state load (guarded) -----
    #ifdef STATE_HAS_LOAD_SAVE
@@ -3206,7 +3337,7 @@ int OnInit()
    // --- Telemetry wiring ---
    #ifdef TELEMETRY_HAS_CONFIGURE
       Telemetry::Configure(512*1024, /*to_common*/true, /*gv_breadcrumbs*/true, "CA_TEL", /*weekly*/false);
-      Telemetry::SetHUDBarGuardTF(S.tf_entry);  // emit HUD/snapshots once per new bar on entry TF
+      // Telemetry::SetHUDBarGuardTF(S.tf_entry);  // backend-only live build: no HUD gating
    #endif
 
    #ifdef TELEMETRY_HAS_INIT
@@ -3283,6 +3414,11 @@ int OnInit()
    // 4. Initial ICT/Wyckoff context so panel not blank
    RefreshICTContext(g_state);
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+   {
+      const string ms_sym0 = (g_symCount > 0 ? g_symbols[0] : _Symbol);
+      RefreshMicrostructureSnapshot(ms_sym0, true);
+      PublishMicrostructureSnapshot(ms_sym0);
+   }
 
    // UX: show server/local times once for sanity
    datetime now_srv = TimeCurrent();
@@ -3345,7 +3481,7 @@ void OnTick()
    if(!WarmupGateOK())
    {
       TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP, "OnTick blocked: WarmupGateOK=false");
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -3363,7 +3499,7 @@ void OnTick()
 
        if(!IsNewBarRouter(gate_sym, tf))
        {
-          Panel::Render(S);
+          UI_Render(S);
           return;
        }
     }
@@ -3388,11 +3524,17 @@ void OnTick()
    // Upstream truth: update State + ICT context BEFORE any strategy evaluation
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
+   {
+      const string ms_sym = (single_symbol ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
+      RefreshMicrostructureSnapshot(ms_sym, false);
+      PublishMicrostructureSnapshot(ms_sym);
+   }
+   
    // Autochartist scanning is timer-driven (OnTimer). Do not scan here to avoid double-ups.
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
-   // When registry routing is ON, keep using ProcessSymbol() path.
-   if(g_use_registry)
+   // TESTER-ONLY compatibility path. Live trading must route only via RouterEvaluateAll().
+   if(g_is_tester && g_use_registry)
      {
       if(single_symbol)
         {
@@ -3459,6 +3601,7 @@ void OnTick()
       {
          if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, router_gate_reason))
          {
+            PublishMicrostructureSnapshot((g_symCount > 0 ? g_symbols[0] : _Symbol));
             RouterEvaluateAll(g_router, g_cfg, ictCtx);
          }
          else
@@ -3500,13 +3643,7 @@ void OnDeinit(const int reason)
    MSH::Deinit();
    Exec::Deinit();
    MarketData::Deinit();
-   Panel::Deinit();
-   #ifdef REVIEWUI_HAS_ICT_DEINIT
-      ReviewUI_ICT_Deinit();   // optional, cleans labels
-   #endif
-   
-   // Your cleanup / panel teardown / file flush logic.
-   ReviewUI_Deinit();
+   UI_Deinit();
    Telemetry_LogDeinit("CA_Trading_System_EA deinitialized.");
    // Telemetry_Flush();
 
@@ -3542,6 +3679,21 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    MSH::HubTimerTick(S);
+   if(g_msh_dirty_n > 0)
+   {
+      for(int i=0; i<g_msh_dirty_n; i++)
+      {
+         RefreshMicrostructureSnapshot(g_msh_dirty_sym[i], true);
+         PublishMicrostructureSnapshot(g_msh_dirty_sym[i]);
+      }
+   }
+   else
+   {
+      const string ms_sym = (g_symCount > 0 ? g_symbols[0] : _Symbol);
+      RefreshMicrostructureSnapshot(ms_sym, false);
+      PublishMicrostructureSnapshot(ms_sym);
+   }
+
    // MarketData::OnTimerRefresh(); // already done inside MSH::HubTimerTick(S)
    // AutoC::OnTimerScan(S, now_srv); // already done inside MSH::HubTimerTick(S)
    ML::SetRuntimeOn(g_ml_on);
@@ -3555,7 +3707,7 @@ void OnTimer()
     }
    Risk::Heartbeat(now_srv);
    PM::ManageAll(S);
-   Panel::Render(S);
+   UI_Render(S);
    MaybeResetStreaksDaily(now_srv);
 
    DriftAlarm_Check("OnTimer");
@@ -3584,7 +3736,7 @@ void OnTimer()
       g_use_registry = false;
 
    // Respect the chosen execution path (registry vs router) to avoid double-firing.
-   if(g_use_registry)
+   if(g_is_tester && g_use_registry)
    {
       if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
          return;
@@ -3631,6 +3783,7 @@ void OnTimer()
       RefreshICTContext(g_state);
       ICT_Context ictCtx = StateGetICTContext(g_state);
       RouterEvaluateAll(g_router, g_cfg, ictCtx);
+      PublishMicrostructureSnapshot((g_symCount > 0 ? g_symbols[0] : _Symbol));
       MSH_DirtyClear();
    }
    else
@@ -4007,7 +4160,7 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
 {
    if(g_inhibit_trading)
    {
-      Panel::SetGate(GATE_INHIBIT);
+      UI_SetGate(GATE_INHIBIT);
       _LogGateBlocked("policies_gate", sym, GATE_INHIBIT, "Trading inhibited (drift alarm)");
       TraceNoTrade(sym, TS_GATE, GATE_INHIBIT, "Trading inhibited (drift alarm)");
       return false;
@@ -4016,7 +4169,7 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
    {
-      Panel::SetGate(GATE_POLICIES);
+      UI_SetGate(GATE_POLICIES);
       _LogGateBlocked("policies_gate", sym, GATE_POLICIES,
                       StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
       TraceNoTrade(sym, TS_GATE, GATE_POLICIES,
@@ -4041,7 +4194,7 @@ bool TradeEnvGateOK(const string sym, int &gate_reason_out)
    if(!acc_ok || (!in_tester && (!mql_ok || !term_ok)))
    {
       gate_reason_out = GATE_TRADE_DISABLED;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       const string detail = StringFormat("Trade disabled: ACCOUNT=%d MQL=%d TERM=%d",
                                          (int)acc_ok, (int)mql_ok, (int)term_ok);
@@ -4066,7 +4219,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(cfg.strat_mode == STRAT_MAIN_ONLY && g_use_registry)
    {
       gate_reason_out = GATE_STRATMODE_PATH_BUG;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
    
       // Throttle the warning to max 1 per second to avoid log spam.
       static datetime last_emit = 0;
@@ -4087,7 +4240,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(g_inhibit_trading)
    {
       gate_reason_out = GATE_INHIBIT;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "Trading inhibited (drift alarm)");
       TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "Trading inhibited (drift alarm)");
@@ -4102,7 +4255,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(!Policies::Check(cfg, pol_reason))
    {
       gate_reason_out = GATE_POLICIES;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
                       StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
@@ -4115,7 +4268,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(!TimeGateOK(now_srv))
    {
       gate_reason_out = GATE_TIMEWINDOW;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "TimeGateOK blocked");
       TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "TimeGateOK=false (start/expiry window)");
@@ -4126,7 +4279,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(!PriceArmOK())
    {
       gate_reason_out = GATE_PRICE_ARM;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "PriceArmOK not armed");
       TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "PriceArmOK=false (InpTradeAtPrice not armed?)");
@@ -4136,7 +4289,7 @@ bool RouterGateOK_Global(const string log_sym,
    if(g_stopped_by_price)
    {
       gate_reason_out = GATE_PRICE_STOP;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
 
       _LogGateBlocked("router_gate_global", log_sym, gate_reason_out, "Stopped by price stop gate");
       TraceNoTrade(log_sym, TS_GATE, gate_reason_out, "Stopped by price gate (InpStopAtPrice hit)");
@@ -4157,7 +4310,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(g_inhibit_trading)
    {
       gate_reason_out = GATE_INHIBIT;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
    
       _LogGateBlocked("router_gate", sym, gate_reason_out, "Trading inhibited (drift alarm)");
       TraceNoTrade(sym, TS_GATE, gate_reason_out, "Trading inhibited (drift alarm)");
@@ -4173,7 +4326,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    {
       const int mapped = (_IsKnownGateReason(pol_reason) ? pol_reason : GATE_POLICIES);
       gate_reason_out = mapped;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
       
       _LogGateBlocked("router_gate", sym, gate_reason_out,
                       StringFormat("Policies::Check failed (pol_reason=%d/%s)",
@@ -4200,7 +4353,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
          if(!allowed)
          {
             gate_reason_out = GATE_SESSION;
-            Panel::SetGate(gate_reason_out);
+            UI_SetGate(gate_reason_out);
             _LogGateBlocked("router_gate", sym, gate_reason_out, "Session gate");
             TraceNoTrade(sym, TS_GATE, GATE_SESSION, "Session gate blocked (not in window)");
             return false;
@@ -4212,7 +4365,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(!TimeGateOK(now_srv))
    {
       gate_reason_out = GATE_TIMEWINDOW;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
       _LogGateBlocked("router_gate", sym, gate_reason_out, "TimeGateOK blocked");
       TraceNoTrade(sym, TS_GATE, GATE_TIMEWINDOW, "TimeGateOK=false (start/expiry window)");
       return false;
@@ -4222,7 +4375,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(!PriceArmOK())
    {
       gate_reason_out = GATE_PRICE_ARM;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
       _LogGateBlocked("router_gate", sym, gate_reason_out, "PriceArmOK not armed");
       TraceNoTrade(sym, TS_GATE, GATE_PRICE_ARM, "PriceArmOK=false (InpTradeAtPrice not armed?)");
       return false;
@@ -4231,7 +4384,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(g_stopped_by_price)
    {
       gate_reason_out = GATE_PRICE_STOP;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
       _LogGateBlocked("router_gate", sym, gate_reason_out, "Stopped by price stop gate");
       TraceNoTrade(sym, TS_GATE, GATE_PRICE_STOP, "Stopped by price gate (InpStopAtPrice hit)");
       return false;
@@ -4241,7 +4394,7 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(Exec::IsLocked(sym))
    {
       gate_reason_out = GATE_EXEC_LOCK;
-      Panel::SetGate(gate_reason_out);
+      UI_SetGate(gate_reason_out);
       _LogGateBlocked("router_gate", sym, gate_reason_out, "Exec lock active");
       TraceNoTrade(sym, TS_GATE, GATE_EXEC_LOCK, "Exec::IsLocked=true (async send guard)");
       return false;
@@ -4253,12 +4406,16 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
 // Per-symbol processing unit (PM + gates + MVP pipeline)
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
+   // Legacy harness is tester-only. Live must never enter ProcessSymbol().
+   if(!g_is_tester)
+      return;
+      
    // 0) Unified warmup gate (single source of truth)
    if(!WarmupGateOK())
    {
       TraceNoTrade(sym, TS_GATE, GATE_WARMUP, "ProcessSymbol blocked: WarmupGateOK=false");
       PM::ManageAll(S);
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -4267,9 +4424,9 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 
    if(g_inhibit_trading)
    {
-      Panel::SetGate(GATE_INHIBIT);
+      UI_SetGate(GATE_INHIBIT);
       TraceNoTrade(sym, TS_GATE, GATE_INHIBIT, "ProcessSymbol blocked: trading inhibited (drift alarm)");
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -4284,7 +4441,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    if(sym != _Symbol)
    {
       TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT, "sym != _Symbol; evaluation skipped");
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
@@ -4296,12 +4453,12 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       // RouterGateOK will breadcrumb; this keeps ProcessSymbol consistent too
       TraceNoTrade(sym, TS_GATE, gate_reason,
                    StringFormat("RouterGateOK=false (%s)", _GateReasonStr(gate_reason)));
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
 
    // Clear the gate indicator when we pass all gates
-   Panel::SetGate(GATE_NONE);
+   UI_SetGate(GATE_NONE);
 
    // 2) Policies::Evaluate (or router fallback) → intent/pick
    StratReg::RoutedPick pick;
@@ -4310,7 +4467,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
      {
       TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT,
              "TryMinimalPathIntent=false (no eligible pick/intent)");
-      Panel::Render(S);
+      UI_Render(S);
       return;
      }
 
@@ -4325,7 +4482,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
              (int)pick.id, pick.dir, pick.ss.score);
       _LogCandidateDrop("intent_drop", pick.id, pick.dir, pick.ss, pick.bd, min_sc);
       PM::ManageAll(S);
-      Panel::Render(S);
+      UI_Render(S);
       return;
      }
 
@@ -4363,7 +4520,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       if(InpResetStreakOnNewsDerisk)
          ResetStreakCounters();
       PM::ManageAll(S);
-      Panel::Render(S);
+      UI_Render(S);
       TraceNoTrade(sym, TS_POLICIES, TR_POLICIES_SOFT_SKIP,
                    "News::CompositeRiskAtBarClose / SurpriseRiskAdjust requested skip=true");
       return;
@@ -4392,7 +4549,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    if(!Risk::ComputeOrder(pick.dir, trade_cfg, SS, plan, pick.bd))
    {
       _LogRiskReject("risk_reject", sym, sid, pick.dir, SS);
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
    
@@ -4403,7 +4560,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
                    StringFormat("[LEGACY] Router gate blocked sid=%d mode=%s",
                                 (int)sid, StrategyModeNameLocal(S.strat_mode)),
                    (int)sid, pick.dir, pick.ss.score);
-      Panel::Render(S);
+      UI_Render(S);
       return;
    }
    
@@ -4437,7 +4594,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       Telemetry::TradePlan(sym, side, plan.lots, plan.price, plan.sl, plan.tp, SS.score);
    #endif
 
-   Panel::Render(S);
+   UI_Render(S);
   }
 
 // Helper to detect new bar on entry TF (for DebugChecklist cadence)
@@ -4478,7 +4635,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
       Print(rq.symbol);   // silence warning
      }
    Exec::OnTx(tx);
-   Review::OnTx(tx, rs);
+   UI_OnTradeTransaction(tx, rs);
    Risk::OnTx(tx);
    LogX::LedgerOnTx(tx, rs);
 
@@ -4596,110 +4753,47 @@ void OnTradeTransaction(const MqlTradeTransaction &tx, const MqlTradeRequest &rq
 #endif
   }
 
-// Menu / Hotkeys: B=Breakdown, C=Calm, M=ML, R=Routing, N=News, T=ResumeTrading, P=Screenshot, H=Benchmark
-int  KeyCodeFromEvent(const long lparam) { return (int)lparam; }
-void OnChartEvent(const int id, const long &lparam, const double &/*dparam*/, const string &/*sparam*/)
-  {
-   if(id!=CHARTEVENT_KEYDOWN)
+// Backend-only chart event handler.
+// No runtime settings mutation is allowed here.
+int KeyCodeFromEvent(const long lparam) { return (int)lparam; }
+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(false)
+   {
+      Print(dparam);
+      Print(sparam);
+   }
+
+   if(id != CHARTEVENT_KEYDOWN)
       return;
-   int K=(int)lparam;
-   if(K>='a' && K<='z')
+
+   int K = (int)lparam;
+   if(K >= 'a' && K <= 'z')
       K = 'A' + (K - 'a');
 
-   if(K=='B')
-     {
-      g_show_breakdown=!g_show_breakdown;
-      Panel::ShowBreakdown(g_show_breakdown);
-      PrintFormat("[UI] Breakdown %s",(g_show_breakdown?"ON":"OFF"));
-     }
-   else
-      if(K=='C')
-        {
-         g_calm_mode=!g_calm_mode;
-         Panel::SetCalmMode(g_calm_mode);
-         PrintFormat("[UI] Calm mode %s",(g_calm_mode?"ON":"OFF"));
-        }
-      else
-         if(K=='M')
-           {
-            g_ml_on=!g_ml_on;
-            ML::SetRuntimeOn(g_ml_on);
-            PrintFormat("[UI] ML blender %s  %s",(g_ml_on?"ON":"OFF"), ML::StateString());
-           }
-         else
-            if(K=='R')
-            {
-               if(!g_is_tester)
-               {
-                  // LIVE: routing is controlled by the input flag and finalized settings; do not toggle here.
-                  PrintFormat("[UI] Routing (LIVE): %s (controlled by InpUseRegistryRouting=%s)",
-                              (g_use_registry ? "REGISTRY" : "ROUTER"),
-                              (InpUseRegistryRouting ? "true" : "false"));
-               }
-               else if(S.strat_mode == STRAT_MAIN_ONLY)
-               {
-                  g_use_registry = false;
-                  PrintFormat("[UI] Routing locked to ROUTER in STRAT_MAIN_ONLY");
-               }
-               else
-               {
-                  g_use_registry = !g_use_registry;
-                  PrintFormat("[UI] Routing: %s", (g_use_registry ? "REGISTRY (tester)" : "ROUTER"));
-               }
-            }
-            else
-               if(K=='N')
-                 {
-                  S.news_on = !S.news_on;
-                  UI_CommitSettings("hotkey N: news_on", false);
-                  PrintFormat("[HOTKEY] News hard-block: %s", (S.news_on ? "ON" : "OFF"));
-                 }
-                               else
-                   if(K=='T')
-                     {
-                      if(!g_inhibit_trading)
-                        {
-                         PrintFormat("[HOTKEY] Trading already enabled (no inhibit active).");
-                        }
-                      else
-                        {
-                         const string hs = RuntimeSettingsHashHex(S);
-                         const string hc = RuntimeSettingsHashHex(g_cfg);
+   // Tester-only emergency resume after drift halt.
+   if(K == 'T')
+   {
+      if(!g_is_tester)
+         return;
 
-                         // Safety: do NOT resume if drift is still present
-                         if(hs != hc)
-                           {
-                            string msg = StringFormat("[HOTKEY] Resume blocked: drift still present (S_hash=%s g_cfg_hash=%s). Fix drift source first.", hs, hc);
-                            Print(msg);
-                            LogX::Error(msg);
-                           }
-                         else
-                           {
-                            g_inhibit_trading = false;
-                            Panel::SetGate(GATE_NONE);
+      if(!g_inhibit_trading)
+         return;
 
-                            // Re-approve baseline so DriftAlarm doesn't immediately re-fire after manual resume
-                            DriftAlarm_SetApproved("hotkey T: resume (operator override)");
+      g_inhibit_trading = false;
+      UI_SetGate(GATE_NONE);
+      DriftAlarm_SetApproved("tester hotkey T: resume");
+      return;
+   }
 
-                            string msg = "[HOTKEY] WARNING: Trading resumed by operator after drift inhibit. Confirm drift source is resolved.";
-                            Print(msg);
-                            LogX::Warn(msg);
-                           }
-                        }
-                     }
-                else
-                  if(K=='P')
-                    {
-                     Review::Screenshot("CAEA_Snapshot");
-                    }
-                  else
-                     if(K=='H')
-                       {
-                        RunIndicatorBenchmarks();
-                       }
-
-   Panel::Render(S);
-  }
+   // Optional: keep benchmark hotkey.
+   if(K == 'H')
+   {
+      RunIndicatorBenchmarks();
+      return;
+   }
+}
 
 // ========================== Regression Batch & Golden Runs ==================
 namespace Regression

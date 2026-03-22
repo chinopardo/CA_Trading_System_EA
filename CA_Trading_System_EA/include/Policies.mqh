@@ -155,6 +155,42 @@
   #endif
 #endif
 
+#ifndef POLICIES_INST_ENABLE_VPIN_VETO
+  #define POLICIES_INST_ENABLE_VPIN_VETO 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_RESILIENCY_VETO
+  #define POLICIES_INST_ENABLE_RESILIENCY_VETO 1
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_VPIN01
+  #define POLICIES_INST_DEFAULT_VPIN01 0.0
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_RESILIENCY01
+  #define POLICIES_INST_DEFAULT_RESILIENCY01 1.0
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_VPIN01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VPIN01
+    #define POLICIES_HAS_INST_TRANSPORT_VPIN01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_VPIN
+      #define POLICIES_HAS_INST_TRANSPORT_VPIN01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_RESILIENCY01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_RESILIENCY01
+    #define POLICIES_HAS_INST_TRANSPORT_RESILIENCY01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_RESIL
+      #define POLICIES_HAS_INST_TRANSPORT_RESILIENCY01 1
+    #endif
+  #endif
+#endif
+
 #ifndef POLICIES_SIZING_RESET_MULT_DEFAULT
   #define POLICIES_SIZING_RESET_MULT_DEFAULT 0.50
 #endif
@@ -202,10 +238,12 @@ enum PolicyBlockCode
   POLICY_LIQUIDITY_FAIL  = 15,
   POLICY_CONFLICT        = 16,
   POLICY_ADR_CAP           = 17,
-  POLICY_INSTITUTIONAL_GATE= 18,
-  POLICY_SB_NOT_IN_WINDOW  = 20,
-  POLICY_SB_ALREADY_USED   = 21,
-  POLICY_BLOCKED_OTHER     = 99
+  POLICY_INSTITUTIONAL_GATE = 18,
+  POLICY_MICRO_VPIN         = 19,
+  POLICY_SB_NOT_IN_WINDOW   = 20,
+  POLICY_SB_ALREADY_USED    = 21,
+  POLICY_MICRO_RESILIENCY   = 22,
+  POLICY_BLOCKED_OTHER      = 99
 };
 
 namespace Policies
@@ -230,7 +268,9 @@ namespace Policies
     GATE_MONTH_TARGET = 24,
     GATE_MAX_LOSSES_DAY = 25,
     GATE_MAX_TRADES_DAY = 26,
-    GATE_INSTITUTIONAL = 27
+    GATE_INSTITUTIONAL    = 27,
+    GATE_MICRO_VPIN       = 28,
+    GATE_MICRO_RESILIENCY = 29
   };
 
   inline string ReasonString(const int r)
@@ -255,6 +295,9 @@ namespace Policies
       case GATE_MAX_LOSSES_DAY: return "MAX_LOSSES_DAY";
       case GATE_MAX_TRADES_DAY: return "MAX_TRADES_DAY";
       case GATE_INSTITUTIONAL: return "INSTITUTIONAL_STATE";
+      case GATE_MICRO_VPIN:       return "MICRO_VPIN";
+      case GATE_MICRO_RESILIENCY: return "MICRO_RESILIENCY";
+
       default:              return "UNKNOWN";
     }
   }
@@ -287,7 +330,9 @@ namespace Policies
        case GATE_CONFLICT:      return POLICY_CONFLICT;
        case GATE_ADR:           return POLICY_ADR_CAP;
        case GATE_INSTITUTIONAL: return POLICY_INSTITUTIONAL_GATE;
-   
+       case GATE_MICRO_VPIN:       return POLICY_MICRO_VPIN;
+       case GATE_MICRO_RESILIENCY: return POLICY_MICRO_RESILIENCY;
+
        default:                 return POLICY_BLOCKED_OTHER;
      }
    }
@@ -320,6 +365,9 @@ namespace Policies
   #define CA_POLMASK_SESSION         (((ulong)1) << 13)
   #define CA_POLMASK_NEWS            (((ulong)1) << 14)
   #define CA_POLMASK_LIQUIDITY       (((ulong)1) << 15)
+  #define CA_POLMASK_MICRO_VPIN        (((ulong)1) << 16)
+  #define CA_POLMASK_MICRO_RESILIENCY  (((ulong)1) << 17)
+  #define CA_POLMASK_INSTITUTIONAL     (((ulong)1) << 18)
 
   struct PolicyResult
   {
@@ -410,6 +458,26 @@ namespace Policies
     double liq_ratio;
     double liq_floor;
 
+    // Institutional / microstructure hard gate
+    bool   institutional_state_loaded;
+    bool   institutional_gate_pass;
+    bool   institutional_delay_recommended;
+    bool   institutional_derisk_recommended;
+
+    double alpha_score;
+    double execution_score;
+    double risk_score;
+    double state_quality01;
+
+    double vpin01;
+    double vpin_limit01;
+    double resiliency01;
+    double resiliency_min01;
+
+    double observability_confidence01;
+    double venue_coverage01;
+    double cross_venue_dislocation01;
+
     // Daily counters (for veto print precision)
     int    entries_today;
     int    losses_today;
@@ -424,6 +492,25 @@ namespace Policies
     r.primary_reason = GATE_OK;
     r.veto_mask      = 0;
     r.ts             = TimeCurrent();
+
+    r.institutional_state_loaded       = false;
+    r.institutional_gate_pass          = true;
+    r.institutional_delay_recommended  = false;
+    r.institutional_derisk_recommended = false;
+
+    r.alpha_score      = 0.0;
+    r.execution_score  = 1.0;
+    r.risk_score       = 1.0;
+    r.state_quality01  = 1.0;
+
+    r.vpin01           = (double)POLICIES_INST_DEFAULT_VPIN01;
+    r.vpin_limit01     = 1.0;
+    r.resiliency01     = (double)POLICIES_INST_DEFAULT_RESILIENCY01;
+    r.resiliency_min01 = 0.0;
+
+    r.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    r.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
+    r.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
   }
 
   inline void _PolicyVeto(PolicyResult &r, const int gate_reason, const ulong mask_bit)
@@ -797,6 +884,66 @@ namespace Policies
     #endif
   }
 
+  inline bool CfgMicroVPINGateOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_VPIN_GATE_ON
+      return (bool)cfg.ms_vpin_gate_on;
+    #else
+      #ifdef CFG_HAS_VPIN_GATE_ON
+        return (bool)cfg.vpin_gate_on;
+      #else
+        return false;
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroVPINMax01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_VPIN_THRESHOLD
+      return Clamp01(cfg.ms_vpin_threshold);
+    #else
+      #ifdef CFG_HAS_VPIN_THRESHOLD
+        return Clamp01(cfg.vpin_threshold);
+      #else
+        return 1.0;
+      #endif
+    #endif
+  }
+
+  inline bool CfgMicroResiliencyGateOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_RESILIENCY_GATE_ON
+      return (bool)cfg.ms_resiliency_gate_on;
+    #else
+      #ifdef CFG_HAS_MS_RESIL_GATE_ON
+        return (bool)cfg.ms_resil_gate_on;
+      #else
+        #ifdef CFG_HAS_RESILIENCY_GATE_ON
+          return (bool)cfg.resiliency_gate_on;
+        #else
+          return false;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroResiliencyMin01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_RESILIENCY_THRESHOLD
+      return Clamp01(cfg.ms_resiliency_threshold);
+    #else
+      #ifdef CFG_HAS_MS_RESIL_THRESHOLD
+        return Clamp01(cfg.ms_resil_threshold);
+      #else
+        #ifdef CFG_HAS_RESILIENCY_THRESHOLD
+          return Clamp01(cfg.resiliency_threshold);
+        #else
+          return 0.0;
+        #endif
+      #endif
+    #endif
+  }
+
   // --- ADR caps --------------------------------------------------------------
   inline int CfgADRLookbackDays(const Settings &cfg)
    {
@@ -1084,17 +1231,73 @@ namespace Policies
     return -1;
   }
 
+  inline bool AllowRuntimePolicyOverrides()
+  {
+    if(MQLInfoInteger(MQL_TESTER) != 0)       return true;
+    if(MQLInfoInteger(MQL_OPTIMIZATION) != 0) return true;
+
+    #ifdef POLICIES_ALLOW_RUNTIME_OVERRIDES_LIVE
+      return true;
+    #endif
+
+    return false;
+  }
+
   inline bool OverrideSetSpreadCap(const string sym, const int pts)
-  { const int k=_EnsureOver(sym); if(k<0) return false; s_over[k].max_spread_pts=pts; s_over[k].has_spread=true; return true; }
+  {
+    if(!AllowRuntimePolicyOverrides()) return false;
+    const int k=_EnsureOver(sym);
+    if(k<0) return false;
+    s_over[k].max_spread_pts=pts;
+    s_over[k].has_spread=true;
+    return true;
+  }
+
   inline bool OverrideSetSession(const string sym, const bool on)
-  { const int k=_EnsureOver(sym); if(k<0) return false; s_over[k].session_filter=on; s_over[k].has_session=true; return true; }
+  {
+    if(!AllowRuntimePolicyOverrides()) return false;
+    const int k=_EnsureOver(sym);
+    if(k<0) return false;
+    s_over[k].session_filter=on;
+    s_over[k].has_session=true;
+    return true;
+  }
+
   inline bool OverrideSetLiquidityFloor(const string sym, const double ratio)
-  { const int k=_EnsureOver(sym); if(k<0) return false; s_over[k].liq_min_ratio=ratio; s_over[k].has_liq=true; return true; }
+  {
+    if(!AllowRuntimePolicyOverrides()) return false;
+    const int k=_EnsureOver(sym);
+    if(k<0) return false;
+    s_over[k].liq_min_ratio=ratio;
+    s_over[k].has_liq=true;
+    return true;
+  }
+
   inline bool OverrideSetNewsMask(const string sym, const int mask)
-  { const int k=_EnsureOver(sym); if(k<0) return false; s_over[k].news_mask=mask; s_over[k].has_news_mask=true; return true; }
+  {
+    if(!AllowRuntimePolicyOverrides()) return false;
+    const int k=_EnsureOver(sym);
+    if(k<0) return false;
+    s_over[k].news_mask=mask;
+    s_over[k].has_news_mask=true;
+    return true;
+  }
+
   inline bool OverrideClear(const string sym)
-  { const int k=_FindOverIdx(sym); if(k<0) return false; for(int i=k;i<s_over_n-1;i++) s_over[i]=s_over[i+1]; s_over_n--; return true; }
-  inline void OverrideClearAll(){ s_over_n=0; }
+  {
+    if(!AllowRuntimePolicyOverrides()) return false;
+    const int k=_FindOverIdx(sym);
+    if(k<0) return false;
+    for(int i=k;i<s_over_n-1;i++) s_over[i]=s_over[i+1];
+    s_over_n--;
+    return true;
+  }
+
+  inline void OverrideClearAll()
+  {
+    if(!AllowRuntimePolicyOverrides()) return;
+    s_over_n=0;
+  }
 
   inline int EffMaxSpreadPts(const Settings &cfg, const string sym)
    {
@@ -2390,7 +2593,23 @@ inline void NotifyTradeResult(const double r_multiple)
          #else
            return StringFormat("news_block mins_left=%d", r.news_mins_left) + _FmtPoolTag(sym);
          #endif
-   
+
+       case GATE_MICRO_VPIN:
+         return StringFormat("MicroVPIN vpin=%.3f limit=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.vpin01, r.vpin_limit01,
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
+       case GATE_MICRO_RESILIENCY:
+         return StringFormat("MicroResiliency resil=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.resiliency01, r.resiliency_min01,
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
+       case GATE_INSTITUTIONAL:
+         return StringFormat("Institutional gate=%d alpha=%.3f exec=%.3f risk=%.3f q=%.3f obs=%.3f venue=%.3f xvenue=%.3f",
+                             (r.institutional_gate_pass?1:0),
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01,
+                             r.observability_confidence01, r.venue_coverage01, r.cross_venue_dislocation01) + pool_tag;
+
        default:
          return _FmtPoolTag(sym); // or "" + _FmtPoolTag(sym) if you want consistent presence
      }
@@ -2558,7 +2777,42 @@ inline void NotifyTradeResult(const double r_multiple)
               " sg_min=", DoubleToString(r.regime_sg_min,3),
               " mask=", (string)r.veto_mask);
         break;
-        
+
+      case GATE_MICRO_VPIN:
+        Print("[Policy][VETO] reason=MICRO_VPIN sym=", sym,
+              " vpin=", DoubleToString(r.vpin01,3),
+              " limit=", DoubleToString(r.vpin_limit01,3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MICRO_RESILIENCY:
+        Print("[Policy][VETO] reason=MICRO_RESILIENCY sym=", sym,
+              " resil=", DoubleToString(r.resiliency01,3),
+              " min=", DoubleToString(r.resiliency_min01,3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_INSTITUTIONAL:
+        Print("[Policy][VETO] reason=INSTITUTIONAL_STATE sym=", sym,
+              " gate=", (r.institutional_gate_pass?"1":"0"),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " obs=", DoubleToString(r.observability_confidence01,3),
+              " venue=", DoubleToString(r.venue_coverage01,3),
+              " xvenue=", DoubleToString(r.cross_venue_dislocation01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
       default:
         Print("[Policy][VETO] reason=", GateReasonToString(r.primary_reason),
               " sym=", sym, " mask=", (string)r.veto_mask);
@@ -2569,7 +2823,6 @@ inline void NotifyTradeResult(const double r_multiple)
   // ----------------------------------------------------------------------------
   // Unified evaluators (Fast + Audit)
   // ----------------------------------------------------------------------------
-
   inline void _ApplyRuntimeKnobsFromCfg(const Settings &cfg)
   {
     SetMoDMultiplier       (CfgModSpreadMult(cfg));
@@ -3335,6 +3588,10 @@ inline void NotifyTradeResult(const double r_multiple)
     double observability_confidence01;
     double venue_coverage01;
     double cross_venue_dislocation01;
+
+    int    gate_reason;
+    double vpin01;
+    double resiliency01;
   };
 
   inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
@@ -3344,6 +3601,10 @@ inline void NotifyTradeResult(const double r_multiple)
     v.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     v.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
     v.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
+
+    v.gate_reason                = GATE_OK;
+    v.vpin01                     = (double)POLICIES_INST_DEFAULT_VPIN01;
+    v.resiliency01               = (double)POLICIES_INST_DEFAULT_RESILIENCY01;
   }
 
   inline bool LoadInstitutionalStateFromConfluence(const string sym,
@@ -3370,6 +3631,26 @@ inline void NotifyTradeResult(const double r_multiple)
         out_view.risk_score        = Clamp01(inst.risk_score);
         out_view.state_quality01   = Clamp01(inst.state_quality01);
 
+        #ifdef POLICIES_HAS_INST_TRANSPORT_VPIN01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VPIN01
+            out_view.vpin01 = Clamp01(inst.vpin01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_VPIN
+              out_view.vpin01 = Clamp01(inst.ms_vpin);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_RESILIENCY01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_RESILIENCY01
+            out_view.resiliency01 = Clamp01(inst.resiliency01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_RESIL
+              out_view.resiliency01 = Clamp01(inst.ms_resil);
+            #endif
+          #endif
+        #endif
+
         // Optional downstream diagnostics.
         // Policies consumes them only if the canonical transport exposes them.
         // It does NOT derive substitutes locally.
@@ -3392,6 +3673,30 @@ inline void NotifyTradeResult(const double r_multiple)
     return false;
   }
 
+  inline void _PolicyMergeInstitutionalView(const Settings &cfg,
+                                            const InstitutionalStatePolicyView &v,
+                                            PolicyResult &out)
+  {
+    out.institutional_state_loaded       = v.valid;
+    out.institutional_gate_pass          = v.trade_gate_pass;
+    out.institutional_delay_recommended  = v.delay_recommended;
+    out.institutional_derisk_recommended = v.derisk_recommended;
+
+    out.alpha_score                    = v.alpha_score;
+    out.execution_score                = v.execution_score;
+    out.risk_score                     = v.risk_score;
+    out.state_quality01                = v.state_quality01;
+
+    out.vpin01                         = v.vpin01;
+    out.vpin_limit01                   = CfgMicroVPINMax01(cfg);
+    out.resiliency01                   = v.resiliency01;
+    out.resiliency_min01               = CfgMicroResiliencyMin01(cfg);
+
+    out.observability_confidence01     = v.observability_confidence01;
+    out.venue_coverage01               = v.venue_coverage01;
+    out.cross_venue_dislocation01      = v.cross_venue_dislocation01;
+  }
+
   inline bool ApplyInstitutionalStatePolicy(const Settings &cfg,
                                             const string sym,
                                             StratScore &ss,
@@ -3402,51 +3707,92 @@ inline void NotifyTradeResult(const double r_multiple)
     if(!LoadInstitutionalStateFromConfluence(sym, CfgTFEntry(cfg), out_view))
       return true; // no canonical transport yet => do not invent pseudo-state here
 
+    out_view.gate_reason = GATE_OK;
+
     // Hard canonical veto from the fused transport
     if(!out_view.trade_gate_pass)
+    {
+      out_view.gate_reason = GATE_INSTITUTIONAL;
       return false;
+    }
 
     // State quality gate
     if(out_view.state_quality01 < (double)POLICIES_INST_MIN_STATE_QUALITY01)
     {
       out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_INSTITUTIONAL;
       return false;
     }
 
-    // Observability gate (consumer-only; neutral if transport does not expose it)
+    // Observability gate
     #ifdef POLICIES_INST_ENABLE_OBSERVABILITY_GATE
       if(out_view.observability_confidence01 < (double)POLICIES_INST_MIN_OBSERVABILITY01)
       {
         out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_INSTITUTIONAL;
         return false;
       }
     #endif
 
-    // Venue-coverage gate (consumer-only; neutral if transport does not expose it)
+    // Venue coverage gate
     #ifdef POLICIES_INST_ENABLE_VENUE_COVERAGE_GATE
       if(out_view.venue_coverage01 < (double)POLICIES_INST_MIN_VENUE_COVERAGE01)
       {
         out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_INSTITUTIONAL;
         return false;
       }
     #endif
 
-    // Cross-venue dislocation veto (only meaningful once the transport exposes it)
+    // Cross-venue dislocation veto
     #ifdef POLICIES_INST_ENABLE_XVENUE_DISLOCATION_VETO
       if(out_view.cross_venue_dislocation01 >= (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01)
+      {
+        out_view.gate_reason = GATE_INSTITUTIONAL;
         return false;
+      }
+    #endif
+
+    // Explicit microstructure hard gates
+    #ifdef POLICIES_INST_ENABLE_VPIN_VETO
+      if(CfgMicroVPINGateOn(cfg))
+      {
+        const double vmax = CfgMicroVPINMax01(cfg);
+        if(vmax < 1.0 && out_view.vpin01 >= vmax)
+        {
+          out_view.gate_reason = GATE_MICRO_VPIN;
+          return false;
+        }
+      }
+    #endif
+
+    #ifdef POLICIES_INST_ENABLE_RESILIENCY_VETO
+      if(CfgMicroResiliencyGateOn(cfg))
+      {
+        const double rmin = CfgMicroResiliencyMin01(cfg);
+        if(rmin > 0.0 && out_view.resiliency01 <= rmin)
+        {
+          out_view.delay_recommended = true;
+          out_view.gate_reason = GATE_MICRO_RESILIENCY;
+          return false;
+        }
+      }
     #endif
 
     // Weak execution head => delay / no-trade-now
     if(out_view.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
     {
       out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_INSTITUTIONAL;
       return false;
     }
 
     // Risk head says "too dangerous" => veto
     if(out_view.risk_score <= (double)POLICIES_INST_VETO_RISK_SCORE01)
+    {
+      out_view.gate_reason = GATE_INSTITUTIONAL;
       return false;
+    }
 
     // Risk head says "allowed, but smaller" => derisk
     if(out_view.risk_score < (double)POLICIES_INST_DERISK_RISK_SCORE01)
@@ -3458,8 +3804,79 @@ inline void NotifyTradeResult(const double r_multiple)
     return true;
   }
 
+  inline bool _EvaluateFinalSendGateEx(const Settings &cfg,
+                                       const string sym,
+                                       StratScore &ss,
+                                       PolicyResult &out,
+                                       InstitutionalStatePolicyView &inst_view,
+                                       const bool audit)
+  {
+    const bool ok_full = _EvaluateFullEx(cfg, sym, out, audit);
+    if(!audit && !ok_full)
+      return false;
+
+    ResetInstitutionalStatePolicyView(inst_view);
+
+    if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
+    {
+      _PolicyMergeInstitutionalView(cfg, inst_view, out);
+
+      int gr = inst_view.gate_reason;
+      if(gr <= GATE_OK)
+        gr = GATE_INSTITUTIONAL;
+
+      ulong mask = CA_POLMASK_INSTITUTIONAL;
+      if(gr == GATE_MICRO_VPIN)
+        mask = CA_POLMASK_MICRO_VPIN;
+      else if(gr == GATE_MICRO_RESILIENCY)
+        mask = CA_POLMASK_MICRO_RESILIENCY;
+
+      _PolicyVeto(out, gr, mask);
+      if(!audit)
+        return false;
+    }
+
+    _PolicyMergeInstitutionalView(cfg, inst_view, out);
+    return out.allowed;
+  }
+
+  inline bool EvaluateFinalSendGate(const Settings &cfg,
+                                    const string sym,
+                                    StratScore &ss,
+                                    PolicyResult &out,
+                                    InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateFinalSendGateEx(cfg, sym, ss, out, inst_view, false);
+  }
+
+  inline bool EvaluateFinalSendGateAudit(const Settings &cfg,
+                                         const string sym,
+                                         StratScore &ss,
+                                         PolicyResult &out,
+                                         InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateFinalSendGateEx(cfg, sym, ss, out, inst_view, true);
+  }
+
+  inline bool EvaluateFinalSendGate(const Settings &cfg,
+                                    StratScore &ss,
+                                    PolicyResult &out,
+                                    InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateFinalSendGateEx(cfg, _Symbol, ss, out, inst_view, false);
+  }
+
+  inline bool EvaluateFinalSendGateAudit(const Settings &cfg,
+                                         StratScore &ss,
+                                         PolicyResult &out,
+                                         InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateFinalSendGateEx(cfg, _Symbol, ss, out, inst_view, true);
+  }
+
   // ----------------------------------------------------------------------------
-  // Core gates: Check / CheckFull / AllowedByPolicies
+  // Classic gates: Check / CheckFull / AllowedByPolicies
+  // Candidate-aware final pre-send gate: EvaluateFinalSendGate(...)
   // ----------------------------------------------------------------------------
   inline bool CheckFull(const Settings &cfg, int &reason, int &minutes_left_news)
   { return CheckFull(cfg, _Symbol, reason, minutes_left_news); }
@@ -3727,7 +4144,11 @@ inline void NotifyTradeResult(const double r_multiple)
        aux_out = r.news_mins_left;
      else if(r.primary_reason == GATE_COOLDOWN)
        aux_out = (r.cd_trade_left_sec > r.cd_loss_left_sec ? r.cd_trade_left_sec : r.cd_loss_left_sec);
-   
+     else if(r.primary_reason == GATE_MICRO_VPIN)
+       aux_out = (int)MathRound(1000.0 * r.vpin01);
+     else if(r.primary_reason == GATE_MICRO_RESILIENCY)
+       aux_out = (int)MathRound(1000.0 * r.resiliency01);
+
      detail_out = FormatPrimaryVetoDetail(r);
      return false;
    }
@@ -3894,6 +4315,11 @@ inline void NotifyTradeResult(const double r_multiple)
     double      venue_coverage01;
     double      cross_venue_dislocation01;
 
+    double      vpin01;
+    double      vpin_limit01;
+    double      resiliency01;
+    double      resiliency_min01;
+
     bool        institutional_gate_pass;
     bool        institutional_delay_recommended;
     bool        institutional_derisk_recommended;
@@ -3914,6 +4340,11 @@ inline void NotifyTradeResult(const double r_multiple)
     ti.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     ti.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
     ti.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
+
+    ti.vpin01        = (double)POLICIES_INST_DEFAULT_VPIN01;
+    ti.vpin_limit01  = 1.0;
+    ti.resiliency01  = (double)POLICIES_INST_DEFAULT_RESILIENCY01;
+    ti.resiliency_min01 = 0.0;
 
     ti.institutional_gate_pass=true;
     ti.institutional_delay_recommended=false;
@@ -3943,36 +4374,45 @@ inline void NotifyTradeResult(const double r_multiple)
     ResetIntent(out_intent);
     out_intent.symbol = symbol;
 
-    int mins_left=0;
-    
-    if(!CheckFull(cfg, symbol, gate_reason, mins_left))
-    { out_intent.reason=gate_reason; return false; }
-
-    StratScore SS = in_ss; ConfluenceBreakdown BD = in_bd;
+    StratScore SS = in_ss;
+    ConfluenceBreakdown BD = in_bd;
 
     // Keep news / global policy overlays independent and first.
-    // Institutional state is a downstream consumer gate; it must not replace news policy.
     bool skip=false;
     ApplyPolicyRiskOverlays(cfg, symbol, SS, BD, skip);
-    if(skip){ gate_reason=GATE_NEWS; out_intent.reason=gate_reason; return false; }
+    if(skip)
+    {
+      gate_reason=GATE_NEWS;
+      out_intent.reason=gate_reason;
+      return false;
+    }
+
+    PolicyResult final_gate;
+    _PolicyReset(final_gate);
 
     InstitutionalStatePolicyView inst_view;
     ResetInstitutionalStatePolicyView(inst_view);
 
-    if(!ApplyInstitutionalStatePolicy(cfg, symbol, SS, inst_view))
+    if(!EvaluateFinalSendGate(cfg, symbol, SS, final_gate, inst_view))
     {
-      out_intent.alpha_score                    = inst_view.alpha_score;
-      out_intent.execution_score                = inst_view.execution_score;
-      out_intent.risk_score                     = inst_view.risk_score;
-      out_intent.state_quality01                = inst_view.state_quality01;
-      out_intent.observability_confidence01     = inst_view.observability_confidence01;
-      out_intent.venue_coverage01               = inst_view.venue_coverage01;
-      out_intent.cross_venue_dislocation01      = inst_view.cross_venue_dislocation01;
-      out_intent.institutional_gate_pass        = inst_view.trade_gate_pass;
-      out_intent.institutional_delay_recommended= inst_view.delay_recommended;
-      out_intent.institutional_derisk_recommended= inst_view.derisk_recommended;
+      out_intent.alpha_score                     = final_gate.alpha_score;
+      out_intent.execution_score                 = final_gate.execution_score;
+      out_intent.risk_score                      = final_gate.risk_score;
+      out_intent.state_quality01                 = final_gate.state_quality01;
+      out_intent.observability_confidence01      = final_gate.observability_confidence01;
+      out_intent.venue_coverage01                = final_gate.venue_coverage01;
+      out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
 
-      gate_reason       = GATE_INSTITUTIONAL;
+      out_intent.vpin01                          = final_gate.vpin01;
+      out_intent.vpin_limit01                    = final_gate.vpin_limit01;
+      out_intent.resiliency01                    = final_gate.resiliency01;
+      out_intent.resiliency_min01                = final_gate.resiliency_min01;
+
+      out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
+      out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
+      out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
+
+      gate_reason       = final_gate.primary_reason;
       out_intent.reason = gate_reason;
       return false;
     }
@@ -3992,21 +4432,23 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.tp        = plan.tp;
     out_intent.lots      = plan.lots;
 
-    out_intent.alpha_score                    = inst_view.alpha_score;
-    out_intent.execution_score                = inst_view.execution_score;
-    out_intent.risk_score                     = inst_view.risk_score;
-    out_intent.state_quality01                = inst_view.state_quality01;
-    out_intent.observability_confidence01     = inst_view.observability_confidence01;
-    out_intent.venue_coverage01               = inst_view.venue_coverage01;
-    out_intent.cross_venue_dislocation01      = inst_view.cross_venue_dislocation01;
-    out_intent.institutional_gate_pass        = inst_view.trade_gate_pass;
-    out_intent.institutional_delay_recommended= inst_view.delay_recommended;
-    out_intent.institutional_derisk_recommended= inst_view.derisk_recommended;
+    out_intent.alpha_score                     = final_gate.alpha_score;
+    out_intent.execution_score                 = final_gate.execution_score;
+    out_intent.risk_score                      = final_gate.risk_score;
+    out_intent.state_quality01                 = final_gate.state_quality01;
+    out_intent.observability_confidence01      = final_gate.observability_confidence01;
+    out_intent.venue_coverage01                = final_gate.venue_coverage01;
+    out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
 
-    out_intent.ss        = SS;
-    out_intent.bd        = BD;
-    out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
-    out_intent.reason    = GATE_OK;
+    out_intent.vpin01                          = final_gate.vpin01;
+    out_intent.vpin_limit01                    = final_gate.vpin_limit01;
+    out_intent.resiliency01                    = final_gate.resiliency01;
+    out_intent.resiliency_min01                = final_gate.resiliency_min01;
+
+    out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
+    out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
+    out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
+
     out_intent.ss        = SS;
     out_intent.bd        = BD;
     out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
@@ -4053,9 +4495,8 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.symbol = symbol;
     if(n<=0){ gate_reason=GATE_CONFLICT; out_intent.reason=gate_reason; return false; }
 
-    int mins_left=0;
-    if(!CheckFull(cfg, symbol, gate_reason, mins_left))
-    { out_intent.reason=gate_reason; return false; }
+    // Final machine-readable pre-send gating is owned by BuildTradeIntentFromPick()
+    // through EvaluateFinalSendGate(...).
 
     PolicySignal tmp[]; ArrayResize(tmp, n);
     for(int i=0;i<n;i++) tmp[i]=cands[i];

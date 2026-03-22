@@ -313,6 +313,17 @@ struct Settings;
 #ifndef CFG_INST_EXEC_SCHEDULE_URGENCY
   #define CFG_INST_EXEC_SCHEDULE_URGENCY 3
 #endif
+#ifndef CFG_HAS_MICROSTRUCTURE
+  #define CFG_HAS_MICROSTRUCTURE 1
+#endif
+
+#ifndef CFG_HAS_MICROSTRUCTURE_SETTINGS
+  #define CFG_HAS_MICROSTRUCTURE_SETTINGS 1
+#endif
+
+#ifndef CFG_HAS_EXEC_SCHEDULE
+  #define CFG_HAS_EXEC_SCHEDULE 1
+#endif
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -2090,7 +2101,31 @@ namespace Config
         }
       }
    #endif
-   
+
+#ifdef CFG_HAS_MICROSTRUCTURE
+   inline bool CfgMicrostructureEnabled(const Settings &cfg)
+   {
+      if(!cfg.ms_enable)
+         return false;
+
+      if(cfg.scan_obi_enable) return true;
+      if(cfg.scan_of_enable)  return true;
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      if(cfg.scan_inst_state_enable) return true;
+#endif
+      return false;
+   }
+
+   inline int CfgExecScheduleMode(const Settings &cfg)
+   {
+#ifdef CFG_HAS_EXEC_SCHEDULE
+      return cfg.ms_exec_schedule_mode;
+#else
+      return CFG_INST_EXEC_SCHEDULE_PASSIVE;
+#endif
+   }
+#endif
+
    inline bool CfgEnablePackStrats(const Settings &cfg)
    {
      #ifdef CFG_HAS_ENABLE_PACK_STRATS
@@ -4332,6 +4367,23 @@ namespace Config
       cfg.scan_inst_risk_threshold               = 0.60;
 #endif
 
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+      // --- Canonical top-level microstructure control layer ---
+      // These are top-level policy/gate knobs.
+      // Lower-level transport/scanner ownership remains in scan_obi_*, scan_ofx_*, scan_inst_*.
+      cfg.ms_enable                    = true;
+
+      cfg.ms_vpin_threshold            = 0.65;
+      cfg.ms_resil_threshold           = 0.35;
+      cfg.ms_ofi_weight                = 0.25;
+      cfg.ms_impact_window             = 50;
+
+      cfg.ms_exec_schedule_enable      = true;
+      cfg.ms_exec_schedule_mode        = CFG_INST_EXEC_SCHEDULE_PASSIVE;
+      cfg.ms_exec_participation01      = 0.10;
+      cfg.ms_exec_aggressiveness01     = 0.35;
+#endif
+
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
       // Explicit init avoids zero-value ambiguity when feature is later enabled.
       cfg.scan_vsa_hook_enable                = false;
@@ -5300,6 +5352,58 @@ namespace Config
   }
 #endif
 
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+   inline void NormalizeMicrostructureFamily(Settings &cfg)
+   {
+      cfg.ms_enable = (cfg.ms_enable ? true : false);
+
+      if(cfg.ms_vpin_threshold < 0.0)
+         cfg.ms_vpin_threshold = 0.0;
+      if(cfg.ms_vpin_threshold > 1.0)
+         cfg.ms_vpin_threshold = 1.0;
+
+      if(cfg.ms_resil_threshold < 0.0)
+         cfg.ms_resil_threshold = 0.0;
+      if(cfg.ms_resil_threshold > 1.0)
+         cfg.ms_resil_threshold = 1.0;
+
+      if(cfg.ms_ofi_weight < 0.0)
+         cfg.ms_ofi_weight = 0.0;
+      if(cfg.ms_ofi_weight > 1.0)
+         cfg.ms_ofi_weight = 1.0;
+
+      if(cfg.ms_impact_window < 5)
+         cfg.ms_impact_window = 50;
+
+      cfg.ms_exec_schedule_mode =
+         MathMin(MathMax(cfg.ms_exec_schedule_mode, CFG_INST_EXEC_SCHEDULE_PASSIVE),
+                 CFG_INST_EXEC_SCHEDULE_URGENCY);
+
+      if(cfg.ms_exec_participation01 < 0.0)
+         cfg.ms_exec_participation01 = 0.0;
+      if(cfg.ms_exec_participation01 > 1.0)
+         cfg.ms_exec_participation01 = 1.0;
+
+      if(cfg.ms_exec_aggressiveness01 < 0.0)
+         cfg.ms_exec_aggressiveness01 = 0.0;
+      if(cfg.ms_exec_aggressiveness01 > 1.0)
+         cfg.ms_exec_aggressiveness01 = 1.0;
+
+      // Canonical bridge into existing lower-level families.
+      // Do not duplicate transport semantics elsewhere.
+      cfg.scan_ofx_impact_window = cfg.ms_impact_window;
+
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      if(cfg.ms_exec_schedule_enable)
+      {
+         cfg.scan_inst_exec_schedule_mode       = cfg.ms_exec_schedule_mode;
+         cfg.scan_inst_exec_is_aggressiveness01 = cfg.ms_exec_aggressiveness01;
+         cfg.scan_inst_pov_target_participation01 = cfg.ms_exec_participation01;
+      }
+#endif
+   }
+#endif
+
   inline int CfgOrderFlowEffectiveMode(const Settings &cfg)
   {
      // Canonical internal access path:
@@ -5781,6 +5885,47 @@ namespace Config
         cfg.scan_inst_exec_is_aggressiveness01 > 1.0)
         warns += "scan_inst_exec_is_aggressiveness01 out of range; NormalizeInstitutionalStateFamily() clamps it to 0..1.\n";
   }
+#endif
+
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+   inline void ValidateMicrostructureFamily(const Settings &cfg, string &warns)
+   {
+      if(cfg.ms_vpin_threshold < 0.0 || cfg.ms_vpin_threshold > 1.0)
+         warns += "ms_vpin_threshold out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_resil_threshold < 0.0 || cfg.ms_resil_threshold > 1.0)
+         warns += "ms_resil_threshold out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_ofi_weight < 0.0 || cfg.ms_ofi_weight > 1.0)
+         warns += "ms_ofi_weight out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_impact_window < 5)
+         warns += "ms_impact_window < 5; NormalizeMicrostructureFamily() restores a safe rolling window.\n";
+
+      if(cfg.ms_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
+         cfg.ms_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
+         warns += "ms_exec_schedule_mode out of range; NormalizeMicrostructureFamily() clamps it to PASSIVE / POV / VWAP / URGENCY.\n";
+
+      if(cfg.ms_exec_participation01 < 0.0 || cfg.ms_exec_participation01 > 1.0)
+         warns += "ms_exec_participation01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_exec_aggressiveness01 < 0.0 || cfg.ms_exec_aggressiveness01 > 1.0)
+         warns += "ms_exec_aggressiveness01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_enable)
+      {
+         bool has_owner = false;
+
+         if(cfg.scan_obi_enable) has_owner = true;
+         if(cfg.scan_of_enable)  has_owner = true;
+#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+         if(cfg.scan_inst_state_enable) has_owner = true;
+#endif
+
+         if(!has_owner)
+            warns += "ms_enable=true while all lower-level microstructure owners are disabled (scan_obi_enable / scan_of_enable / scan_inst_state_enable). The top-level ms_* gates will be inert until at least one owner family is live.\n";
+      }
+   }
 #endif
 
   inline void Normalize(Settings &cfg)
@@ -7565,6 +7710,10 @@ namespace Config
       NormalizeInstitutionalStateFamily(cfg);
 #endif
 
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+      NormalizeMicrostructureFamily(cfg);
+#endif
+
       #ifdef CFG_HAS_FVG_LOOKBACK_BARS
         cfg.fvg_lookback_bars = MathMin(MathMax(cfg.fvg_lookback_bars, 50), 3000);
       #endif
@@ -8713,6 +8862,10 @@ namespace Config
     ValidateOrderFlowFamily(cfg, warns);
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
     ValidateInstitutionalStateFamily(cfg, warns);
+#endif
+
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+     ValidateMicrostructureFamily(cfg, warns);
 #endif
 
     if(cfg.asset_class_preset < CFG_ASSET_PRESET_FX_XAU_OTC ||
@@ -10735,6 +10888,18 @@ namespace Config
       s+=",scOFXWLa="+DoubleToString(c.scan_ofx_weight_lambda,4);
       s+=",scOFXWBe="+DoubleToString(c.scan_ofx_weight_beta,4);
       s+=",scOFXQMin="+DoubleToString(c.scan_ofx_backend_quality_min,4);
+
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+      s+=",msOn="+BoolStr(c.ms_enable);
+      s+=",msVpTh="+DoubleToString(c.ms_vpin_threshold,4);
+      s+=",msReTh="+DoubleToString(c.ms_resil_threshold,4);
+      s+=",msOFIW="+DoubleToString(c.ms_ofi_weight,4);
+      s+=",msImW="+IntegerToString(c.ms_impact_window);
+      s+=",msSchOn="+BoolStr(c.ms_exec_schedule_enable);
+      s+=",msSchMd="+IntegerToString(c.ms_exec_schedule_mode);
+      s+=",msPart="+DoubleToString(c.ms_exec_participation01,4);
+      s+=",msAggr="+DoubleToString(c.ms_exec_aggressiveness01,4);
+#endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
       s+=",scInstOn="+BoolStr(c.scan_inst_state_enable);
@@ -13034,6 +13199,18 @@ namespace Config
         else if(k=="scOFXWBe")  cfg.scan_ofx_weight_beta = ToDouble(v);
         else if(k=="scOFXQMin") cfg.scan_ofx_backend_quality_min = ToDouble(v);
 
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+        else if(k=="msOn")    cfg.ms_enable = ToBool(v);
+        else if(k=="msVpTh")  cfg.ms_vpin_threshold = ToDouble(v);
+        else if(k=="msReTh")  cfg.ms_resil_threshold = ToDouble(v);
+        else if(k=="msOFIW")  cfg.ms_ofi_weight = ToDouble(v);
+        else if(k=="msImW")   cfg.ms_impact_window = ToInt(v);
+        else if(k=="msSchOn") cfg.ms_exec_schedule_enable = ToBool(v);
+        else if(k=="msSchMd") cfg.ms_exec_schedule_mode = ToInt(v);
+        else if(k=="msPart")  cfg.ms_exec_participation01 = ToDouble(v);
+        else if(k=="msAggr")  cfg.ms_exec_aggressiveness01 = ToDouble(v);
+#endif
+
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
         else if(k=="scInstOn")   cfg.scan_inst_state_enable = ToBool(v);
 
@@ -14236,6 +14413,22 @@ struct Settings
     double scan_ofx_weight_lambda;                  // fusion weight for flow-impact lambda
     double scan_ofx_weight_beta;                    // fusion weight for OFI beta
     double scan_ofx_backend_quality_min;            // minimum backend quality to allow advanced OFX contribution
+
+#ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+    // Canonical top-level microstructure policy / gate layer
+    // These fields do not replace scan_obi_* / scan_ofx_* / scan_inst_*.
+    // They sit above them as the main config control surface.
+    bool   ms_enable;                    // master top-level microstructure enable
+    double ms_vpin_threshold;            // top-level toxicity / VPIN gate
+    double ms_resil_threshold;           // top-level resiliency gate
+    double ms_ofi_weight;                // top-level OFI contribution weight
+    int    ms_impact_window;             // canonical impact window for downstream transport alignment
+
+    bool   ms_exec_schedule_enable;      // top-level execution schedule policy enable
+    int    ms_exec_schedule_mode;        // 0=PASSIVE, 1=POV, 2=VWAP, 3=URGENCY
+    double ms_exec_participation01;      // 0..1 target participation for execution-policy layer
+    double ms_exec_aggressiveness01;     // 0..1 aggressiveness scalar
+#endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
     // Institutional-state transport family (scanner/backend only; transport+fusion config, not raw signal ownership)
