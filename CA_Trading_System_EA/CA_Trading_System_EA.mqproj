@@ -85,11 +85,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Confluence.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\MLBlender.mqh",
       "compile":false,
       "relative_to_project":true
@@ -446,6 +441,11 @@
     },
     {
       "path":"include\\AutoFibHarmonics.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Confluence.mqh",
       "compile":false,
       "relative_to_project":true
     }

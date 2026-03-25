@@ -127,6 +127,8 @@ void UI_Screenshot(const string tag);
 // EA-side microstructure refresh bridge
 bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh=false);
 void PublishMicrostructureSnapshot(const string sym);
+string CanonicalRouterSymbol();
+bool   MicrostructureGateOK(const string sym, const datetime now_srv, string &detail);
 
 void RefreshICTContext(EAState &st);
 
@@ -894,6 +896,18 @@ input double           InpMS_MaxVPIN           = 0.65;   // block when VPIN is a
 input double           InpMS_MinResiliency     = 0.35;   // block when resiliency is below this
 input int              InpMS_RefreshMinMs      = 250;    // local throttle for EA-side refresh helper
 
+input int              InpMS_MaxSnapshotAgeMs   = 1250;   // block if last published micro snapshot is stale
+input bool             InpMS_BlockIfUnavailable = true;   // block entries when no fresh micro snapshot exists
+
+// Reserved thresholds for downstream State/RiskEngine/Execution passes.
+// Keep them here now so the EA owns the policy knobs, but do NOT consume them
+// in this file until MarketData/Types/State expose the canonical fields.
+input double           InpMS_MaxImpactBeta01    = 0.85;   // reserved
+input double           InpMS_MaxImpactLambda01  = 0.85;   // reserved
+input double           InpMS_MinAbsorption01    = 0.25;   // reserved
+input double           InpMS_MinObservability01 = 0.30;   // reserved
+input double           InpMS_MinDarkPoolConf01  = 0.20;   // reserved
+
 // --------- Tester / Optimization ----------
 enum TesterScoreMode { TESTER_SCORE_MIX=0, TESTER_SCORE_SHARPE=1, TESTER_SCORE_EXPECT=2 }; // Tester / Optimization: Score
 input TesterScoreMode InpTesterScore  = TESTER_SCORE_MIX; // Tester / Optimization: Score Mode
@@ -1006,9 +1020,10 @@ void MSH_RouteEvent(const Scan::ScanEvent &e)
    // e.sym, e.tf, e.ts, ...
    MSH_DirtyTouch(e.sym, (int)e.tf, e.ts);
 
-   // Backend-only: refresh microstructure on scanner dirties so Router consumes fresh state.
-   RefreshMicrostructureSnapshot(e.sym, true);
-   PublishMicrostructureSnapshot(e.sym);
+   // IMPORTANT:
+   // MarketScannerHub / Scan remain the upstream scan owners.
+   // Do NOT publish microstructure directly from the event callback here.
+   // The EA publishes one canonical router/state snapshot on OnTimer()/OnTick().
 }
 
 // Price/time gates state
@@ -3017,6 +3032,73 @@ void RefreshICTContext(EAState &st)
    StateUpdateICTContext(st, g_cfg);
 }
 
+string CanonicalRouterSymbol()
+{
+   return (g_symCount > 0 ? g_symbols[0] : _Symbol);
+}
+
+bool MicrostructureGateOK(const string sym, const datetime now_srv, string &detail)
+{
+   detail = "";
+
+   if(!InpMS_EnableRuntimeGate)
+      return true;
+
+   if(sym == "")
+      return true;
+
+   if(!g_ms_last_ok)
+   {
+      if(!InpMS_BlockIfUnavailable)
+         return true;
+
+      detail = "micro snapshot unavailable";
+      return false;
+   }
+
+   if(g_ms_last_symbol != sym)
+   {
+      if(!InpMS_BlockIfUnavailable)
+         return true;
+
+      detail = StringFormat("micro snapshot symbol mismatch have=%s want=%s",
+                            g_ms_last_symbol, sym);
+      return false;
+   }
+
+   if(g_ms_last_refresh == 0)
+   {
+      if(!InpMS_BlockIfUnavailable)
+         return true;
+
+      detail = "micro snapshot never refreshed";
+      return false;
+   }
+
+   long age_ms = (long)(now_srv - g_ms_last_refresh) * 1000;
+   if(age_ms < 0)
+      age_ms = 0;
+
+   if((int)age_ms > InpMS_MaxSnapshotAgeMs)
+   {
+      detail = StringFormat("micro snapshot stale age_ms=%d max_ms=%d",
+                            (int)age_ms, InpMS_MaxSnapshotAgeMs);
+      return false;
+   }
+
+   if(!g_ms_gate_pass)
+   {
+      detail = StringFormat("micro gate fail ofi=%.3f obi=%.3f vpin=%.3f resil=%.3f",
+                            g_ms_last.ofi_norm,
+                            g_ms_last.obi_norm,
+                            g_ms_last.vpin,
+                            g_ms_last.resiliency);
+      return false;
+   }
+
+   return true;
+}
+
 //--------------------------------------------------------------------
 // Backend-only UI wrappers
 //--------------------------------------------------------------------
@@ -3122,9 +3204,21 @@ void PublishMicrostructureSnapshot(const string sym)
    if(!g_ms_last_ok)
       return;
 
-   // Current attached branch has no Router/StrategyRegistry snapshot setter API.
-   // Keep this EA bridge compile-safe and backend-only until those module-owned
-   // setters are added in their owning files.
+   if(sym == "")
+      return;
+
+   // Thin EA bridge only:
+   // 1) MarketData owns microstructure production
+   // 2) State owns durable institutional truth
+   // 3) Router/StrategyRegistry consume State on evaluation
+   // 4) Scan/MSH remain the only scanner snapshot owners
+   StateOnTickUpdate(g_state);
+   RefreshICTContext(g_state);
+
+   // DO NOT call undeclared branch-specific setter APIs here.
+   // Previous attempts using SetGlobalMicrostructureSnapshot(...)
+   // or RouterSetMicrostructureSnapshot(...) are not compile-safe
+   // in the current source set.
 }
 
 //--------------------------------------------------------------------
@@ -3402,7 +3496,7 @@ int OnInit()
    RefreshICTContext(g_state);
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
    {
-      const string ms_sym0 = (g_symCount > 0 ? g_symbols[0] : _Symbol);
+      const string ms_sym0 = CanonicalRouterSymbol();
       RefreshMicrostructureSnapshot(ms_sym0, true);
       PublishMicrostructureSnapshot(ms_sym0);
    }
@@ -3512,7 +3606,7 @@ void OnTick()
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
    {
-      const string ms_sym = (single_symbol ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
+      const string ms_sym = CanonicalRouterSymbol();
       RefreshMicrostructureSnapshot(ms_sym, false);
       PublishMicrostructureSnapshot(ms_sym);
    }
@@ -3580,15 +3674,16 @@ void OnTick()
    //    - Actual routing / order planning only runs if all gates are OK.
       int router_gate_reason = 0;
       const datetime now_srv = TimeUtils::NowServer();
+      const string router_sym = CanonicalRouterSymbol();
+
       if(!WarmupGateOK())
       {
          // WarmupGateOK emits a throttled breadcrumb in InpDebug mode.
       }
       else
       {
-         if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, router_gate_reason))
+         if(RouterGateOK_Global(router_sym, g_cfg, now_srv, router_gate_reason))
          {
-            PublishMicrostructureSnapshot((g_symCount > 0 ? g_symbols[0] : _Symbol));
             RouterEvaluateAll(g_router, g_cfg, ictCtx);
          }
          else
@@ -3602,7 +3697,7 @@ void OnTick()
                   last_emit = now;
                   PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
                               router_gate_reason, _GateReasonStr(router_gate_reason));
-                  TraceNoTrade(_Symbol, TS_GATE, router_gate_reason,
+                  TraceNoTrade(router_sym, TS_GATE, router_gate_reason,
                                StringFormat("RouterGateOK=false (%s)", _GateReasonStr(router_gate_reason)));
                }
             }
@@ -3665,21 +3760,12 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
+   const string router_sym = CanonicalRouterSymbol();
+
    MSH::HubTimerTick(S);
-   if(g_msh_dirty_n > 0)
-   {
-      for(int i=0; i<g_msh_dirty_n; i++)
-      {
-         RefreshMicrostructureSnapshot(g_msh_dirty_sym[i], true);
-         PublishMicrostructureSnapshot(g_msh_dirty_sym[i]);
-      }
-   }
-   else
-   {
-      const string ms_sym = (g_symCount > 0 ? g_symbols[0] : _Symbol);
-      RefreshMicrostructureSnapshot(ms_sym, false);
-      PublishMicrostructureSnapshot(ms_sym);
-   }
+
+   RefreshMicrostructureSnapshot(router_sym, (g_msh_dirty_n > 0));
+   PublishMicrostructureSnapshot(router_sym);
 
    // MarketData::OnTimerRefresh(); // already done inside MSH::HubTimerTick(S)
    // AutoC::OnTimerScan(S, now_srv); // already done inside MSH::HubTimerTick(S)
@@ -3753,24 +3839,21 @@ void OnTimer()
    
    // If ticks are sparse, allow timer-driven router eval (watchlist-safe)
    int gate_reason = 0;
-   
+
    // Router mode path (ICT RouterEvaluateAll)
    if(!WarmupGateOK())
    {
-      TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP, "OnTimer blocked: WarmupGateOK=false");
+      TraceNoTrade(router_sym, TS_GATE, GATE_WARMUP, "OnTimer blocked: WarmupGateOK=false");
       return;
    }
-   
+
    if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
       return;
-   
-   if(RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
+
+   if(RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))
    {
-      StateOnTickUpdate(g_state);
-      RefreshICTContext(g_state);
       ICT_Context ictCtx = StateGetICTContext(g_state);
       RouterEvaluateAll(g_router, g_cfg, ictCtx);
-      PublishMicrostructureSnapshot((g_symCount > 0 ? g_symbols[0] : _Symbol));
       MSH_DirtyClear();
    }
    else
@@ -3784,7 +3867,7 @@ void OnTimer()
             last_emit = now;
             PrintFormat("[Router][Timer] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
                         gate_reason, _GateReasonStr(gate_reason));
-            TraceNoTrade(_Symbol, TS_GATE, gate_reason,
+            TraceNoTrade(router_sym, TS_GATE, gate_reason,
                          StringFormat("RouterGateOK=false (%s) [timer]", _GateReasonStr(gate_reason)));
          }
       }
@@ -4235,7 +4318,22 @@ bool RouterGateOK_Global(const string log_sym,
 
    if(!TradeEnvGateOK(log_sym, gate_reason_out))
       return false;
-   
+
+   {
+      string ms_detail = "";
+      if(!MicrostructureGateOK(log_sym, now_srv, ms_detail))
+      {
+         gate_reason_out = GATE_POLICIES;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
+                         StringFormat("Microstructure gate: %s", ms_detail));
+         TraceNoTrade(log_sym, TS_GATE, gate_reason_out,
+                      StringFormat("Microstructure gate blocked: %s", ms_detail));
+         return false;
+      }
+   }
+
    // 1) Global policy/risk guard (DD, cooldown, etc.)
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))
@@ -4305,7 +4403,22 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
 
    if(!TradeEnvGateOK(sym, gate_reason_out))
       return false;
-   
+
+   {
+      string ms_detail = "";
+      if(!MicrostructureGateOK(sym, now_srv, ms_detail))
+      {
+         gate_reason_out = GATE_POLICIES;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlocked("router_gate", sym, gate_reason_out,
+                         StringFormat("Microstructure gate: %s", ms_detail));
+         TraceNoTrade(sym, TS_GATE, gate_reason_out,
+                      StringFormat("Microstructure gate blocked: %s", ms_detail));
+         return false;
+      }
+   }
+
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
    int pol_reason = 0;
    if(!Policies::Check(cfg, pol_reason))

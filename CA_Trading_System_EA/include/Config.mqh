@@ -301,6 +301,7 @@ struct Settings;
 #ifndef CFG_HAS_SCAN_INST_STATE_SETTINGS
   #define CFG_HAS_SCAN_INST_STATE_SETTINGS 1
 #endif
+
 #ifndef CFG_INST_EXEC_SCHEDULE_PASSIVE
   #define CFG_INST_EXEC_SCHEDULE_PASSIVE 0
 #endif
@@ -310,9 +311,13 @@ struct Settings;
 #ifndef CFG_INST_EXEC_SCHEDULE_VWAP
   #define CFG_INST_EXEC_SCHEDULE_VWAP 2
 #endif
-#ifndef CFG_INST_EXEC_SCHEDULE_URGENCY
-  #define CFG_INST_EXEC_SCHEDULE_URGENCY 3
+#ifndef CFG_INST_EXEC_SCHEDULE_TWAP
+  #define CFG_INST_EXEC_SCHEDULE_TWAP 3
 #endif
+#ifndef CFG_INST_EXEC_SCHEDULE_URGENCY
+  #define CFG_INST_EXEC_SCHEDULE_URGENCY 4
+#endif
+
 #ifndef CFG_HAS_MICROSTRUCTURE
   #define CFG_HAS_MICROSTRUCTURE 1
 #endif
@@ -324,6 +329,99 @@ struct Settings;
 #ifndef CFG_HAS_EXEC_SCHEDULE
   #define CFG_HAS_EXEC_SCHEDULE 1
 #endif
+
+#ifndef CFG_HAS_MS_LIVE_PATH_ENABLE
+  #define CFG_HAS_MS_LIVE_PATH_ENABLE 1
+#endif
+#ifndef CFG_HAS_MS_TESTER_PATH_ENABLE
+  #define CFG_HAS_MS_TESTER_PATH_ENABLE 1
+#endif
+
+#ifndef CFG_HAS_MS_VPIN_GATE_ON
+  #define CFG_HAS_MS_VPIN_GATE_ON 1
+#endif
+#ifndef CFG_HAS_MS_RESILIENCY_GATE_ON
+  #define CFG_HAS_MS_RESILIENCY_GATE_ON 1
+#endif
+#ifndef CFG_HAS_MS_IMPACT_GATE_ON
+  #define CFG_HAS_MS_IMPACT_GATE_ON 1
+#endif
+#ifndef CFG_HAS_MS_DARKPOOL_GATE_ON
+  #define CFG_HAS_MS_DARKPOOL_GATE_ON 1
+#endif
+#ifndef CFG_HAS_MS_SD_OB_INVALIDATION_GATE_ON
+  #define CFG_HAS_MS_SD_OB_INVALIDATION_GATE_ON 1
+#endif
+#ifndef CFG_HAS_MS_LIQUIDITY_TRAP_GATE_ON
+  #define CFG_HAS_MS_LIQUIDITY_TRAP_GATE_ON 1
+#endif
+
+#ifndef CFG_HAS_MS_OFI_ABS_MIN
+  #define CFG_HAS_MS_OFI_ABS_MIN 1
+#endif
+#ifndef CFG_HAS_MS_OBI_ABS_MIN
+  #define CFG_HAS_MS_OBI_ABS_MIN 1
+#endif
+#ifndef CFG_HAS_MS_CVD_Z_ABS_MIN
+  #define CFG_HAS_MS_CVD_Z_ABS_MIN 1
+#endif
+#ifndef CFG_HAS_MS_ABSORPTION_MIN01
+  #define CFG_HAS_MS_ABSORPTION_MIN01 1
+#endif
+
+#ifndef CFG_HAS_MS_MAX_IMPACT_BETA01
+  #define CFG_HAS_MS_MAX_IMPACT_BETA01 1
+#endif
+#ifndef CFG_HAS_MS_MAX_IMPACT_LAMBDA01
+  #define CFG_HAS_MS_MAX_IMPACT_LAMBDA01 1
+#endif
+#ifndef CFG_HAS_MS_METAORDER_COST_CAP01
+  #define CFG_HAS_MS_METAORDER_COST_CAP01 1
+#endif
+
+#ifndef CFG_HAS_MS_MIN_OBSERVABILITY01
+  #define CFG_HAS_MS_MIN_OBSERVABILITY01 1
+#endif
+#ifndef CFG_HAS_MS_MIN_VENUE_SCOPE01
+  #define CFG_HAS_MS_MIN_VENUE_SCOPE01 1
+#endif
+#ifndef CFG_HAS_MS_MIN_TRUTH_TIER01
+  #define CFG_HAS_MS_MIN_TRUTH_TIER01 1
+#endif
+
+#ifndef CFG_HAS_MS_MIN_DARKPOOL01
+  #define CFG_HAS_MS_MIN_DARKPOOL01 1
+#endif
+#ifndef CFG_HAS_MS_MAX_DARKPOOL_CONTRADICTION01
+  #define CFG_HAS_MS_MAX_DARKPOOL_CONTRADICTION01 1
+#endif
+
+#ifndef CFG_HAS_MS_SD_OB_INVALIDATION_MAX01
+  #define CFG_HAS_MS_SD_OB_INVALIDATION_MAX01 1
+#endif
+#ifndef CFG_HAS_MS_LIQUIDITY_VACUUM_MAX01
+  #define CFG_HAS_MS_LIQUIDITY_VACUUM_MAX01 1
+#endif
+#ifndef CFG_HAS_MS_LIQUIDITY_HUNT_MAX01
+  #define CFG_HAS_MS_LIQUIDITY_HUNT_MAX01 1
+#endif
+
+#ifndef CFG_HAS_MS_EXEC_ALLOW_PASSIVE
+  #define CFG_HAS_MS_EXEC_ALLOW_PASSIVE 1
+#endif
+#ifndef CFG_HAS_MS_EXEC_ALLOW_POV
+  #define CFG_HAS_MS_EXEC_ALLOW_POV 1
+#endif
+#ifndef CFG_HAS_MS_EXEC_ALLOW_VWAP
+  #define CFG_HAS_MS_EXEC_ALLOW_VWAP 1
+#endif
+#ifndef CFG_HAS_MS_EXEC_ALLOW_TWAP
+  #define CFG_HAS_MS_EXEC_ALLOW_TWAP 1
+#endif
+#ifndef CFG_HAS_MS_EXEC_ALLOW_URGENCY
+  #define CFG_HAS_MS_EXEC_ALLOW_URGENCY 1
+#endif
+
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -2108,21 +2206,38 @@ namespace Config
       if(!cfg.ms_enable)
          return false;
 
+      const bool is_tester = (MQLInfoInteger(MQL_TESTER) != 0);
+
+      if(is_tester)
+      {
+         #ifdef CFG_HAS_MS_TESTER_PATH_ENABLE
+            if(!cfg.ms_tester_path_enable)
+               return false;
+         #endif
+      }
+      else
+      {
+         #ifdef CFG_HAS_MS_LIVE_PATH_ENABLE
+            if(!cfg.ms_live_path_enable)
+               return false;
+         #endif
+      }
+
       if(cfg.scan_obi_enable) return true;
       if(cfg.scan_of_enable)  return true;
-#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+   #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
       if(cfg.scan_inst_state_enable) return true;
-#endif
+   #endif
       return false;
    }
 
    inline int CfgExecScheduleMode(const Settings &cfg)
    {
-#ifdef CFG_HAS_EXEC_SCHEDULE
+   #ifdef CFG_HAS_EXEC_SCHEDULE
       return cfg.ms_exec_schedule_mode;
-#else
+   #else
       return CFG_INST_EXEC_SCHEDULE_PASSIVE;
-#endif
+   #endif
    }
 #endif
 
@@ -4369,19 +4484,61 @@ namespace Config
 
 #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
       // --- Canonical top-level microstructure control layer ---
-      // These are top-level policy/gate knobs.
+      // These are the main policy/gate knobs used by downstream consumers.
       // Lower-level transport/scanner ownership remains in scan_obi_*, scan_ofx_*, scan_inst_*.
+      //
+      // Recommended baseline defaults:
+      // - FX majors / XAUUSD live: conservative passive posture, 10% participation
+      // - broader commodities / faster tape: relax caps upward only after forward validation
       cfg.ms_enable                    = true;
 
+      // Explicit path gating (keep both ON by default for back-compat)
+      cfg.ms_live_path_enable          = true;
+      cfg.ms_tester_path_enable        = true;
+
+      // Hard-veto toggles
+      cfg.ms_vpin_gate_on              = true;
+      cfg.ms_resiliency_gate_on        = true;
+      cfg.ms_impact_gate_on            = true;
+      cfg.ms_darkpool_gate_on          = true;
+      cfg.ms_sd_ob_invalidation_gate_on= true;
+      cfg.ms_liquidity_trap_gate_on    = true;
+
+      // Canonical thresholds
       cfg.ms_vpin_threshold            = 0.65;
       cfg.ms_resil_threshold           = 0.35;
       cfg.ms_ofi_weight                = 0.25;
+      cfg.ms_ofi_abs_min               = 0.20;
+      cfg.ms_obi_abs_min               = 0.20;
+      cfg.ms_cvd_z_abs_min             = 1.00;
+      cfg.ms_absorption_min01          = 0.25;
       cfg.ms_impact_window             = 50;
+      cfg.ms_max_impact_beta01         = 0.85;
+      cfg.ms_max_impact_lambda01       = 0.85;
+      cfg.ms_metaorder_cost_cap01      = 0.70;
 
+      cfg.ms_min_observability01       = 0.30;
+      cfg.ms_min_venue_scope01         = 0.30;
+      cfg.ms_min_truth_tier01          = 0.25;
+
+      cfg.ms_min_darkpool01            = 0.20;
+      cfg.ms_max_darkpool_contradiction01 = 0.65;
+
+      cfg.ms_sd_ob_invalidation_max01  = 0.80;
+      cfg.ms_liquidity_vacuum_max01    = 0.70;
+      cfg.ms_liquidity_hunt_max01      = 0.70;
+
+      // Canonical execution controls
       cfg.ms_exec_schedule_enable      = true;
       cfg.ms_exec_schedule_mode        = CFG_INST_EXEC_SCHEDULE_PASSIVE;
       cfg.ms_exec_participation01      = 0.10;
       cfg.ms_exec_aggressiveness01     = 0.35;
+
+      cfg.ms_exec_allow_passive        = true;
+      cfg.ms_exec_allow_pov            = true;
+      cfg.ms_exec_allow_vwap           = true;
+      cfg.ms_exec_allow_twap           = true;
+      cfg.ms_exec_allow_urgency        = true;
 #endif
 
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
@@ -5357,50 +5514,127 @@ namespace Config
    {
       cfg.ms_enable = (cfg.ms_enable ? true : false);
 
-      if(cfg.ms_vpin_threshold < 0.0)
-         cfg.ms_vpin_threshold = 0.0;
-      if(cfg.ms_vpin_threshold > 1.0)
-         cfg.ms_vpin_threshold = 1.0;
+      cfg.ms_live_path_enable   = (cfg.ms_live_path_enable   ? true : false);
+      cfg.ms_tester_path_enable = (cfg.ms_tester_path_enable ? true : false);
 
-      if(cfg.ms_resil_threshold < 0.0)
-         cfg.ms_resil_threshold = 0.0;
-      if(cfg.ms_resil_threshold > 1.0)
-         cfg.ms_resil_threshold = 1.0;
+      cfg.ms_vpin_gate_on               = (cfg.ms_vpin_gate_on ? true : false);
+      cfg.ms_resiliency_gate_on         = (cfg.ms_resiliency_gate_on ? true : false);
+      cfg.ms_impact_gate_on             = (cfg.ms_impact_gate_on ? true : false);
+      cfg.ms_darkpool_gate_on           = (cfg.ms_darkpool_gate_on ? true : false);
+      cfg.ms_sd_ob_invalidation_gate_on = (cfg.ms_sd_ob_invalidation_gate_on ? true : false);
+      cfg.ms_liquidity_trap_gate_on     = (cfg.ms_liquidity_trap_gate_on ? true : false);
 
-      if(cfg.ms_ofi_weight < 0.0)
-         cfg.ms_ofi_weight = 0.0;
-      if(cfg.ms_ofi_weight > 1.0)
-         cfg.ms_ofi_weight = 1.0;
+      if(cfg.ms_vpin_threshold < 0.0) cfg.ms_vpin_threshold = 0.0;
+      if(cfg.ms_vpin_threshold > 1.0) cfg.ms_vpin_threshold = 1.0;
 
-      if(cfg.ms_impact_window < 5)
-         cfg.ms_impact_window = 50;
+      if(cfg.ms_resil_threshold < 0.0) cfg.ms_resil_threshold = 0.0;
+      if(cfg.ms_resil_threshold > 1.0) cfg.ms_resil_threshold = 1.0;
+
+      if(cfg.ms_ofi_weight < 0.0) cfg.ms_ofi_weight = 0.0;
+      if(cfg.ms_ofi_weight > 1.0) cfg.ms_ofi_weight = 1.0;
+
+      if(cfg.ms_ofi_abs_min < 0.0) cfg.ms_ofi_abs_min = 0.0;
+      if(cfg.ms_ofi_abs_min > 1.0) cfg.ms_ofi_abs_min = 1.0;
+
+      if(cfg.ms_obi_abs_min < 0.0) cfg.ms_obi_abs_min = 0.0;
+      if(cfg.ms_obi_abs_min > 1.0) cfg.ms_obi_abs_min = 1.0;
+
+      if(cfg.ms_cvd_z_abs_min < 0.0) cfg.ms_cvd_z_abs_min = 0.0;
+      if(cfg.ms_cvd_z_abs_min > 10.0) cfg.ms_cvd_z_abs_min = 10.0;
+
+      if(cfg.ms_absorption_min01 < 0.0) cfg.ms_absorption_min01 = 0.0;
+      if(cfg.ms_absorption_min01 > 1.0) cfg.ms_absorption_min01 = 1.0;
+
+      if(cfg.ms_impact_window < 5) cfg.ms_impact_window = 50;
+
+      if(cfg.ms_max_impact_beta01 < 0.0) cfg.ms_max_impact_beta01 = 0.0;
+      if(cfg.ms_max_impact_beta01 > 1.0) cfg.ms_max_impact_beta01 = 1.0;
+
+      if(cfg.ms_max_impact_lambda01 < 0.0) cfg.ms_max_impact_lambda01 = 0.0;
+      if(cfg.ms_max_impact_lambda01 > 1.0) cfg.ms_max_impact_lambda01 = 1.0;
+
+      if(cfg.ms_metaorder_cost_cap01 < 0.0) cfg.ms_metaorder_cost_cap01 = 0.0;
+      if(cfg.ms_metaorder_cost_cap01 > 1.0) cfg.ms_metaorder_cost_cap01 = 1.0;
+
+      if(cfg.ms_min_observability01 < 0.0) cfg.ms_min_observability01 = 0.0;
+      if(cfg.ms_min_observability01 > 1.0) cfg.ms_min_observability01 = 1.0;
+
+      if(cfg.ms_min_venue_scope01 < 0.0) cfg.ms_min_venue_scope01 = 0.0;
+      if(cfg.ms_min_venue_scope01 > 1.0) cfg.ms_min_venue_scope01 = 1.0;
+
+      if(cfg.ms_min_truth_tier01 < 0.0) cfg.ms_min_truth_tier01 = 0.0;
+      if(cfg.ms_min_truth_tier01 > 1.0) cfg.ms_min_truth_tier01 = 1.0;
+
+      if(cfg.ms_min_darkpool01 < 0.0) cfg.ms_min_darkpool01 = 0.0;
+      if(cfg.ms_min_darkpool01 > 1.0) cfg.ms_min_darkpool01 = 1.0;
+
+      if(cfg.ms_max_darkpool_contradiction01 < 0.0) cfg.ms_max_darkpool_contradiction01 = 0.0;
+      if(cfg.ms_max_darkpool_contradiction01 > 1.0) cfg.ms_max_darkpool_contradiction01 = 1.0;
+
+      if(cfg.ms_sd_ob_invalidation_max01 < 0.0) cfg.ms_sd_ob_invalidation_max01 = 0.0;
+      if(cfg.ms_sd_ob_invalidation_max01 > 1.0) cfg.ms_sd_ob_invalidation_max01 = 1.0;
+
+      if(cfg.ms_liquidity_vacuum_max01 < 0.0) cfg.ms_liquidity_vacuum_max01 = 0.0;
+      if(cfg.ms_liquidity_vacuum_max01 > 1.0) cfg.ms_liquidity_vacuum_max01 = 1.0;
+
+      if(cfg.ms_liquidity_hunt_max01 < 0.0) cfg.ms_liquidity_hunt_max01 = 0.0;
+      if(cfg.ms_liquidity_hunt_max01 > 1.0) cfg.ms_liquidity_hunt_max01 = 1.0;
 
       cfg.ms_exec_schedule_mode =
          MathMin(MathMax(cfg.ms_exec_schedule_mode, CFG_INST_EXEC_SCHEDULE_PASSIVE),
                  CFG_INST_EXEC_SCHEDULE_URGENCY);
 
-      if(cfg.ms_exec_participation01 < 0.0)
-         cfg.ms_exec_participation01 = 0.0;
-      if(cfg.ms_exec_participation01 > 1.0)
-         cfg.ms_exec_participation01 = 1.0;
+      if(cfg.ms_exec_participation01 < 0.0) cfg.ms_exec_participation01 = 0.0;
+      if(cfg.ms_exec_participation01 > 1.0) cfg.ms_exec_participation01 = 1.0;
 
-      if(cfg.ms_exec_aggressiveness01 < 0.0)
-         cfg.ms_exec_aggressiveness01 = 0.0;
-      if(cfg.ms_exec_aggressiveness01 > 1.0)
-         cfg.ms_exec_aggressiveness01 = 1.0;
+      if(cfg.ms_exec_aggressiveness01 < 0.0) cfg.ms_exec_aggressiveness01 = 0.0;
+      if(cfg.ms_exec_aggressiveness01 > 1.0) cfg.ms_exec_aggressiveness01 = 1.0;
 
-      // Canonical bridge into existing lower-level families.
-      // Do not duplicate transport semantics elsewhere.
+      cfg.ms_exec_allow_passive = (cfg.ms_exec_allow_passive ? true : false);
+      cfg.ms_exec_allow_pov     = (cfg.ms_exec_allow_pov ? true : false);
+      cfg.ms_exec_allow_vwap    = (cfg.ms_exec_allow_vwap ? true : false);
+      cfg.ms_exec_allow_twap    = (cfg.ms_exec_allow_twap ? true : false);
+      cfg.ms_exec_allow_urgency = (cfg.ms_exec_allow_urgency ? true : false);
+
+      // Never leave the schedule family with zero legal modes.
+      if(!cfg.ms_exec_allow_passive &&
+         !cfg.ms_exec_allow_pov &&
+         !cfg.ms_exec_allow_vwap &&
+         !cfg.ms_exec_allow_twap &&
+         !cfg.ms_exec_allow_urgency)
+      {
+         cfg.ms_exec_allow_passive = true;
+      }
+
+      // Keep the selected mode inside the allowed family set.
+      bool selected_ok = false;
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_PASSIVE && cfg.ms_exec_allow_passive) selected_ok = true;
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_POV     && cfg.ms_exec_allow_pov)     selected_ok = true;
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_VWAP    && cfg.ms_exec_allow_vwap)    selected_ok = true;
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_TWAP    && cfg.ms_exec_allow_twap)    selected_ok = true;
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_URGENCY && cfg.ms_exec_allow_urgency) selected_ok = true;
+
+      if(!selected_ok)
+      {
+         if(cfg.ms_exec_allow_passive)      cfg.ms_exec_schedule_mode = CFG_INST_EXEC_SCHEDULE_PASSIVE;
+         else if(cfg.ms_exec_allow_pov)     cfg.ms_exec_schedule_mode = CFG_INST_EXEC_SCHEDULE_POV;
+         else if(cfg.ms_exec_allow_vwap)    cfg.ms_exec_schedule_mode = CFG_INST_EXEC_SCHEDULE_VWAP;
+         else if(cfg.ms_exec_allow_twap)    cfg.ms_exec_schedule_mode = CFG_INST_EXEC_SCHEDULE_TWAP;
+         else                               cfg.ms_exec_schedule_mode = CFG_INST_EXEC_SCHEDULE_URGENCY;
+      }
+
+      // Canonical bridge into lower-level families where semantics are 1:1.
+      // Do NOT force unrelated scanner-family thresholds here when units differ.
       cfg.scan_ofx_impact_window = cfg.ms_impact_window;
 
-#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+   #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
       if(cfg.ms_exec_schedule_enable)
       {
-         cfg.scan_inst_exec_schedule_mode       = cfg.ms_exec_schedule_mode;
-         cfg.scan_inst_exec_is_aggressiveness01 = cfg.ms_exec_aggressiveness01;
+         cfg.scan_inst_exec_schedule_mode         = cfg.ms_exec_schedule_mode;
+         cfg.scan_inst_exec_is_aggressiveness01   = cfg.ms_exec_aggressiveness01;
          cfg.scan_inst_pov_target_participation01 = cfg.ms_exec_participation01;
       }
-#endif
+   #endif
    }
 #endif
 
@@ -5879,7 +6113,7 @@ namespace Config
 
      if(cfg.scan_inst_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
         cfg.scan_inst_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
-        warns += "scan_inst_exec_schedule_mode out of range; NormalizeInstitutionalStateFamily() clamps it to PASSIVE / POV / VWAP / URGENCY.\n";
+        warns += "scan_inst_exec_schedule_mode out of range; NormalizeInstitutionalStateFamily() clamps it to PASSIVE / POV / VWAP / TWAP / URGENCY.\n";
 
      if(cfg.scan_inst_exec_is_aggressiveness01 < 0.0 ||
         cfg.scan_inst_exec_is_aggressiveness01 > 1.0)
@@ -5899,12 +6133,57 @@ namespace Config
       if(cfg.ms_ofi_weight < 0.0 || cfg.ms_ofi_weight > 1.0)
          warns += "ms_ofi_weight out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
 
+      if(cfg.ms_ofi_abs_min < 0.0 || cfg.ms_ofi_abs_min > 1.0)
+         warns += "ms_ofi_abs_min out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_obi_abs_min < 0.0 || cfg.ms_obi_abs_min > 1.0)
+         warns += "ms_obi_abs_min out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_cvd_z_abs_min < 0.0 || cfg.ms_cvd_z_abs_min > 10.0)
+         warns += "ms_cvd_z_abs_min out of range; NormalizeMicrostructureFamily() clamps it to 0..10.\n";
+
+      if(cfg.ms_absorption_min01 < 0.0 || cfg.ms_absorption_min01 > 1.0)
+         warns += "ms_absorption_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
       if(cfg.ms_impact_window < 5)
          warns += "ms_impact_window < 5; NormalizeMicrostructureFamily() restores a safe rolling window.\n";
 
+      if(cfg.ms_max_impact_beta01 < 0.0 || cfg.ms_max_impact_beta01 > 1.0)
+         warns += "ms_max_impact_beta01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_max_impact_lambda01 < 0.0 || cfg.ms_max_impact_lambda01 > 1.0)
+         warns += "ms_max_impact_lambda01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_metaorder_cost_cap01 < 0.0 || cfg.ms_metaorder_cost_cap01 > 1.0)
+         warns += "ms_metaorder_cost_cap01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_min_observability01 < 0.0 || cfg.ms_min_observability01 > 1.0)
+         warns += "ms_min_observability01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_min_venue_scope01 < 0.0 || cfg.ms_min_venue_scope01 > 1.0)
+         warns += "ms_min_venue_scope01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_min_truth_tier01 < 0.0 || cfg.ms_min_truth_tier01 > 1.0)
+         warns += "ms_min_truth_tier01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_min_darkpool01 < 0.0 || cfg.ms_min_darkpool01 > 1.0)
+         warns += "ms_min_darkpool01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_max_darkpool_contradiction01 < 0.0 || cfg.ms_max_darkpool_contradiction01 > 1.0)
+         warns += "ms_max_darkpool_contradiction01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_sd_ob_invalidation_max01 < 0.0 || cfg.ms_sd_ob_invalidation_max01 > 1.0)
+         warns += "ms_sd_ob_invalidation_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_liquidity_vacuum_max01 < 0.0 || cfg.ms_liquidity_vacuum_max01 > 1.0)
+         warns += "ms_liquidity_vacuum_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_liquidity_hunt_max01 < 0.0 || cfg.ms_liquidity_hunt_max01 > 1.0)
+         warns += "ms_liquidity_hunt_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
       if(cfg.ms_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
          cfg.ms_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
-         warns += "ms_exec_schedule_mode out of range; NormalizeMicrostructureFamily() clamps it to PASSIVE / POV / VWAP / URGENCY.\n";
+         warns += "ms_exec_schedule_mode out of range; NormalizeMicrostructureFamily() clamps it to PASSIVE / POV / VWAP / TWAP / URGENCY.\n";
 
       if(cfg.ms_exec_participation01 < 0.0 || cfg.ms_exec_participation01 > 1.0)
          warns += "ms_exec_participation01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
@@ -5912,15 +6191,38 @@ namespace Config
       if(cfg.ms_exec_aggressiveness01 < 0.0 || cfg.ms_exec_aggressiveness01 > 1.0)
          warns += "ms_exec_aggressiveness01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
 
+      if(!cfg.ms_live_path_enable && !cfg.ms_tester_path_enable)
+         warns += "both ms_live_path_enable=false and ms_tester_path_enable=false; canonical ms_* controls will be inert in all runtimes.\n";
+
+      if(!cfg.ms_exec_allow_passive &&
+         !cfg.ms_exec_allow_pov &&
+         !cfg.ms_exec_allow_vwap &&
+         !cfg.ms_exec_allow_twap &&
+         !cfg.ms_exec_allow_urgency)
+      {
+         warns += "all execution schedule families are disabled; NormalizeMicrostructureFamily() restores PASSIVE as the canonical safe fallback.\n";
+      }
+
+      if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_PASSIVE && !cfg.ms_exec_allow_passive)
+         warns += "ms_exec_schedule_mode=PASSIVE while ms_exec_allow_passive=false; NormalizeMicrostructureFamily() falls back to the first enabled schedule family.\n";
+      else if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_POV && !cfg.ms_exec_allow_pov)
+         warns += "ms_exec_schedule_mode=POV while ms_exec_allow_pov=false; NormalizeMicrostructureFamily() falls back to the first enabled schedule family.\n";
+      else if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_VWAP && !cfg.ms_exec_allow_vwap)
+         warns += "ms_exec_schedule_mode=VWAP while ms_exec_allow_vwap=false; NormalizeMicrostructureFamily() falls back to the first enabled schedule family.\n";
+      else if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_TWAP && !cfg.ms_exec_allow_twap)
+         warns += "ms_exec_schedule_mode=TWAP while ms_exec_allow_twap=false; NormalizeMicrostructureFamily() falls back to the first enabled schedule family.\n";
+      else if(cfg.ms_exec_schedule_mode == CFG_INST_EXEC_SCHEDULE_URGENCY && !cfg.ms_exec_allow_urgency)
+         warns += "ms_exec_schedule_mode=URGENCY while ms_exec_allow_urgency=false; NormalizeMicrostructureFamily() falls back to the first enabled schedule family.\n";
+
       if(cfg.ms_enable)
       {
          bool has_owner = false;
 
          if(cfg.scan_obi_enable) has_owner = true;
          if(cfg.scan_of_enable)  has_owner = true;
-#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+   #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
          if(cfg.scan_inst_state_enable) has_owner = true;
-#endif
+   #endif
 
          if(!has_owner)
             warns += "ms_enable=true while all lower-level microstructure owners are disabled (scan_obi_enable / scan_of_enable / scan_inst_state_enable). The top-level ms_* gates will be inert until at least one owner family is live.\n";
@@ -10891,14 +11193,49 @@ namespace Config
 
 #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
       s+=",msOn="+BoolStr(c.ms_enable);
+      s+=",msLvOn="+BoolStr(c.ms_live_path_enable);
+      s+=",msTsOn="+BoolStr(c.ms_tester_path_enable);
+
+      s+=",msVpOn="+BoolStr(c.ms_vpin_gate_on);
+      s+=",msReOn="+BoolStr(c.ms_resiliency_gate_on);
+      s+=",msImOn="+BoolStr(c.ms_impact_gate_on);
+      s+=",msDpOn="+BoolStr(c.ms_darkpool_gate_on);
+      s+=",msSmOn="+BoolStr(c.ms_sd_ob_invalidation_gate_on);
+      s+=",msLqOn="+BoolStr(c.ms_liquidity_trap_gate_on);
+
       s+=",msVpTh="+DoubleToString(c.ms_vpin_threshold,4);
       s+=",msReTh="+DoubleToString(c.ms_resil_threshold,4);
       s+=",msOFIW="+DoubleToString(c.ms_ofi_weight,4);
+      s+=",msOfAbs="+DoubleToString(c.ms_ofi_abs_min,4);
+      s+=",msObAbs="+DoubleToString(c.ms_obi_abs_min,4);
+      s+=",msCvdZ="+DoubleToString(c.ms_cvd_z_abs_min,4);
+      s+=",msAbsMn="+DoubleToString(c.ms_absorption_min01,4);
       s+=",msImW="+IntegerToString(c.ms_impact_window);
+      s+=",msImpB="+DoubleToString(c.ms_max_impact_beta01,4);
+      s+=",msImpL="+DoubleToString(c.ms_max_impact_lambda01,4);
+      s+=",msMeta="+DoubleToString(c.ms_metaorder_cost_cap01,4);
+
+      s+=",msObs="+DoubleToString(c.ms_min_observability01,4);
+      s+=",msVen="+DoubleToString(c.ms_min_venue_scope01,4);
+      s+=",msTru="+DoubleToString(c.ms_min_truth_tier01,4);
+
+      s+=",msDpMn="+DoubleToString(c.ms_min_darkpool01,4);
+      s+=",msDpCx="+DoubleToString(c.ms_max_darkpool_contradiction01,4);
+
+      s+=",msInvMx="+DoubleToString(c.ms_sd_ob_invalidation_max01,4);
+      s+=",msVacMx="+DoubleToString(c.ms_liquidity_vacuum_max01,4);
+      s+=",msHunMx="+DoubleToString(c.ms_liquidity_hunt_max01,4);
+
       s+=",msSchOn="+BoolStr(c.ms_exec_schedule_enable);
       s+=",msSchMd="+IntegerToString(c.ms_exec_schedule_mode);
       s+=",msPart="+DoubleToString(c.ms_exec_participation01,4);
       s+=",msAggr="+DoubleToString(c.ms_exec_aggressiveness01,4);
+
+      s+=",msScP="+BoolStr(c.ms_exec_allow_passive);
+      s+=",msScV="+BoolStr(c.ms_exec_allow_pov);
+      s+=",msScW="+BoolStr(c.ms_exec_allow_vwap);
+      s+=",msScT="+BoolStr(c.ms_exec_allow_twap);
+      s+=",msScU="+BoolStr(c.ms_exec_allow_urgency);
 #endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
@@ -13201,14 +13538,49 @@ namespace Config
 
 #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
         else if(k=="msOn")    cfg.ms_enable = ToBool(v);
+        else if(k=="msLvOn")  cfg.ms_live_path_enable = ToBool(v);
+        else if(k=="msTsOn")  cfg.ms_tester_path_enable = ToBool(v);
+
+        else if(k=="msVpOn")  cfg.ms_vpin_gate_on = ToBool(v);
+        else if(k=="msReOn")  cfg.ms_resiliency_gate_on = ToBool(v);
+        else if(k=="msImOn")  cfg.ms_impact_gate_on = ToBool(v);
+        else if(k=="msDpOn")  cfg.ms_darkpool_gate_on = ToBool(v);
+        else if(k=="msSmOn")  cfg.ms_sd_ob_invalidation_gate_on = ToBool(v);
+        else if(k=="msLqOn")  cfg.ms_liquidity_trap_gate_on = ToBool(v);
+
         else if(k=="msVpTh")  cfg.ms_vpin_threshold = ToDouble(v);
         else if(k=="msReTh")  cfg.ms_resil_threshold = ToDouble(v);
         else if(k=="msOFIW")  cfg.ms_ofi_weight = ToDouble(v);
+        else if(k=="msOfAbs") cfg.ms_ofi_abs_min = ToDouble(v);
+        else if(k=="msObAbs") cfg.ms_obi_abs_min = ToDouble(v);
+        else if(k=="msCvdZ")  cfg.ms_cvd_z_abs_min = ToDouble(v);
+        else if(k=="msAbsMn") cfg.ms_absorption_min01 = ToDouble(v);
         else if(k=="msImW")   cfg.ms_impact_window = ToInt(v);
+        else if(k=="msImpB")  cfg.ms_max_impact_beta01 = ToDouble(v);
+        else if(k=="msImpL")  cfg.ms_max_impact_lambda01 = ToDouble(v);
+        else if(k=="msMeta")  cfg.ms_metaorder_cost_cap01 = ToDouble(v);
+
+        else if(k=="msObs")   cfg.ms_min_observability01 = ToDouble(v);
+        else if(k=="msVen")   cfg.ms_min_venue_scope01 = ToDouble(v);
+        else if(k=="msTru")   cfg.ms_min_truth_tier01 = ToDouble(v);
+
+        else if(k=="msDpMn")  cfg.ms_min_darkpool01 = ToDouble(v);
+        else if(k=="msDpCx")  cfg.ms_max_darkpool_contradiction01 = ToDouble(v);
+
+        else if(k=="msInvMx") cfg.ms_sd_ob_invalidation_max01 = ToDouble(v);
+        else if(k=="msVacMx") cfg.ms_liquidity_vacuum_max01 = ToDouble(v);
+        else if(k=="msHunMx") cfg.ms_liquidity_hunt_max01 = ToDouble(v);
+
         else if(k=="msSchOn") cfg.ms_exec_schedule_enable = ToBool(v);
         else if(k=="msSchMd") cfg.ms_exec_schedule_mode = ToInt(v);
         else if(k=="msPart")  cfg.ms_exec_participation01 = ToDouble(v);
         else if(k=="msAggr")  cfg.ms_exec_aggressiveness01 = ToDouble(v);
+
+        else if(k=="msScP")   cfg.ms_exec_allow_passive = ToBool(v);
+        else if(k=="msScV")   cfg.ms_exec_allow_pov = ToBool(v);
+        else if(k=="msScW")   cfg.ms_exec_allow_vwap = ToBool(v);
+        else if(k=="msScT")   cfg.ms_exec_allow_twap = ToBool(v);
+        else if(k=="msScU")   cfg.ms_exec_allow_urgency = ToBool(v);
 #endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
@@ -14417,17 +14789,58 @@ struct Settings
 #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
     // Canonical top-level microstructure policy / gate layer
     // These fields do not replace scan_obi_* / scan_ofx_* / scan_inst_*.
-    // They sit above them as the main config control surface.
+    // They sit above them as the main config control surface used by
+    // Policies / Router / RiskEngine / Execution.
     bool   ms_enable;                    // master top-level microstructure enable
-    double ms_vpin_threshold;            // top-level toxicity / VPIN gate
-    double ms_resil_threshold;           // top-level resiliency gate
-    double ms_ofi_weight;                // top-level OFI contribution weight
-    int    ms_impact_window;             // canonical impact window for downstream transport alignment
 
+    // Explicit runtime path controls
+    bool   ms_live_path_enable;          // allow canonical microstructure controls on live forward path
+    bool   ms_tester_path_enable;        // allow canonical microstructure controls on tester / replay path
+
+    // Hard-gate toggles
+    bool   ms_vpin_gate_on;              // enable top-level VPIN / toxicity veto
+    bool   ms_resiliency_gate_on;        // enable top-level resiliency veto
+    bool   ms_impact_gate_on;            // enable top-level impact beta/lambda veto
+    bool   ms_darkpool_gate_on;          // enable top-level dark-pool confidence veto
+    bool   ms_sd_ob_invalidation_gate_on;// enable smart-money invalidation veto
+    bool   ms_liquidity_trap_gate_on;    // enable liquidity vacuum / hunt veto
+
+    // Canonical top-level thresholds
+    double ms_vpin_threshold;            // top-level toxicity / VPIN max
+    double ms_resil_threshold;           // top-level resiliency min
+    double ms_ofi_weight;                // top-level OFI contribution weight
+    double ms_ofi_abs_min;               // minimum |OFI| gate for microstructure participation
+    double ms_obi_abs_min;               // minimum |OBI| gate for microstructure participation
+    double ms_cvd_z_abs_min;             // minimum |CVD z| gate for signed-flow confirmation
+    double ms_absorption_min01;          // minimum normalized absorption confidence
+    int    ms_impact_window;             // canonical impact window for downstream transport alignment
+    double ms_max_impact_beta01;         // top-level impact beta cap
+    double ms_max_impact_lambda01;       // top-level impact lambda cap
+    double ms_metaorder_cost_cap01;      // top-level metaorder cost cap
+
+    double ms_min_observability01;       // minimum observability confidence
+    double ms_min_venue_scope01;         // minimum venue coverage / venue-scope confidence
+    double ms_min_truth_tier01;          // minimum truth-tier / state-trust confidence
+
+    double ms_min_darkpool01;            // minimum dark-pool proxy confidence
+    double ms_max_darkpool_contradiction01; // max contradictory dark-pool cue intensity
+
+    double ms_sd_ob_invalidation_max01;  // max SD / OB invalidation proximity before veto
+    double ms_liquidity_vacuum_max01;    // max liquidity-vacuum severity before veto
+    double ms_liquidity_hunt_max01;      // max liquidity-hunt / sweep-trap severity before veto
+
+    // Canonical execution policy controls
     bool   ms_exec_schedule_enable;      // top-level execution schedule policy enable
-    int    ms_exec_schedule_mode;        // 0=PASSIVE, 1=POV, 2=VWAP, 3=URGENCY
+    int    ms_exec_schedule_mode;        // 0=PASSIVE, 1=POV, 2=VWAP, 3=TWAP, 4=URGENCY
     double ms_exec_participation01;      // 0..1 target participation for execution-policy layer
     double ms_exec_aggressiveness01;     // 0..1 aggressiveness scalar
+
+    // Explicit allowed schedule families
+    bool   ms_exec_allow_passive;
+    bool   ms_exec_allow_pov;
+    bool   ms_exec_allow_vwap;
+    bool   ms_exec_allow_twap;
+    bool   ms_exec_allow_urgency;
 #endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
@@ -14464,7 +14877,7 @@ struct Settings
 
     // Execution-policy extension knobs
     bool   scan_inst_exec_sqrt_impact_enable;       // enable square-root impact policy branch for execution estimates
-    int    scan_inst_exec_schedule_mode;            // 0=PASSIVE, 1=POV, 2=VWAP, 3=URGENCY
+    int    scan_inst_exec_schedule_mode;            // 0=PASSIVE, 1=POV, 2=VWAP, 3=TWAP, 4=URGENCY
     double scan_inst_exec_is_aggressiveness01;      // 0..1 implementation-shortfall aggressiveness scalar
 
     // Contributor weights used by Confluence's institutional state-vector build
