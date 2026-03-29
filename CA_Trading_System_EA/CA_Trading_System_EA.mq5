@@ -2463,7 +2463,7 @@ inline void UpdateRegistryRoutingFlag()
       g_use_registry = false;
 }
 
-// --- One-eval-per-bar dispatcher (RouterX) ---
+// --- One-eval-per-bar compatibility dispatcher (tester-only RouterX path) ---
 void MaybeEvaluate()
   {
    // Backend-only live build: alternate dispatcher is tester-only.
@@ -3207,18 +3207,77 @@ void PublishMicrostructureSnapshot(const string sym)
    if(sym == "")
       return;
 
-   // Thin EA bridge only:
-   // 1) MarketData owns microstructure production
-   // 2) State owns durable institutional truth
-   // 3) Router/StrategyRegistry consume State on evaluation
-   // 4) Scan/MSH remain the only scanner snapshot owners
+   // Thin EA bridge only.
+   // 1) MarketData owns scanner/microstructure production
+   // 2) MarketScannerHub owns scan cadence
+   // 3) State owns canonical runtime context
+   // 4) Router / Strategy / Risk / Execution consume cached context
+   //
+   // Keep this as the canonical publish hook, but do NOT recompute
+   // State / ICT / scanner math here.
+}
+
+void RefreshRuntimeContextLight()
+{
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
+}
 
-   // DO NOT call undeclared branch-specific setter APIs here.
-   // Previous attempts using SetGlobalMicrostructureSnapshot(...)
-   // or RouterSetMicrostructureSnapshot(...) are not compile-safe
-   // in the current source set.
+void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refresh)
+{
+   if(sym != "")
+      RefreshMicrostructureSnapshot(sym, force_micro_refresh);
+
+   RefreshRuntimeContextLight();
+   PublishMicrostructureSnapshot(sym);
+}
+
+bool RunCachedRouterPass(const string router_sym,
+                         const datetime now_srv,
+                         const string origin_tag)
+{
+   if(router_sym == "")
+      return false;
+
+   // Live/new-order orchestration must remain:
+   // scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill
+   // This helper consumes cached context only. It must not trigger scanner math itself.
+
+   if(!WarmupGateOK())
+   {
+      TraceNoTrade(router_sym, TS_GATE, GATE_WARMUP,
+                   StringFormat("%s blocked: WarmupGateOK=false", origin_tag));
+      return false;
+   }
+
+   int gate_reason = 0;
+   if(!RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))
+   {
+      if(InpDebug)
+      {
+         static datetime last_emit = 0;
+         datetime now = TimeCurrent();
+         if(now != last_emit)
+         {
+            last_emit = now;
+            PrintFormat("[Router][%s] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
+                        origin_tag,
+                        gate_reason,
+                        _GateReasonStr(gate_reason));
+
+            TraceNoTrade(router_sym, TS_GATE, gate_reason,
+                         StringFormat("RouterGateOK=false (%s) [%s]",
+                                      _GateReasonStr(gate_reason),
+                                      origin_tag));
+         }
+      }
+      return false;
+   }
+
+   ICT_Context ictCtx = StateGetICTContext(g_state);
+   RouterEvaluateAll(g_router, g_cfg, ictCtx);
+   MSH_DirtyClear();
+   return true;
 }
 
 //--------------------------------------------------------------------
@@ -3468,38 +3527,42 @@ int OnInit()
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();
    
-   // Scanner hub init: owns AutoC + Scan orchestration + timer
+   // Scanner hub init: MarketScannerHub is the active scanner/timer owner.
+   // It owns scanner cadence and the AutoC + Scan timer flow.
+   // Do not bypass it elsewhere with fragmented direct timer calls.
    MSH::HubOptions hub_opt;
    MSH::OptionsDefault(hub_opt);
-   
+
    // Preserve current EA behavior: seconds timer derived from S.timer_ms
    hub_opt.use_ms_timer = false;
    hub_opt.timer_sec    = MathMax(1, (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000));
-   
+
    // Universe cap (Hub has hard cap HUB_MAX_SYMBOLS)
    hub_opt.max_symbols  = MathMin(g_symCount, (int)MSH::HUB_MAX_SYMBOLS);
-   
-   // Keep hub passive initially
-   hub_opt.log_events   = false;
-   hub_opt.log_summary  = false;
-   
+
+   // Keep hub logging passive unless debug is enabled
+   hub_opt.log_events   = InpDebug;
+   hub_opt.log_summary  = InpDebug;
+
    // Preserve existing OnTimer behavior: MarketData refresh is done on timer
    hub_opt.call_marketdata_refresh = true;
-   
-   // Avoid behavior change: EA did not call AutoVol timer here
+
+   // Avoid behavior change here; leave AutoVol timer ownership unchanged
    hub_opt.call_autovol_timer = false;
    
    if(!MSH::InitWithSymbols(S, hub_opt, g_symbols, g_symCount))
       return(INIT_FAILED);
 
-   // 4. Initial ICT/Wyckoff context so panel not blank
-   RefreshICTContext(g_state);
-   PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+   // 4. Prime cached runtime context AFTER Hub init.
+   // RefreshRuntimeContextFromHub() already refreshes lightweight State/ICT context,
+   // so do not duplicate RefreshICTContext() here.
    {
       const string ms_sym0 = CanonicalRouterSymbol();
-      RefreshMicrostructureSnapshot(ms_sym0, true);
-      PublishMicrostructureSnapshot(ms_sym0);
+      RefreshRuntimeContextFromHub(ms_sym0, true);
+      MSH_DirtyClear(); // avoid a redundant immediate first-timer route off init-only warm state
    }
+
+   PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
 
    // UX: show server/local times once for sanity
    datetime now_srv = TimeCurrent();
@@ -3602,16 +3665,12 @@ void OnTick()
    //    MaybeEvaluate();
    const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
 
-   // Upstream truth: update State + ICT context BEFORE any strategy evaluation
-   StateOnTickUpdate(g_state);
-   RefreshICTContext(g_state);
-   {
-      const string ms_sym = CanonicalRouterSymbol();
-      RefreshMicrostructureSnapshot(ms_sym, false);
-      PublishMicrostructureSnapshot(ms_sym);
-   }
-   
-   // Autochartist scanning is timer-driven (OnTimer). Do not scan here to avoid double-ups.
+   // Tick path must NOT recompute timer-owned scanner / institutional snapshot math.
+   // OnTick only refreshes lightweight runtime context and consumes cached
+   // scanner outputs produced by MarketScannerHub on OnTimer().
+   RefreshRuntimeContextLight();
+
+   // Autochartist + scanner cadence remain timer-driven.
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
    // TESTER-ONLY compatibility path. Live trading must route only via RouterEvaluateAll().
@@ -3669,40 +3728,18 @@ void OnTick()
 
    if(!g_use_registry)
    {
-   // 5. Dispatch strategies via router (ICT-aware path)
-   //    - Telemetry is always updated (above).
-   //    - Actual routing / order planning only runs if all gates are OK.
-      int router_gate_reason = 0;
-      const datetime now_srv = TimeUtils::NowServer();
-      const string router_sym = CanonicalRouterSymbol();
-
-      if(!WarmupGateOK())
-      {
-         // WarmupGateOK emits a throttled breadcrumb in InpDebug mode.
-      }
-      else
-      {
-         if(RouterGateOK_Global(router_sym, g_cfg, now_srv, router_gate_reason))
-         {
-            RouterEvaluateAll(g_router, g_cfg, ictCtx);
-         }
-         else
-         {
-            if(InpDebug)
-            {
-               static datetime last_emit = 0;
-               datetime now = TimeCurrent();
-               if(now != last_emit)
-               {
-                  last_emit = now;
-                  PrintFormat("[Router] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
-                              router_gate_reason, _GateReasonStr(router_gate_reason));
-                  TraceNoTrade(router_sym, TS_GATE, router_gate_reason,
-                               StringFormat("RouterGateOK=false (%s)", _GateReasonStr(router_gate_reason)));
-               }
-            }
-         }
-      }
+      // LIVE router flow is timer-owned only.
+      // OnTick may refresh lightweight runtime state for UI / open-position management,
+      // but it must NOT call RouterEvaluateAll() and must NOT trigger scanner cadence.
+      //
+      // Canonical live chain remains:
+      // scanners/signals (OnTimer via MSH)
+      // -> confluence/state refresh
+      // -> StrategyRegistry
+      // -> Router
+      // -> Policies/Risk
+      // -> Execution
+      // -> trade fill
    }
 
    // DebugChecklist tracer on entry TF once per new bar (no early return so telemetry still runs)
@@ -3762,13 +3799,16 @@ void OnTimer()
    datetime now_srv = TimeUtils::NowServer();
    const string router_sym = CanonicalRouterSymbol();
 
+   // Canonical timer-owned orchestration:
+   // 1) MarketScannerHub drives scanners/signals
+   // 2) AutoC / Scan cadence stays inside HubTimerTick()
+   // 3) EA refreshes confluence/state/runtime context from cached scanner outputs
+   // 4) RouterEvaluateAll() then consumes StrategyRegistry -> Router -> Policies/Risk -> Execution on cached data only
    MSH::HubTimerTick(S);
-
-   RefreshMicrostructureSnapshot(router_sym, (g_msh_dirty_n > 0));
-   PublishMicrostructureSnapshot(router_sym);
-
-   // MarketData::OnTimerRefresh(); // already done inside MSH::HubTimerTick(S)
-   // AutoC::OnTimerScan(S, now_srv); // already done inside MSH::HubTimerTick(S)
+   RefreshRuntimeContextFromHub(router_sym, (g_msh_dirty_n > 0));
+   
+   // Direct timer calls stay disabled here:
+   // MarketScannerHub owns MarketData refresh + AutoC/Scan timer cadence.
    ML::SetRuntimeOn(g_ml_on);
    const Settings ml_cfg = (g_use_registry ? S : g_cfg);
    const ENUM_TIMEFRAMES ml_tf = (ENUM_TIMEFRAMES)ml_cfg.tf_entry;
@@ -3837,41 +3877,12 @@ void OnTimer()
    // if(!g_use_registry)
    //    MaybeEvaluate();
    
-   // If ticks are sparse, allow timer-driven router eval (watchlist-safe)
-   int gate_reason = 0;
-
-   // Router mode path (ICT RouterEvaluateAll)
-   if(!WarmupGateOK())
-   {
-      TraceNoTrade(router_sym, TS_GATE, GATE_WARMUP, "OnTimer blocked: WarmupGateOK=false");
-      return;
-   }
-
+   // Router mode path (cached-context only).
+   // Scanning remains timer-owned by MarketScannerHub above; routing consumes cached state only.
    if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
       return;
 
-   if(RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))
-   {
-      ICT_Context ictCtx = StateGetICTContext(g_state);
-      RouterEvaluateAll(g_router, g_cfg, ictCtx);
-      MSH_DirtyClear();
-   }
-   else
-   {
-      if(InpDebug)
-      {
-         static datetime last_emit = 0;
-         datetime now = TimeCurrent();
-         if(now != last_emit)
-         {
-            last_emit = now;
-            PrintFormat("[Router][Timer] Skipping RouterEvaluateAll; gate_reason=%d(%s)",
-                        gate_reason, _GateReasonStr(gate_reason));
-            TraceNoTrade(router_sym, TS_GATE, gate_reason,
-                         StringFormat("RouterGateOK=false (%s) [timer]", _GateReasonStr(gate_reason)));
-         }
-      }
-   }
+   RunCachedRouterPass(router_sym, now_srv, "Timer");
   }
 
    bool   RouteMainOnlyPick(const Settings &cfg,
@@ -4502,7 +4513,8 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    return true;
 }
 
-// Per-symbol processing unit (PM + gates + MVP pipeline)
+// Per-symbol compatibility path (tester-only legacy harness).
+// Live orchestration must remain Hub cadence -> cached context -> RouterEvaluateAll().
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
    // Legacy harness is tester-only. Live must never enter ProcessSymbol().

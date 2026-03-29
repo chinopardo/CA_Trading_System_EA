@@ -243,6 +243,58 @@
   #define POLICIES_INST_DEFAULT_RESILIENCY01 1.0
 #endif
 
+#ifndef POLICIES_INST_ENABLE_TOXICITY_VETO
+  #define POLICIES_INST_ENABLE_TOXICITY_VETO 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_SPREAD_STRESS_VETO
+  #define POLICIES_INST_ENABLE_SPREAD_STRESS_VETO 1
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_TOXICITY01
+  #define POLICIES_INST_DEFAULT_TOXICITY01 0.0
+#endif
+
+#ifndef POLICIES_INST_DEFAULT_SPREAD_STRESS01
+  #define POLICIES_INST_DEFAULT_SPREAD_STRESS01 0.0
+#endif
+
+#ifndef POLICIES_INST_MAX_TOXICITY01
+  #define POLICIES_INST_MAX_TOXICITY01 0.65
+#endif
+
+#ifndef POLICIES_INST_MAX_SPREAD_STRESS01
+  #define POLICIES_INST_MAX_SPREAD_STRESS01 0.60
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_TOXICITY01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TOXICITY01
+    #define POLICIES_HAS_INST_TRANSPORT_TOXICITY01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_TOXICITY_SCORE01
+      #define POLICIES_HAS_INST_TRANSPORT_TOXICITY01 1
+    #else
+      #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_TOXICITY
+        #define POLICIES_HAS_INST_TRANSPORT_TOXICITY01 1
+      #endif
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_SPREAD_STRESS01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SPREAD_STRESS01
+    #define POLICIES_HAS_INST_TRANSPORT_SPREAD_STRESS01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VOLATILITY_STRESS01
+      #define POLICIES_HAS_INST_TRANSPORT_SPREAD_STRESS01 1
+    #else
+      #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ICT_SPREAD_STRESS_SCORE01
+        #define POLICIES_HAS_INST_TRANSPORT_SPREAD_STRESS01 1
+      #endif
+    #endif
+  #endif
+#endif
+
 #ifndef POLICIES_HAS_INST_TRANSPORT_VPIN01
   #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VPIN01
     #define POLICIES_HAS_INST_TRANSPORT_VPIN01 1
@@ -362,36 +414,40 @@ inline bool _WithinLocalWindowMins(const int open_min, const int close_min, cons
 // ----------------------------------------------------------------------------
 enum PolicyBlockCode
 {
-  POLICY_OK            = 0,
-  POLICY_SESSION_OFF   = 1,
-  POLICY_NEWS_BLOCK    = 2,
-  POLICY_MAX_LOSSES    = 3,
-  POLICY_MAX_TRADES    = 4,
-  POLICY_SPREAD_HIGH   = 5,
-  POLICY_COOLDOWN      = 6,
-  POLICY_MONTH_TARGET  = 7,
-  POLICY_MOD_SPREAD_HIGH = 8,
-  POLICY_DAILY_DD        = 9,
-  POLICY_ACCOUNT_DD      = 10,
-  POLICY_VOLATILITY      = 11,
-  POLICY_REGIME_FAIL     = 12,
-  POLICY_CALM_MARKET     = 13,
-  POLICY_DAYLOSS_STOP    = 14,
-  POLICY_LIQUIDITY_FAIL  = 15,
-  POLICY_CONFLICT        = 16,
-  POLICY_ADR_CAP           = 17,
-  POLICY_INSTITUTIONAL_GATE = 18,
-  POLICY_MICRO_VPIN         = 19,
-  POLICY_SB_NOT_IN_WINDOW   = 20,
-  POLICY_SB_ALREADY_USED    = 21,
-  POLICY_MICRO_RESILIENCY   = 22,
-  POLICY_MICRO_OBSERVABILITY = 23,
-  POLICY_MICRO_VENUE         = 24,
-  POLICY_MICRO_IMPACT        = 25,
-  POLICY_MICRO_DARKPOOL      = 26,
-  POLICY_SM_INVALIDATION     = 27,
-  POLICY_LIQUIDITY_TRAP      = 28,
-  POLICY_BLOCKED_OTHER      = 99
+  POLICY_OK                     = 0,
+  POLICY_SESSION_OFF            = 1,
+  POLICY_NEWS_BLOCK             = 2,
+  POLICY_MAX_LOSSES             = 3,
+  POLICY_MAX_TRADES             = 4,
+  POLICY_SPREAD_HIGH            = 5,
+  POLICY_COOLDOWN               = 6,
+  POLICY_MONTH_TARGET           = 7,
+  POLICY_MOD_SPREAD_HIGH        = 8,
+  POLICY_DAILY_DD               = 9,
+  POLICY_ACCOUNT_DD             = 10,
+  POLICY_VOLATILITY             = 11,
+  POLICY_REGIME_FAIL            = 12,
+  POLICY_CALM_MARKET            = 13,
+  POLICY_DAYLOSS_STOP           = 14,
+  POLICY_LIQUIDITY_FAIL         = 15,
+  POLICY_CONFLICT               = 16,
+  POLICY_ADR_CAP                = 17,
+  POLICY_INSTITUTIONAL_GATE     = 18,
+  POLICY_MICRO_VPIN             = 19,
+  POLICY_SB_NOT_IN_WINDOW       = 20,
+  POLICY_SB_ALREADY_USED        = 21,
+  POLICY_MICRO_RESILIENCY       = 22,
+  POLICY_MICRO_OBSERVABILITY    = 23,
+  POLICY_MICRO_VENUE            = 24,
+  POLICY_MICRO_IMPACT           = 25,
+  POLICY_MICRO_DARKPOOL         = 26,
+  POLICY_SM_INVALIDATION        = 27,
+  POLICY_LIQUIDITY_TRAP         = 28,
+  POLICY_MICRO_QUOTE_INSTABILITY = 29,
+  POLICY_MICRO_THIN_LIQUIDITY    = 30,
+  POLICY_MICRO_TOXICITY          = 31,
+  POLICY_MICRO_SPREAD_STRESS     = 32,
+  POLICY_BLOCKED_OTHER           = 99
 };
 
 namespace Policies
@@ -416,15 +472,19 @@ namespace Policies
     GATE_MONTH_TARGET = 24,
     GATE_MAX_LOSSES_DAY = 25,
     GATE_MAX_TRADES_DAY = 26,
-    GATE_INSTITUTIONAL      = 27,
-    GATE_MICRO_VPIN         = 28,
-    GATE_MICRO_RESILIENCY   = 29,
-    GATE_MICRO_OBSERVABILITY= 30,
-    GATE_MICRO_VENUE        = 31,
-    GATE_MICRO_IMPACT       = 32,
-    GATE_MICRO_DARKPOOL     = 33,
-    GATE_SM_INVALIDATION    = 34,
-    GATE_LIQUIDITY_TRAP     = 35
+    GATE_INSTITUTIONAL       = 27,
+    GATE_MICRO_VPIN          = 28,
+    GATE_MICRO_RESILIENCY    = 29,
+    GATE_MICRO_OBSERVABILITY = 30,
+    GATE_MICRO_VENUE         = 31,
+    GATE_MICRO_IMPACT        = 32,
+    GATE_MICRO_DARKPOOL      = 33,
+    GATE_SM_INVALIDATION     = 34,
+    GATE_LIQUIDITY_TRAP      = 35,
+    GATE_MICRO_QUOTE_INSTABILITY = 36,
+    GATE_MICRO_THIN_LIQUIDITY    = 37,
+    GATE_MICRO_TOXICITY          = 38,
+    GATE_MICRO_SPREAD_STRESS     = 39
   };
 
   inline string ReasonString(const int r)
@@ -448,17 +508,21 @@ namespace Policies
       case GATE_MONTH_TARGET: return "MONTH_TARGET";
       case GATE_MAX_LOSSES_DAY: return "MAX_LOSSES_DAY";
       case GATE_MAX_TRADES_DAY: return "MAX_TRADES_DAY";
-      case GATE_INSTITUTIONAL: return "INSTITUTIONAL_STATE";
-      case GATE_MICRO_VPIN:       return "MICRO_VPIN";
-      case GATE_MICRO_RESILIENCY: return "MICRO_RESILIENCY";
+      case GATE_INSTITUTIONAL:       return "INSTITUTIONAL_STATE";
+      case GATE_MICRO_VPIN:          return "MICRO_VPIN";
+      case GATE_MICRO_RESILIENCY:    return "MICRO_RESILIENCY";
       case GATE_MICRO_OBSERVABILITY: return "MICRO_OBSERVABILITY";
       case GATE_MICRO_VENUE:         return "MICRO_VENUE";
       case GATE_MICRO_IMPACT:        return "MICRO_IMPACT";
       case GATE_MICRO_DARKPOOL:      return "MICRO_DARKPOOL";
       case GATE_SM_INVALIDATION:     return "SMARTMONEY_INVALIDATION";
       case GATE_LIQUIDITY_TRAP:      return "LIQUIDITY_TRAP";
+      case GATE_MICRO_QUOTE_INSTABILITY: return "MICRO_QUOTE_INSTABILITY";
+      case GATE_MICRO_THIN_LIQUIDITY:    return "MICRO_THIN_LIQUIDITY";
+      case GATE_MICRO_TOXICITY:          return "MICRO_TOXICITY";
+      case GATE_MICRO_SPREAD_STRESS:     return "MICRO_SPREAD_STRESS";
 
-      default:              return "UNKNOWN";
+      default: return "UNKNOWN";
     }
   }
   
@@ -473,13 +537,13 @@ namespace Policies
        case GATE_NEWS:          return POLICY_NEWS_BLOCK;
        case GATE_COOLDOWN:      return POLICY_COOLDOWN;
        case GATE_MONTH_TARGET:  return POLICY_MONTH_TARGET;
-   
+
        case GATE_SPREAD:        return POLICY_SPREAD_HIGH;
        case GATE_MOD_SPREAD:    return POLICY_MOD_SPREAD_HIGH;
-   
+
        case GATE_MAX_LOSSES_DAY:return POLICY_MAX_LOSSES;
        case GATE_MAX_TRADES_DAY:return POLICY_MAX_TRADES;
-   
+
        case GATE_DAYLOSS:       return POLICY_DAYLOSS_STOP;
        case GATE_DAILYDD:       return POLICY_DAILY_DD;
        case GATE_ACCOUNT_DD:    return POLICY_ACCOUNT_DD;
@@ -489,17 +553,21 @@ namespace Policies
        case GATE_LIQUIDITY:     return POLICY_LIQUIDITY_FAIL;
        case GATE_CONFLICT:      return POLICY_CONFLICT;
        case GATE_ADR:           return POLICY_ADR_CAP;
-       case GATE_INSTITUTIONAL: return POLICY_INSTITUTIONAL_GATE;
-       case GATE_MICRO_VPIN:       return POLICY_MICRO_VPIN;
-       case GATE_MICRO_RESILIENCY: return POLICY_MICRO_RESILIENCY;
-       case GATE_MICRO_OBSERVABILITY:return POLICY_MICRO_OBSERVABILITY;
-       case GATE_MICRO_VENUE:        return POLICY_MICRO_VENUE;
-       case GATE_MICRO_IMPACT:       return POLICY_MICRO_IMPACT;
-       case GATE_MICRO_DARKPOOL:     return POLICY_MICRO_DARKPOOL;
-       case GATE_SM_INVALIDATION:    return POLICY_SM_INVALIDATION;
-       case GATE_LIQUIDITY_TRAP:     return POLICY_LIQUIDITY_TRAP;
+       case GATE_INSTITUTIONAL:       return POLICY_INSTITUTIONAL_GATE;
+       case GATE_MICRO_VPIN:          return POLICY_MICRO_VPIN;
+       case GATE_MICRO_RESILIENCY:    return POLICY_MICRO_RESILIENCY;
+       case GATE_MICRO_OBSERVABILITY: return POLICY_MICRO_OBSERVABILITY;
+       case GATE_MICRO_VENUE:         return POLICY_MICRO_VENUE;
+       case GATE_MICRO_IMPACT:        return POLICY_MICRO_IMPACT;
+       case GATE_MICRO_DARKPOOL:      return POLICY_MICRO_DARKPOOL;
+       case GATE_SM_INVALIDATION:     return POLICY_SM_INVALIDATION;
+       case GATE_LIQUIDITY_TRAP:      return POLICY_LIQUIDITY_TRAP;
+       case GATE_MICRO_QUOTE_INSTABILITY: return POLICY_MICRO_QUOTE_INSTABILITY;
+       case GATE_MICRO_THIN_LIQUIDITY:    return POLICY_MICRO_THIN_LIQUIDITY;
+       case GATE_MICRO_TOXICITY:          return POLICY_MICRO_TOXICITY;
+       case GATE_MICRO_SPREAD_STRESS:     return POLICY_MICRO_SPREAD_STRESS;
 
-       default:                 return POLICY_BLOCKED_OTHER;
+       default: return POLICY_BLOCKED_OTHER;
      }
    }
    
@@ -510,7 +578,7 @@ namespace Policies
      return "OUT_OF_WINDOW";
    }
 
-    // ----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
   // Structured policy decision result (single source of truth)
   // ----------------------------------------------------------------------------
 
@@ -530,16 +598,22 @@ namespace Policies
   #define CA_POLMASK_MAX_TRADES_DAY  (((ulong)1) << 12)
   #define CA_POLMASK_SESSION         (((ulong)1) << 13)
   #define CA_POLMASK_NEWS            (((ulong)1) << 14)
-  #define CA_POLMASK_LIQUIDITY       (((ulong)1) << 15)
-  #define CA_POLMASK_MICRO_VPIN        (((ulong)1) << 16)
-  #define CA_POLMASK_MICRO_RESILIENCY  (((ulong)1) << 17)
-  #define CA_POLMASK_INSTITUTIONAL     (((ulong)1) << 18)
+  #define CA_POLMASK_LIQUIDITY          (((ulong)1) << 15)
+  #define CA_POLMASK_MICRO_VPIN         (((ulong)1) << 16)
+  #define CA_POLMASK_MICRO_RESILIENCY   (((ulong)1) << 17)
+  #define CA_POLMASK_MICRO_QUOTE_INSTABILITY (((ulong)1) << 25)
+  #define CA_POLMASK_MICRO_THIN_LIQUIDITY    (((ulong)1) << 26)
+  #define CA_POLMASK_MICRO_TOXICITY          (((ulong)1) << 27)
+  #define CA_POLMASK_MICRO_SPREAD_STRESS     (((ulong)1) << 28)
+  #define CA_POLMASK_INSTITUTIONAL      (((ulong)1) << 18)
   #define CA_POLMASK_MICRO_OBSERVABILITY (((ulong)1) << 19)
   #define CA_POLMASK_MICRO_VENUE         (((ulong)1) << 20)
   #define CA_POLMASK_MICRO_IMPACT        (((ulong)1) << 21)
   #define CA_POLMASK_MICRO_DARKPOOL      (((ulong)1) << 22)
   #define CA_POLMASK_SM_INVALIDATION     (((ulong)1) << 23)
   #define CA_POLMASK_LIQUIDITY_TRAP      (((ulong)1) << 24)
+  #define CA_POLMASK_MICRO_QUOTE_INSTABILITY (((ulong)1) << 25)
+  #define CA_POLMASK_MICRO_THIN_LIQUIDITY    (((ulong)1) << 26)
 
   struct PolicyResult
   {
@@ -646,9 +720,17 @@ namespace Policies
     double resiliency01;
     double resiliency_min01;
 
+    double toxicity01;
+    double toxicity_max01;
+    double spread_stress01;
+    double spread_stress_max01;
+
     double observability_confidence01;
+    double observability_min01;
     double venue_coverage01;
+    double venue_coverage_min01;
     double cross_venue_dislocation01;
+    double cross_venue_dislocation_max01;
 
     double impact_beta01;
     double impact_beta_max01;
@@ -698,9 +780,17 @@ namespace Policies
     r.resiliency01     = (double)POLICIES_INST_DEFAULT_RESILIENCY01;
     r.resiliency_min01 = 0.0;
 
+    r.toxicity01       = (double)POLICIES_INST_DEFAULT_TOXICITY01;
+    r.toxicity_max01   = (double)POLICIES_INST_MAX_TOXICITY01;
+    r.spread_stress01  = (double)POLICIES_INST_DEFAULT_SPREAD_STRESS01;
+    r.spread_stress_max01 = (double)POLICIES_INST_MAX_SPREAD_STRESS01;
+
     r.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    r.observability_min01        = (double)POLICIES_INST_MIN_OBSERVABILITY01;
     r.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
+    r.venue_coverage_min01       = (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
     r.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
+    r.cross_venue_dislocation_max01 = (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01;
 
     r.impact_beta01       = (double)POLICIES_INST_DEFAULT_IMPACT_BETA01;
     r.impact_beta_max01   = (double)POLICIES_INST_MAX_IMPACT_BETA01;
@@ -731,6 +821,18 @@ namespace Policies
     r.veto_mask |= mask_bit;
   }
 
+  inline double PolicyQuoteInstability01(const PolicyResult &r)
+  {
+    return Clamp01(MathMax(Clamp01(1.0 - r.venue_coverage01),
+                           r.cross_venue_dislocation01));
+  }
+
+  inline double PolicyThinLiquidity01(const PolicyResult &r)
+  {
+    return Clamp01(MathMax(r.liquidity_vacuum01,
+                           r.liquidity_hunt01));
+  }
+  
   // ----------------------------------------------------------------------------
   // Math helpers
   // ----------------------------------------------------------------------------
@@ -755,6 +857,7 @@ namespace Policies
       return 0;
     #endif
   }
+  
   inline bool CfgSessionFilter(const Settings &cfg)
   {
     #ifdef CFG_HAS_SESSION_FILTER
@@ -763,6 +866,7 @@ namespace Policies
       return false;
     #endif
   }
+  
   inline ENUM_TIMEFRAMES CfgTFEntry(const Settings &cfg)
   {
     #ifdef CFG_HAS_TF_ENTRY
@@ -771,6 +875,7 @@ namespace Policies
       return PERIOD_M15;
     #endif
   }
+  
   inline int CfgATRPeriod(const Settings &cfg)
   {
     #ifdef CFG_HAS_ATR_PERIOD
@@ -779,6 +884,7 @@ namespace Policies
       return 14;
     #endif
   }
+  
   inline double CfgAtrDampenF(const Settings &cfg)
   {
     #ifdef CFG_HAS_ATR_DAMPEN_F
@@ -787,6 +893,7 @@ namespace Policies
       return 1.00;
     #endif
   }
+  
   inline double CfgMaxDailyDDPct(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAX_DAILY_DD_PCT
@@ -795,6 +902,7 @@ namespace Policies
       return 0.0;
     #endif
   }
+  
   inline double CfgDayLossCapMoney(const Settings &cfg)
    {
      #ifdef CFG_HAS_DAY_LOSS_CAP_MONEY
@@ -803,6 +911,7 @@ namespace Policies
        return 0.0;
      #endif
    }
+   
    inline double CfgDayLossCapPct(const Settings &cfg)
    {
      #ifdef CFG_HAS_DAY_LOSS_CAP_PCT
@@ -879,6 +988,7 @@ namespace Policies
        #endif
      #endif
    }
+   
   inline long CfgMagicNumber(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAGIC_NUMBER
@@ -949,12 +1059,14 @@ namespace Policies
        return false;
      #endif
    }
+   
    inline int CfgNewsImpactMask(const Settings &cfg)
    {
      const int m = cfg.news_impact_mask;
      if(m != 0) return m;
      return (1<<1) | (1<<2); // MED+HIGH default
    }
+   
    inline int CfgNewsBlockPreMins(const Settings &cfg)
    {
      return (cfg.block_pre_m > 0 ? cfg.block_pre_m : 0);
@@ -1118,6 +1230,74 @@ namespace Policies
     #endif
   }
 
+  inline bool CfgMicroToxicityGateOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_TOXICITY_GATE_ON
+      return (bool)cfg.ms_toxicity_gate_on;
+    #else
+      #ifdef CFG_HAS_INST_TOXICITY_GATE_ON
+        return (bool)cfg.inst_toxicity_gate_on;
+      #else
+        #ifdef CFG_HAS_TOXICITY_GATE_ON
+          return (bool)cfg.toxicity_gate_on;
+        #else
+          return true;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroToxicityMax01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_TOXICITY_THRESHOLD
+      return Clamp01(cfg.ms_toxicity_threshold);
+    #else
+      #ifdef CFG_HAS_INST_MAX_TOXICITY01
+        return Clamp01(cfg.inst_max_toxicity01);
+      #else
+        #ifdef CFG_HAS_TOXICITY_THRESHOLD
+          return Clamp01(cfg.toxicity_threshold);
+        #else
+          return (double)POLICIES_INST_MAX_TOXICITY01;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline bool CfgMicroSpreadStressGateOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_SPREAD_STRESS_GATE_ON
+      return (bool)cfg.ms_spread_stress_gate_on;
+    #else
+      #ifdef CFG_HAS_INST_SPREAD_STRESS_GATE_ON
+        return (bool)cfg.inst_spread_stress_gate_on;
+      #else
+        #ifdef CFG_HAS_SPREAD_STRESS_GATE_ON
+          return (bool)cfg.spread_stress_gate_on;
+        #else
+          return true;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroSpreadStressMax01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_MAX_SPREAD_STRESS01
+      return Clamp01(cfg.ms_max_spread_stress01);
+    #else
+      #ifdef CFG_HAS_INST_SPREAD_STRESS_MAX01
+        return Clamp01(cfg.inst_spread_stress_max01);
+      #else
+        #ifdef CFG_HAS_SPREAD_STRESS_MAX01
+          return Clamp01(cfg.spread_stress_max01);
+        #else
+          return (double)POLICIES_INST_MAX_SPREAD_STRESS01;
+        #endif
+      #endif
+    #endif
+  }
+
   inline bool CfgMicroResiliencyGateOn(const Settings &cfg)
   {
     #ifdef CFG_HAS_MS_RESILIENCY_GATE_ON
@@ -1147,6 +1327,61 @@ namespace Policies
           return Clamp01(cfg.resiliency_threshold);
         #else
           return 0.0;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroObservabilityMin01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_MIN_OBSERVABILITY01
+      return Clamp01(cfg.ms_min_observability01);
+    #else
+      #ifdef CFG_HAS_INST_MIN_OBSERVABILITY01
+        return Clamp01(cfg.inst_min_observability01);
+      #else
+        #ifdef CFG_HAS_MIN_OBSERVABILITY01
+          return Clamp01(cfg.min_observability01);
+        #else
+          return (double)POLICIES_INST_MIN_OBSERVABILITY01;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroVenueCoverageMin01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_MIN_VENUE_COVERAGE01
+      return Clamp01(cfg.ms_min_venue_coverage01);
+    #else
+      #ifdef CFG_HAS_INST_MIN_VENUE_COVERAGE01
+        return Clamp01(cfg.inst_min_venue_coverage01);
+      #else
+        #ifdef CFG_HAS_MIN_VENUE_COVERAGE01
+          return Clamp01(cfg.min_venue_coverage01);
+        #else
+          return (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
+        #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroXVenueDislocationMax01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_MAX_XVENUE_DISLOCATION01
+      return Clamp01(cfg.ms_max_xvenue_dislocation01);
+    #else
+      #ifdef CFG_HAS_INST_MAX_XVENUE_DISLOCATION01
+        return Clamp01(cfg.inst_max_xvenue_dislocation01);
+      #else
+        #ifdef CFG_HAS_XVENUE_DISLOCATION_MAX01
+          return Clamp01(cfg.xvenue_dislocation_max01);
+        #else
+          #ifdef CFG_HAS_MAX_XVENUE_DISLOCATION01
+            return Clamp01(cfg.max_xvenue_dislocation01);
+          #else
+            return (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01;
+          #endif
         #endif
       #endif
     #endif
@@ -2864,18 +3099,18 @@ inline void NotifyTradeResult(const double r_multiple)
                               const int pre_m,
                               const int post_m)
    {
-      News::Health h; 
+      News::Health h;
       News::GetHealth(h);
-   
+
       string note = h.note;
       if(StringLen(note) > 80) note = StringSubstr(note, 0, 80);
-   
+
       if(note != "")
-         return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d note=%s",
+         return StringFormat("EventRisk block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d note=%s",
                              mins_left, impact_mask, pre_m, post_m,
                              h.backend_effective, (h.broker_available ? 1 : 0), h.csv_events, h.data_health, note);
-   
-      return StringFormat("News block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d",
+
+      return StringFormat("EventRisk block mins_left=%d impact_mask=%d pre=%d post=%d backend=%d broker=%d csv=%d health=%d",
                           mins_left, impact_mask, pre_m, post_m,
                           h.backend_effective, (h.broker_available ? 1 : 0), h.csv_events, h.data_health);
    }
@@ -2901,7 +3136,7 @@ inline void NotifyTradeResult(const double r_multiple)
 
   inline string _FmtSpreadVeto(const double spread_pts, const double max_spread_pts)
    {
-     return StringFormat("spread=%.1f pts > max=%.1f pts", spread_pts, max_spread_pts);
+     return StringFormat("SpreadStress spread=%.1f pts > cap=%.1f pts", spread_pts, max_spread_pts);
    }
    
   inline string _FmtSessionVeto(const string session_reason)
@@ -3014,6 +3249,16 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.vpin01, r.vpin_limit01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
+       case GATE_MICRO_TOXICITY:
+         return StringFormat("MicroToxicity tox=%.3f max=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.toxicity01, r.toxicity_max01,
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
+       case GATE_MICRO_SPREAD_STRESS:
+         return StringFormat("MicroSpreadStress stress=%.3f max=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.spread_stress01, r.spread_stress_max01,
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
        case GATE_MICRO_RESILIENCY:
          return StringFormat("MicroResiliency resil=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
                              r.resiliency01, r.resiliency_min01,
@@ -3021,13 +3266,19 @@ inline void NotifyTradeResult(const double r_multiple)
 
        case GATE_MICRO_OBSERVABILITY:
          return StringFormat("MicroObservability obs=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
-                             r.observability_confidence01, (double)POLICIES_INST_MIN_OBSERVABILITY01,
+                             r.observability_confidence01, r.observability_min01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_MICRO_VENUE:
-         return StringFormat("MicroVenue venue=%.3f min=%.3f xvenue=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
-                             r.venue_coverage01, (double)POLICIES_INST_MIN_VENUE_COVERAGE01,
-                             r.cross_venue_dislocation01,
+         return StringFormat("MicroVenue venue=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.venue_coverage01, r.venue_coverage_min01,
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
+       case GATE_MICRO_QUOTE_INSTABILITY:
+         return StringFormat("QuoteInstability venue=%.3f minVenue=%.3f xvenue=%.3f maxXVenue=%.3f qinst=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.venue_coverage01, r.venue_coverage_min01,
+                             r.cross_venue_dislocation01, r.cross_venue_dislocation_max01,
+                             PolicyQuoteInstability01(r),
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_MICRO_IMPACT:
@@ -3047,10 +3298,17 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.sd_ob_invalidation_proximity01, r.sd_ob_invalidation_max01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
-       case GATE_LIQUIDITY_TRAP:
-         return StringFormat("LiquidityTrap vacuum=%.3f maxVac=%.3f hunt=%.3f maxHunt=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+       case GATE_MICRO_THIN_LIQUIDITY:
+         return StringFormat("ThinLiquidity vacuum=%.3f maxVac=%.3f hunt=%.3f maxHunt=%.3f thin=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
                              r.liquidity_vacuum01, r.liquidity_vacuum_max01,
                              r.liquidity_hunt01, r.liquidity_hunt_max01,
+                             PolicyThinLiquidity01(r),
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
+       case GATE_LIQUIDITY_TRAP:
+         return StringFormat("LiquidityTrap hunt=%.3f maxHunt=%.3f vacuum=%.3f maxVac=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.liquidity_hunt01, r.liquidity_hunt_max01,
+                             r.liquidity_vacuum01, r.liquidity_vacuum_max01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_INSTITUTIONAL:
@@ -3227,10 +3485,33 @@ inline void NotifyTradeResult(const double r_multiple)
               " mask=", (string)r.veto_mask);
         break;
 
+
       case GATE_MICRO_VPIN:
         Print("[Policy][VETO] reason=MICRO_VPIN sym=", sym,
               " vpin=", DoubleToString(r.vpin01,3),
               " limit=", DoubleToString(r.vpin_limit01,3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MICRO_TOXICITY:
+        Print("[Policy][VETO] reason=MICRO_TOXICITY sym=", sym,
+              " tox=", DoubleToString(r.toxicity01,3),
+              " max=", DoubleToString(r.toxicity_max01,3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MICRO_SPREAD_STRESS:
+        Print("[Policy][VETO] reason=MICRO_SPREAD_STRESS sym=", sym,
+              " stress=", DoubleToString(r.spread_stress01,3),
+              " max=", DoubleToString(r.spread_stress_max01,3),
               " alpha=", DoubleToString(r.alpha_score,3),
               " exec=", DoubleToString(r.execution_score,3),
               " risk=", DoubleToString(r.risk_score,3),
@@ -3252,7 +3533,7 @@ inline void NotifyTradeResult(const double r_multiple)
       case GATE_MICRO_OBSERVABILITY:
         Print("[Policy][VETO] reason=MICRO_OBSERVABILITY sym=", sym,
               " obs=", DoubleToString(r.observability_confidence01,3),
-              " min=", DoubleToString((double)POLICIES_INST_MIN_OBSERVABILITY01,3),
+              " min=", DoubleToString(r.observability_min01,3),
               " alpha=", DoubleToString(r.alpha_score,3),
               " exec=", DoubleToString(r.execution_score,3),
               " risk=", DoubleToString(r.risk_score,3),
@@ -3263,8 +3544,21 @@ inline void NotifyTradeResult(const double r_multiple)
       case GATE_MICRO_VENUE:
         Print("[Policy][VETO] reason=MICRO_VENUE sym=", sym,
               " venue=", DoubleToString(r.venue_coverage01,3),
-              " min=", DoubleToString((double)POLICIES_INST_MIN_VENUE_COVERAGE01,3),
+              " min=", DoubleToString(r.venue_coverage_min01,3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_MICRO_QUOTE_INSTABILITY:
+        Print("[Policy][VETO] reason=MICRO_QUOTE_INSTABILITY sym=", sym,
+              " venue=", DoubleToString(r.venue_coverage01,3),
+              " minVenue=", DoubleToString(r.venue_coverage_min01,3),
               " xvenue=", DoubleToString(r.cross_venue_dislocation01,3),
+              " maxXVenue=", DoubleToString(r.cross_venue_dislocation_max01,3),
+              " qinst=", DoubleToString(PolicyQuoteInstability01(r),3),
               " alpha=", DoubleToString(r.alpha_score,3),
               " exec=", DoubleToString(r.execution_score,3),
               " risk=", DoubleToString(r.risk_score,3),
@@ -3309,12 +3603,26 @@ inline void NotifyTradeResult(const double r_multiple)
               " mask=", (string)r.veto_mask);
         break;
 
-      case GATE_LIQUIDITY_TRAP:
-        Print("[Policy][VETO] reason=LIQUIDITY_TRAP sym=", sym,
+      case GATE_MICRO_THIN_LIQUIDITY:
+        Print("[Policy][VETO] reason=MICRO_THIN_LIQUIDITY sym=", sym,
               " vacuum=", DoubleToString(r.liquidity_vacuum01,3),
               " vacMax=", DoubleToString(r.liquidity_vacuum_max01,3),
               " hunt=", DoubleToString(r.liquidity_hunt01,3),
               " huntMax=", DoubleToString(r.liquidity_hunt_max01,3),
+              " thin=", DoubleToString(PolicyThinLiquidity01(r),3),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
+      case GATE_LIQUIDITY_TRAP:
+        Print("[Policy][VETO] reason=LIQUIDITY_TRAP sym=", sym,
+              " hunt=", DoubleToString(r.liquidity_hunt01,3),
+              " huntMax=", DoubleToString(r.liquidity_hunt_max01,3),
+              " vacuum=", DoubleToString(r.liquidity_vacuum01,3),
+              " vacMax=", DoubleToString(r.liquidity_vacuum_max01,3),
               " alpha=", DoubleToString(r.alpha_score,3),
               " exec=", DoubleToString(r.execution_score,3),
               " risk=", DoubleToString(r.risk_score,3),
@@ -4125,6 +4433,9 @@ inline void NotifyTradeResult(const double r_multiple)
     int    gate_reason;
     double vpin01;
     double resiliency01;
+
+    double toxicity01;
+    double spread_stress01;
   };
 
   inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
@@ -4139,6 +4450,9 @@ inline void NotifyTradeResult(const double r_multiple)
     v.vpin01                     = (double)POLICIES_INST_DEFAULT_VPIN01;
     v.resiliency01               = (double)POLICIES_INST_DEFAULT_RESILIENCY01;
 
+    v.toxicity01                 = (double)POLICIES_INST_DEFAULT_TOXICITY01;
+    v.spread_stress01            = (double)POLICIES_INST_DEFAULT_SPREAD_STRESS01;
+
     v.impact_beta01                  = (double)POLICIES_INST_DEFAULT_IMPACT_BETA01;
     v.impact_lambda01                = (double)POLICIES_INST_DEFAULT_IMPACT_LAMBDA01;
 
@@ -4149,6 +4463,18 @@ inline void NotifyTradeResult(const double r_multiple)
 
     v.liquidity_vacuum01             = (double)POLICIES_INST_DEFAULT_LIQUIDITY_VACUUM01;
     v.liquidity_hunt01               = (double)POLICIES_INST_DEFAULT_LIQUIDITY_HUNT01;
+  }
+
+  inline double InstitutionalQuoteInstability01(const InstitutionalStatePolicyView &v)
+  {
+    return Clamp01(MathMax(Clamp01(1.0 - v.venue_coverage01),
+                           v.cross_venue_dislocation01));
+  }
+
+  inline double InstitutionalThinLiquidity01(const InstitutionalStatePolicyView &v)
+  {
+    return Clamp01(MathMax(v.liquidity_vacuum01,
+                           v.liquidity_hunt01));
   }
 
   inline bool LoadInstitutionalStateFromConfluence(const string sym,
@@ -4164,6 +4490,34 @@ inline void NotifyTradeResult(const double r_multiple)
 
         if(!Scan::GetInstitutionalStateTransport(sym, tf, inst))
           return false;
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_TOXICITY01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TOXICITY01
+            out_view.toxicity01 = Clamp01(inst.toxicity01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_TOXICITY_SCORE01
+              out_view.toxicity01 = Clamp01(inst.inst_toxicity_score01);
+            #else
+              #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MS_TOXICITY
+                out_view.toxicity01 = Clamp01(inst.ms_toxicity);
+              #endif
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_SPREAD_STRESS01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SPREAD_STRESS01
+            out_view.spread_stress01 = Clamp01(inst.spread_stress01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VOLATILITY_STRESS01
+              out_view.spread_stress01 = Clamp01(inst.volatility_stress01);
+            #else
+              #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ICT_SPREAD_STRESS_SCORE01
+                out_view.spread_stress01 = Clamp01(inst.ict_spread_stress_score01);
+              #endif
+            #endif
+          #endif
+        #endif
 
         if(!inst.valid)
           return false;
@@ -4304,9 +4658,17 @@ inline void NotifyTradeResult(const double r_multiple)
     out.resiliency01                   = v.resiliency01;
     out.resiliency_min01               = CfgMicroResiliencyMin01(cfg);
 
+    out.toxicity01                     = v.toxicity01;
+    out.toxicity_max01                 = CfgMicroToxicityMax01(cfg);
+    out.spread_stress01                = v.spread_stress01;
+    out.spread_stress_max01            = CfgMicroSpreadStressMax01(cfg);
+
     out.observability_confidence01     = v.observability_confidence01;
+    out.observability_min01            = CfgMicroObservabilityMin01(cfg);
     out.venue_coverage01               = v.venue_coverage01;
+    out.venue_coverage_min01           = CfgMicroVenueCoverageMin01(cfg);
     out.cross_venue_dislocation01      = v.cross_venue_dislocation01;
+    out.cross_venue_dislocation_max01  = CfgMicroXVenueDislocationMax01(cfg);
 
     out.impact_beta01                  = v.impact_beta01;
     out.impact_beta_max01              = CfgMicroImpactBetaMax01(cfg);
@@ -4355,31 +4717,48 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     // Observability gate
-    #ifdef POLICIES_INST_ENABLE_OBSERVABILITY_GATE
-      if(out_view.observability_confidence01 < (double)POLICIES_INST_MIN_OBSERVABILITY01)
+    {
+      const double omin = CfgMicroObservabilityMin01(cfg);
+      if(omin > 0.0 && out_view.observability_confidence01 < omin)
       {
         out_view.delay_recommended = true;
         out_view.gate_reason = GATE_MICRO_OBSERVABILITY;
         return false;
       }
-    #endif
+    }
 
     // Venue coverage gate
-    #ifdef POLICIES_INST_ENABLE_VENUE_COVERAGE_GATE
-      if(out_view.venue_coverage01 < (double)POLICIES_INST_MIN_VENUE_COVERAGE01)
+    {
+      const double vmin = CfgMicroVenueCoverageMin01(cfg);
+      if(vmin > 0.0 && out_view.venue_coverage01 < vmin)
       {
         out_view.delay_recommended = true;
         out_view.gate_reason = GATE_MICRO_VENUE;
         return false;
       }
-    #endif
+    }
 
-    // Cross-venue dislocation veto
-    #ifdef POLICIES_INST_ENABLE_XVENUE_DISLOCATION_VETO
-      if(out_view.cross_venue_dislocation01 >= (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01)
+    // Quote instability / cross-venue dislocation veto
+    {
+      const double xmax = CfgMicroXVenueDislocationMax01(cfg);
+      if(xmax < 1.0 && out_view.cross_venue_dislocation01 >= xmax)
       {
-        out_view.gate_reason = GATE_INSTITUTIONAL;
+        out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_MICRO_QUOTE_INSTABILITY;
         return false;
+      }
+    }
+
+    #ifdef POLICIES_INST_ENABLE_SPREAD_STRESS_VETO
+      if(CfgMicroSpreadStressGateOn(cfg))
+      {
+        const double smax = CfgMicroSpreadStressMax01(cfg);
+        if(smax < 1.0 && out_view.spread_stress01 >= smax)
+        {
+          out_view.delay_recommended = true;
+          out_view.gate_reason = GATE_MICRO_SPREAD_STRESS;
+          return false;
+        }
       }
     #endif
 
@@ -4391,6 +4770,19 @@ inline void NotifyTradeResult(const double r_multiple)
         if(vmax < 1.0 && out_view.vpin01 >= vmax)
         {
           out_view.gate_reason = GATE_MICRO_VPIN;
+          return false;
+        }
+      }
+    #endif
+
+    #ifdef POLICIES_INST_ENABLE_TOXICITY_VETO
+      if(CfgMicroToxicityGateOn(cfg))
+      {
+        const double tmax = CfgMicroToxicityMax01(cfg);
+        if(tmax < 1.0 && out_view.toxicity01 >= tmax)
+        {
+          out_view.delay_recommended = true;
+          out_view.gate_reason = GATE_MICRO_TOXICITY;
           return false;
         }
       }
@@ -4460,8 +4852,14 @@ inline void NotifyTradeResult(const double r_multiple)
         const double vmax = CfgLiquidityVacuumMax01(cfg);
         const double hmax = CfgLiquidityHuntMax01(cfg);
 
-        if((vmax < 1.0 && out_view.liquidity_vacuum01 >= vmax) ||
-           (hmax < 1.0 && out_view.liquidity_hunt01 >= hmax))
+        if(vmax < 1.0 && out_view.liquidity_vacuum01 >= vmax)
+        {
+          out_view.delay_recommended = true;
+          out_view.gate_reason = GATE_MICRO_THIN_LIQUIDITY;
+          return false;
+        }
+
+        if(hmax < 1.0 && out_view.liquidity_hunt01 >= hmax)
         {
           out_view.delay_recommended = true;
           out_view.gate_reason = GATE_LIQUIDITY_TRAP;
@@ -4495,6 +4893,23 @@ inline void NotifyTradeResult(const double r_multiple)
     return true;
   }
 
+  inline ulong InstitutionalMaskForGateReason(const int gr)
+  {
+    if(gr == GATE_MICRO_VPIN)              return CA_POLMASK_MICRO_VPIN;
+    if(gr == GATE_MICRO_RESILIENCY)        return CA_POLMASK_MICRO_RESILIENCY;
+    if(gr == GATE_MICRO_OBSERVABILITY)     return CA_POLMASK_MICRO_OBSERVABILITY;
+    if(gr == GATE_MICRO_VENUE)             return CA_POLMASK_MICRO_VENUE;
+    if(gr == GATE_MICRO_IMPACT)            return CA_POLMASK_MICRO_IMPACT;
+    if(gr == GATE_MICRO_DARKPOOL)          return CA_POLMASK_MICRO_DARKPOOL;
+    if(gr == GATE_SM_INVALIDATION)         return CA_POLMASK_SM_INVALIDATION;
+    if(gr == GATE_LIQUIDITY_TRAP)          return CA_POLMASK_LIQUIDITY_TRAP;
+    if(gr == GATE_MICRO_QUOTE_INSTABILITY) return CA_POLMASK_MICRO_QUOTE_INSTABILITY;
+    if(gr == GATE_MICRO_THIN_LIQUIDITY)    return CA_POLMASK_MICRO_THIN_LIQUIDITY;
+    if(gr == GATE_MICRO_TOXICITY)          return CA_POLMASK_MICRO_TOXICITY;
+    if(gr == GATE_MICRO_SPREAD_STRESS)     return CA_POLMASK_MICRO_SPREAD_STRESS;
+    return CA_POLMASK_INSTITUTIONAL;
+  }
+
   inline bool _EvaluateFinalSendGateEx(const Settings &cfg,
                                        const string sym,
                                        StratScore &ss,
@@ -4516,23 +4931,7 @@ inline void NotifyTradeResult(const double r_multiple)
       if(gr <= GATE_OK)
         gr = GATE_INSTITUTIONAL;
 
-      ulong mask = CA_POLMASK_INSTITUTIONAL;
-      if(gr == GATE_MICRO_VPIN)
-        mask = CA_POLMASK_MICRO_VPIN;
-      else if(gr == GATE_MICRO_RESILIENCY)
-        mask = CA_POLMASK_MICRO_RESILIENCY;
-      else if(gr == GATE_MICRO_OBSERVABILITY)
-        mask = CA_POLMASK_MICRO_OBSERVABILITY;
-      else if(gr == GATE_MICRO_VENUE)
-        mask = CA_POLMASK_MICRO_VENUE;
-      else if(gr == GATE_MICRO_IMPACT)
-        mask = CA_POLMASK_MICRO_IMPACT;
-      else if(gr == GATE_MICRO_DARKPOOL)
-        mask = CA_POLMASK_MICRO_DARKPOOL;
-      else if(gr == GATE_SM_INVALIDATION)
-        mask = CA_POLMASK_SM_INVALIDATION;
-      else if(gr == GATE_LIQUIDITY_TRAP)
-        mask = CA_POLMASK_LIQUIDITY_TRAP;
+      const ulong mask = InstitutionalMaskForGateReason(gr);
 
       _PolicyVeto(out, gr, mask);
       if(!audit)
@@ -4575,6 +4974,70 @@ inline void NotifyTradeResult(const double r_multiple)
                                          InstitutionalStatePolicyView &inst_view)
   {
     return _EvaluateFinalSendGateEx(cfg, _Symbol, ss, out, inst_view, true);
+  }
+
+  inline bool _EvaluateMicrostructurePolicyEx(const Settings &cfg,
+                                              const string sym,
+                                              StratScore &ss,
+                                              PolicyResult &out,
+                                              InstitutionalStatePolicyView &inst_view,
+                                              const bool audit)
+  {
+    s_last_eval_sym = sym;
+    _EnsureLoaded(cfg);
+
+    _PolicyReset(out);
+    ResetInstitutionalStatePolicyView(inst_view);
+
+    if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
+    {
+      _PolicyMergeInstitutionalView(cfg, inst_view, out);
+
+      int gr = inst_view.gate_reason;
+      if(gr <= GATE_OK)
+        gr = GATE_INSTITUTIONAL;
+
+      _PolicyVeto(out, gr, InstitutionalMaskForGateReason(gr));
+      if(!audit)
+        return false;
+    }
+
+    _PolicyMergeInstitutionalView(cfg, inst_view, out);
+    return out.allowed;
+  }
+
+  inline bool EvaluateMicrostructurePolicy(const Settings &cfg,
+                                           const string sym,
+                                           StratScore &ss,
+                                           PolicyResult &out,
+                                           InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateMicrostructurePolicyEx(cfg, sym, ss, out, inst_view, false);
+  }
+
+  inline bool EvaluateMicrostructurePolicyAudit(const Settings &cfg,
+                                                const string sym,
+                                                StratScore &ss,
+                                                PolicyResult &out,
+                                                InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateMicrostructurePolicyEx(cfg, sym, ss, out, inst_view, true);
+  }
+
+  inline bool EvaluateMicrostructurePolicy(const Settings &cfg,
+                                           StratScore &ss,
+                                           PolicyResult &out,
+                                           InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateMicrostructurePolicyEx(cfg, _Symbol, ss, out, inst_view, false);
+  }
+
+  inline bool EvaluateMicrostructurePolicyAudit(const Settings &cfg,
+                                                StratScore &ss,
+                                                PolicyResult &out,
+                                                InstitutionalStatePolicyView &inst_view)
+  {
+    return _EvaluateMicrostructurePolicyEx(cfg, _Symbol, ss, out, inst_view, true);
   }
 
   // ----------------------------------------------------------------------------
@@ -4855,14 +5318,18 @@ inline void NotifyTradeResult(const double r_multiple)
        aux_out = (int)MathRound(1000.0 * r.observability_confidence01);
      else if(r.primary_reason == GATE_MICRO_VENUE)
        aux_out = (int)MathRound(1000.0 * r.venue_coverage01);
+     else if(r.primary_reason == GATE_MICRO_QUOTE_INSTABILITY)
+       aux_out = (int)MathRound(1000.0 * PolicyQuoteInstability01(r));
      else if(r.primary_reason == GATE_MICRO_IMPACT)
        aux_out = (int)MathRound(1000.0 * MathMax(r.impact_beta01, r.impact_lambda01));
      else if(r.primary_reason == GATE_MICRO_DARKPOOL)
        aux_out = (int)MathRound(1000.0 * MathMax(1.0 - r.darkpool01, r.darkpool_contradiction01));
      else if(r.primary_reason == GATE_SM_INVALIDATION)
        aux_out = (int)MathRound(1000.0 * r.sd_ob_invalidation_proximity01);
+     else if(r.primary_reason == GATE_MICRO_THIN_LIQUIDITY)
+       aux_out = (int)MathRound(1000.0 * PolicyThinLiquidity01(r));
      else if(r.primary_reason == GATE_LIQUIDITY_TRAP)
-       aux_out = (int)MathRound(1000.0 * MathMax(r.liquidity_vacuum01, r.liquidity_hunt01));
+       aux_out = (int)MathRound(1000.0 * r.liquidity_hunt01);
 
      detail_out = FormatPrimaryVetoDetail(r);
      return false;

@@ -422,6 +422,62 @@ struct Settings;
   #define CFG_HAS_MS_EXEC_ALLOW_URGENCY 1
 #endif
 
+#ifndef CFG_HAS_MAIN_ALPHA_MIN
+  #define CFG_HAS_MAIN_ALPHA_MIN 1
+#endif
+#ifndef CFG_HAS_MAIN_EXEC_MIN
+  #define CFG_HAS_MAIN_EXEC_MIN 1
+#endif
+#ifndef CFG_HAS_MAIN_RISK_MAX
+  #define CFG_HAS_MAIN_RISK_MAX 1
+#endif
+#ifndef CFG_HAS_MAIN_REQUIRE_POI
+  #define CFG_HAS_MAIN_REQUIRE_POI 1
+#endif
+#ifndef CFG_HAS_MAIN_REQUIRE_SWEEP_REJECT
+  #define CFG_HAS_MAIN_REQUIRE_SWEEP_REJECT 1
+#endif
+#ifndef CFG_HAS_MAIN_SWEEP_REJECT_MIN01
+  #define CFG_HAS_MAIN_SWEEP_REJECT_MIN01 1
+#endif
+#ifndef CFG_HAS_MAIN_PROFILE_WEIGHT
+  #define CFG_HAS_MAIN_PROFILE_WEIGHT 1
+#endif
+#ifndef CFG_HAS_MAIN_POI_WEIGHT
+  #define CFG_HAS_MAIN_POI_WEIGHT 1
+#endif
+#ifndef CFG_HAS_MAIN_LIQUIDITY_EVENT_WEIGHT
+  #define CFG_HAS_MAIN_LIQUIDITY_EVENT_WEIGHT 1
+#endif
+
+#ifndef CFG_HAS_MS_FLOW_DIR_MIN
+  #define CFG_HAS_MS_FLOW_DIR_MIN 1
+#endif
+#ifndef CFG_HAS_MS_MAX_TOXICITY01
+  #define CFG_HAS_MS_MAX_TOXICITY01 1
+#endif
+#ifndef CFG_HAS_MS_MAX_OBSERVABILITY_PENALTY01
+  #define CFG_HAS_MS_MAX_OBSERVABILITY_PENALTY01 1
+#endif
+#ifndef CFG_HAS_MS_MAX_XVENUE_DISLOCATION01
+  #define CFG_HAS_MS_MAX_XVENUE_DISLOCATION01 1
+#endif
+#ifndef CFG_HAS_MS_PROFILE_WEIGHT
+  #define CFG_HAS_MS_PROFILE_WEIGHT 1
+#endif
+#ifndef CFG_HAS_MS_LIQUIDITY_EVENT_WEIGHT
+  #define CFG_HAS_MS_LIQUIDITY_EVENT_WEIGHT 1
+#endif
+#ifndef CFG_HAS_MS_VOL_TREND_MIN01
+  #define CFG_HAS_MS_VOL_TREND_MIN01 1
+#endif
+#ifndef CFG_HAS_MS_VOL_MR_MAX01
+  #define CFG_HAS_MS_VOL_MR_MAX01 1
+#endif
+#ifndef CFG_HAS_MS_VOL_BREAKOUT_MIN01
+  #define CFG_HAS_MS_VOL_BREAKOUT_MIN01 1
+#endif
+
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -726,6 +782,14 @@ struct Settings;
 #endif
 #ifndef enable_strat_ict_wyckoff
   #define enable_strat_ict_wyckoff enable_strat_ict_wyckoff_turn
+#endif
+
+#ifndef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+  #define CFG_HAS_GLOBAL_HEAD_THRESHOLDS 1
+#endif
+
+#ifndef CFG_HAS_ICT_STRATEGY_KNOBS
+  #define CFG_HAS_ICT_STRATEGY_KNOBS 1
 #endif
 
 // --- Pack strategy registration/runtime toggles (used by StrategyRegistry/Router)
@@ -1536,6 +1600,31 @@ namespace Config
        bool main_require_classical;
      #endif
      double orderflow_th;
+
+     double main_alpha_min;
+     double main_exec_min;
+     double main_risk_max;
+
+     bool   main_require_poi;
+     bool   main_require_sweep_reject;
+     double main_sweep_reject_min01;
+
+     double main_profile_weight;
+     double main_poi_weight;
+     double main_liquidity_event_weight;
+
+     double ms_flow_dir_min;
+     double ms_max_toxicity01;
+     double ms_max_observability_penalty01;
+     double ms_max_xvenue_dislocation01;
+
+     double ms_profile_weight;
+     double ms_liquidity_event_weight;
+
+     double ms_volatility_trend_min01;
+     double ms_volatility_mr_max01;
+     double ms_volatility_breakout_min01;
+
      bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
      int    vsa_lookback;          // VSA scan lookback bars (0/<=0 => internal fallback / Normalize() default)
      
@@ -2796,6 +2885,31 @@ namespace Config
      #ifdef CFG_HAS_ORDERFLOW_TH
        cfg.orderflow_th = x.orderflow_th;
      #endif
+     
+     cfg.main_alpha_min              = x.main_alpha_min;
+     cfg.main_exec_min               = x.main_exec_min;
+     cfg.main_risk_max               = x.main_risk_max;
+
+     cfg.main_require_poi            = x.main_require_poi;
+     cfg.main_require_sweep_reject   = x.main_require_sweep_reject;
+     cfg.main_sweep_reject_min01     = x.main_sweep_reject_min01;
+
+     cfg.main_profile_weight         = x.main_profile_weight;
+     cfg.main_poi_weight             = x.main_poi_weight;
+     cfg.main_liquidity_event_weight = x.main_liquidity_event_weight;
+
+     cfg.ms_flow_dir_min                = x.ms_flow_dir_min;
+     cfg.ms_max_toxicity01              = x.ms_max_toxicity01;
+     cfg.ms_max_observability_penalty01 = x.ms_max_observability_penalty01;
+     cfg.ms_max_xvenue_dislocation01    = x.ms_max_xvenue_dislocation01;
+
+     cfg.ms_profile_weight              = x.ms_profile_weight;
+     cfg.ms_liquidity_event_weight      = x.ms_liquidity_event_weight;
+
+     cfg.ms_volatility_trend_min01      = x.ms_volatility_trend_min01;
+     cfg.ms_volatility_mr_max01         = x.ms_volatility_mr_max01;
+     cfg.ms_volatility_breakout_min01   = x.ms_volatility_breakout_min01;
+     
      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
        cfg.vsa_allow_tick_volume = x.vsa_allow_tick_volume;
      #endif
@@ -3486,6 +3600,30 @@ namespace Config
        x.main_require_classical = false; // default OFF (more trades; avoids “over-filtering”)
      #endif
      x.orderflow_th           = 0.60;          // FX-friendly default threshold
+     x.main_alpha_min              = 0.55;
+     x.main_exec_min               = 0.45;
+     x.main_risk_max               = 0.55;
+
+     x.main_require_poi            = true;
+     x.main_require_sweep_reject   = true;
+     x.main_sweep_reject_min01     = 0.55;
+
+     x.main_profile_weight         = 0.10;
+     x.main_poi_weight             = 0.20;
+     x.main_liquidity_event_weight = 0.15;
+
+     x.ms_flow_dir_min                = 0.10;
+     x.ms_max_toxicity01              = 0.68;
+     x.ms_max_observability_penalty01 = 0.55;
+     x.ms_max_xvenue_dislocation01    = 0.65;
+
+     x.ms_profile_weight              = 0.10;
+     x.ms_liquidity_event_weight      = 0.08;
+
+     x.ms_volatility_trend_min01      = 0.55;
+     x.ms_volatility_mr_max01         = 0.45;
+     x.ms_volatility_breakout_min01   = 0.70;
+
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
      x.vsa_lookback         = 60;           // VSA scan lookback bars (matches Normalize() default)
      
@@ -4506,6 +4644,9 @@ namespace Config
 
       // Canonical thresholds
       cfg.ms_vpin_threshold            = 0.65;
+      cfg.ms_flow_dir_min              = 0.10;
+      cfg.ms_max_toxicity01            = 0.68;
+
       cfg.ms_resil_threshold           = 0.35;
       cfg.ms_ofi_weight                = 0.25;
       cfg.ms_ofi_abs_min               = 0.20;
@@ -4518,8 +4659,10 @@ namespace Config
       cfg.ms_metaorder_cost_cap01      = 0.70;
 
       cfg.ms_min_observability01       = 0.30;
+      cfg.ms_max_observability_penalty01 = 0.55;
       cfg.ms_min_venue_scope01         = 0.30;
       cfg.ms_min_truth_tier01          = 0.25;
+      cfg.ms_max_xvenue_dislocation01  = 0.65;
 
       cfg.ms_min_darkpool01            = 0.20;
       cfg.ms_max_darkpool_contradiction01 = 0.65;
@@ -4527,6 +4670,19 @@ namespace Config
       cfg.ms_sd_ob_invalidation_max01  = 0.80;
       cfg.ms_liquidity_vacuum_max01    = 0.70;
       cfg.ms_liquidity_hunt_max01      = 0.70;
+
+      cfg.ms_profile_weight            = 0.10;
+      cfg.ms_liquidity_event_weight    = 0.08;
+
+      cfg.ms_volatility_trend_min01    = 0.55;
+      cfg.ms_volatility_mr_max01       = 0.45;
+      cfg.ms_volatility_breakout_min01 = 0.70;
+
+      // Canonical execution controls
+      cfg.ms_exec_schedule_enable      = true;
+      cfg.ms_exec_schedule_mode        = CFG_INST_EXEC_SCHEDULE_PASSIVE;
+      cfg.ms_exec_participation01      = 0.10;
+      cfg.ms_exec_aggressiveness01     = 0.35;
 
       // Canonical execution controls
       cfg.ms_exec_schedule_enable      = true;
@@ -4863,6 +5019,62 @@ namespace Config
     cfg.main_min_rr_from_chart_target          = 1.2;
     cfg.main_autoc_completed_dir_mismatch_veto = false;
     cfg.main_autoc_tighten_invalidation        = false;
+
+    cfg.main_alpha_min              = 0.55;
+    cfg.main_exec_min               = 0.45;
+    cfg.main_risk_max               = 0.55;
+
+    cfg.main_require_poi            = true;
+    cfg.main_require_sweep_reject   = true;
+    cfg.main_sweep_reject_min01     = 0.55;
+
+    cfg.main_profile_weight         = 0.10;
+    cfg.main_poi_weight             = 0.20;
+    cfg.main_liquidity_event_weight = 0.15;
+
+   #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+     cfg.alpha_head_min      = 0.55;
+     cfg.execution_head_min  = 0.50;
+     cfg.risk_head_max       = 0.65;
+   #endif
+   
+   #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+     // Silver Bullet: tighter, timing-sensitive
+     cfg.ict_sb_require_strict_micro         = true;
+     cfg.ict_sb_require_profile              = true;
+     cfg.ict_sb_require_volatility_archetype = true;
+     cfg.ict_sb_sweep_reject_min01           = 0.60;
+     cfg.ict_sb_alpha_min                    = 0.58;
+     cfg.ict_sb_exec_min                     = 0.55;
+     cfg.ict_sb_risk_max                     = 0.62;
+   
+     // PO3: distribution-phase entry
+     cfg.ict_po3_require_strict_micro         = true;
+     cfg.ict_po3_require_profile              = true;
+     cfg.ict_po3_require_volatility_archetype = true;
+     cfg.ict_po3_sweep_reject_min01           = 0.55;
+     cfg.ict_po3_alpha_min                    = 0.55;
+     cfg.ict_po3_exec_min                     = 0.50;
+     cfg.ict_po3_risk_max                     = 0.65;
+   
+     // Continuation: keep vol-archetype OFF by default until that gate is fully wired in strategy logic
+     cfg.ict_cont_require_strict_micro         = true;
+     cfg.ict_cont_require_profile              = true;
+     cfg.ict_cont_require_volatility_archetype = false;
+     cfg.ict_cont_sweep_reject_min01           = 0.55;
+     cfg.ict_cont_alpha_min                    = 0.55;
+     cfg.ict_cont_exec_min                     = 0.50;
+     cfg.ict_cont_risk_max                     = 0.65;
+   
+     // Wyckoff turn: reversal specialist, lower exec head, tighter risk
+     cfg.ict_wyck_require_strict_micro         = true;
+     cfg.ict_wyck_require_profile              = true;
+     cfg.ict_wyck_require_volatility_archetype = true;
+     cfg.ict_wyck_sweep_reject_min01           = 0.55;
+     cfg.ict_wyck_alpha_min                    = 0.56;
+     cfg.ict_wyck_exec_min                     = 0.44;
+     cfg.ict_wyck_risk_max                     = 0.58;
+   #endif
 
     #ifdef CFG_HAS_PATTERNS_SD_SETTINGS
       // SD base patterns (RBR/DBD/RBD/DBR) defaults (match Patterns SD spec knobs)
@@ -5527,6 +5739,12 @@ namespace Config
       if(cfg.ms_vpin_threshold < 0.0) cfg.ms_vpin_threshold = 0.0;
       if(cfg.ms_vpin_threshold > 1.0) cfg.ms_vpin_threshold = 1.0;
 
+      if(cfg.ms_flow_dir_min < 0.0) cfg.ms_flow_dir_min = 0.0;
+      if(cfg.ms_flow_dir_min > 1.0) cfg.ms_flow_dir_min = 1.0;
+
+      if(cfg.ms_max_toxicity01 < 0.0) cfg.ms_max_toxicity01 = 0.0;
+      if(cfg.ms_max_toxicity01 > 1.0) cfg.ms_max_toxicity01 = 1.0;
+
       if(cfg.ms_resil_threshold < 0.0) cfg.ms_resil_threshold = 0.0;
       if(cfg.ms_resil_threshold > 1.0) cfg.ms_resil_threshold = 1.0;
 
@@ -5559,11 +5777,17 @@ namespace Config
       if(cfg.ms_min_observability01 < 0.0) cfg.ms_min_observability01 = 0.0;
       if(cfg.ms_min_observability01 > 1.0) cfg.ms_min_observability01 = 1.0;
 
+      if(cfg.ms_max_observability_penalty01 < 0.0) cfg.ms_max_observability_penalty01 = 0.0;
+      if(cfg.ms_max_observability_penalty01 > 1.0) cfg.ms_max_observability_penalty01 = 1.0;
+
       if(cfg.ms_min_venue_scope01 < 0.0) cfg.ms_min_venue_scope01 = 0.0;
       if(cfg.ms_min_venue_scope01 > 1.0) cfg.ms_min_venue_scope01 = 1.0;
 
       if(cfg.ms_min_truth_tier01 < 0.0) cfg.ms_min_truth_tier01 = 0.0;
       if(cfg.ms_min_truth_tier01 > 1.0) cfg.ms_min_truth_tier01 = 1.0;
+
+      if(cfg.ms_max_xvenue_dislocation01 < 0.0) cfg.ms_max_xvenue_dislocation01 = 0.0;
+      if(cfg.ms_max_xvenue_dislocation01 > 1.0) cfg.ms_max_xvenue_dislocation01 = 1.0;
 
       if(cfg.ms_min_darkpool01 < 0.0) cfg.ms_min_darkpool01 = 0.0;
       if(cfg.ms_min_darkpool01 > 1.0) cfg.ms_min_darkpool01 = 1.0;
@@ -5579,6 +5803,27 @@ namespace Config
 
       if(cfg.ms_liquidity_hunt_max01 < 0.0) cfg.ms_liquidity_hunt_max01 = 0.0;
       if(cfg.ms_liquidity_hunt_max01 > 1.0) cfg.ms_liquidity_hunt_max01 = 1.0;
+
+      if(cfg.ms_profile_weight < 0.0) cfg.ms_profile_weight = 0.0;
+      if(cfg.ms_profile_weight > 1.0) cfg.ms_profile_weight = 1.0;
+
+      if(cfg.ms_liquidity_event_weight < 0.0) cfg.ms_liquidity_event_weight = 0.0;
+      if(cfg.ms_liquidity_event_weight > 1.0) cfg.ms_liquidity_event_weight = 1.0;
+
+      if(cfg.ms_volatility_trend_min01 < 0.0) cfg.ms_volatility_trend_min01 = 0.0;
+      if(cfg.ms_volatility_trend_min01 > 1.0) cfg.ms_volatility_trend_min01 = 1.0;
+
+      if(cfg.ms_volatility_mr_max01 < 0.0) cfg.ms_volatility_mr_max01 = 0.0;
+      if(cfg.ms_volatility_mr_max01 > 1.0) cfg.ms_volatility_mr_max01 = 1.0;
+
+      if(cfg.ms_volatility_breakout_min01 < 0.0) cfg.ms_volatility_breakout_min01 = 0.0;
+      if(cfg.ms_volatility_breakout_min01 > 1.0) cfg.ms_volatility_breakout_min01 = 1.0;
+
+      if(cfg.ms_volatility_mr_max01 > cfg.ms_volatility_trend_min01)
+         cfg.ms_volatility_mr_max01 = cfg.ms_volatility_trend_min01;
+
+      if(cfg.ms_volatility_breakout_min01 < cfg.ms_volatility_trend_min01)
+         cfg.ms_volatility_breakout_min01 = cfg.ms_volatility_trend_min01;
 
       cfg.ms_exec_schedule_mode =
          MathMin(MathMax(cfg.ms_exec_schedule_mode, CFG_INST_EXEC_SCHEDULE_PASSIVE),
@@ -6157,6 +6402,18 @@ namespace Config
       if(cfg.ms_metaorder_cost_cap01 < 0.0 || cfg.ms_metaorder_cost_cap01 > 1.0)
          warns += "ms_metaorder_cost_cap01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
 
+      if(cfg.ms_flow_dir_min < 0.0 || cfg.ms_flow_dir_min > 1.0)
+         warns += "ms_flow_dir_min out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_max_toxicity01 < 0.0 || cfg.ms_max_toxicity01 > 1.0)
+         warns += "ms_max_toxicity01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_max_observability_penalty01 < 0.0 || cfg.ms_max_observability_penalty01 > 1.0)
+         warns += "ms_max_observability_penalty01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_max_xvenue_dislocation01 < 0.0 || cfg.ms_max_xvenue_dislocation01 > 1.0)
+         warns += "ms_max_xvenue_dislocation01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
       if(cfg.ms_min_observability01 < 0.0 || cfg.ms_min_observability01 > 1.0)
          warns += "ms_min_observability01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
 
@@ -6180,6 +6437,21 @@ namespace Config
 
       if(cfg.ms_liquidity_hunt_max01 < 0.0 || cfg.ms_liquidity_hunt_max01 > 1.0)
          warns += "ms_liquidity_hunt_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_profile_weight < 0.0 || cfg.ms_profile_weight > 1.0)
+         warns += "ms_profile_weight out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_liquidity_event_weight < 0.0 || cfg.ms_liquidity_event_weight > 1.0)
+         warns += "ms_liquidity_event_weight out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_volatility_trend_min01 < 0.0 || cfg.ms_volatility_trend_min01 > 1.0)
+         warns += "ms_volatility_trend_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_volatility_mr_max01 < 0.0 || cfg.ms_volatility_mr_max01 > 1.0)
+         warns += "ms_volatility_mr_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      if(cfg.ms_volatility_breakout_min01 < 0.0 || cfg.ms_volatility_breakout_min01 > 1.0)
+         warns += "ms_volatility_breakout_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
 
       if(cfg.ms_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
          cfg.ms_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
@@ -7444,7 +7716,127 @@ namespace Config
       if(cfg.orderflow_th < 0.10) cfg.orderflow_th = 0.10;
       if(cfg.orderflow_th > 5.00) cfg.orderflow_th = 5.00;
     #endif
+
+    if(cfg.main_alpha_min <= 0.0) cfg.main_alpha_min = 0.55;
+    if(cfg.main_alpha_min < 0.0)  cfg.main_alpha_min = 0.0;
+    if(cfg.main_alpha_min > 1.0)  cfg.main_alpha_min = 1.0;
+
+    if(cfg.main_exec_min <= 0.0)  cfg.main_exec_min = 0.45;
+    if(cfg.main_exec_min < 0.0)   cfg.main_exec_min = 0.0;
+    if(cfg.main_exec_min > 1.0)   cfg.main_exec_min = 1.0;
+
+    if(cfg.main_risk_max <= 0.0)  cfg.main_risk_max = 0.55;
+    if(cfg.main_risk_max < 0.0)   cfg.main_risk_max = 0.0;
+    if(cfg.main_risk_max > 1.0)   cfg.main_risk_max = 1.0;
+
+    cfg.main_require_poi          = (cfg.main_require_poi ? true : false);
+    cfg.main_require_sweep_reject = (cfg.main_require_sweep_reject ? true : false);
+
+    if(cfg.main_sweep_reject_min01 <= 0.0) cfg.main_sweep_reject_min01 = 0.55;
+    if(cfg.main_sweep_reject_min01 < 0.0)  cfg.main_sweep_reject_min01 = 0.0;
+    if(cfg.main_sweep_reject_min01 > 1.0)  cfg.main_sweep_reject_min01 = 1.0;
+
+    if(cfg.main_profile_weight < 0.0)         cfg.main_profile_weight = 0.0;
+    if(cfg.main_poi_weight < 0.0)             cfg.main_poi_weight = 0.0;
+    if(cfg.main_liquidity_event_weight < 0.0) cfg.main_liquidity_event_weight = 0.0;
+
+    double main_wsum =
+       cfg.main_profile_weight +
+       cfg.main_poi_weight +
+       cfg.main_liquidity_event_weight;
+
+    if(main_wsum <= 1.0e-12)
+    {
+      cfg.main_profile_weight         = 0.10;
+      cfg.main_poi_weight             = 0.20;
+      cfg.main_liquidity_event_weight = 0.15;
+      main_wsum = cfg.main_profile_weight + cfg.main_poi_weight + cfg.main_liquidity_event_weight;
+    }
+
+    cfg.main_profile_weight         /= main_wsum;
+    cfg.main_poi_weight             /= main_wsum;
+    cfg.main_liquidity_event_weight /= main_wsum;
+
+   #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+     if(cfg.alpha_head_min <= 0.0)     cfg.alpha_head_min = 0.55;
+     if(cfg.alpha_head_min < 0.0)      cfg.alpha_head_min = 0.0;
+     if(cfg.alpha_head_min > 1.0)      cfg.alpha_head_min = 1.0;
    
+     if(cfg.execution_head_min <= 0.0) cfg.execution_head_min = 0.50;
+     if(cfg.execution_head_min < 0.0)  cfg.execution_head_min = 0.0;
+     if(cfg.execution_head_min > 1.0)  cfg.execution_head_min = 1.0;
+   
+     if(cfg.risk_head_max <= 0.0)      cfg.risk_head_max = 0.65;
+     if(cfg.risk_head_max < 0.0)       cfg.risk_head_max = 0.0;
+     if(cfg.risk_head_max > 1.0)       cfg.risk_head_max = 1.0;
+   #endif
+   
+   #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+     cfg.ict_sb_require_strict_micro         = (cfg.ict_sb_require_strict_micro ? true : false);
+     cfg.ict_sb_require_profile              = (cfg.ict_sb_require_profile ? true : false);
+     cfg.ict_sb_require_volatility_archetype = (cfg.ict_sb_require_volatility_archetype ? true : false);
+     if(cfg.ict_sb_sweep_reject_min01 <= 0.0) cfg.ict_sb_sweep_reject_min01 = 0.60;
+     if(cfg.ict_sb_sweep_reject_min01 < 0.0)  cfg.ict_sb_sweep_reject_min01 = 0.0;
+     if(cfg.ict_sb_sweep_reject_min01 > 1.0)  cfg.ict_sb_sweep_reject_min01 = 1.0;
+     if(cfg.ict_sb_alpha_min <= 0.0)          cfg.ict_sb_alpha_min = 0.58;
+     if(cfg.ict_sb_alpha_min < 0.0)           cfg.ict_sb_alpha_min = 0.0;
+     if(cfg.ict_sb_alpha_min > 1.0)           cfg.ict_sb_alpha_min = 1.0;
+     if(cfg.ict_sb_exec_min <= 0.0)           cfg.ict_sb_exec_min = 0.55;
+     if(cfg.ict_sb_exec_min < 0.0)            cfg.ict_sb_exec_min = 0.0;
+     if(cfg.ict_sb_exec_min > 1.0)            cfg.ict_sb_exec_min = 1.0;
+     if(cfg.ict_sb_risk_max <= 0.0)           cfg.ict_sb_risk_max = 0.62;
+     if(cfg.ict_sb_risk_max < 0.0)            cfg.ict_sb_risk_max = 0.0;
+     if(cfg.ict_sb_risk_max > 1.0)            cfg.ict_sb_risk_max = 1.0;
+   
+     cfg.ict_po3_require_strict_micro         = (cfg.ict_po3_require_strict_micro ? true : false);
+     cfg.ict_po3_require_profile              = (cfg.ict_po3_require_profile ? true : false);
+     cfg.ict_po3_require_volatility_archetype = (cfg.ict_po3_require_volatility_archetype ? true : false);
+     if(cfg.ict_po3_sweep_reject_min01 <= 0.0) cfg.ict_po3_sweep_reject_min01 = 0.55;
+     if(cfg.ict_po3_sweep_reject_min01 < 0.0)  cfg.ict_po3_sweep_reject_min01 = 0.0;
+     if(cfg.ict_po3_sweep_reject_min01 > 1.0)  cfg.ict_po3_sweep_reject_min01 = 1.0;
+     if(cfg.ict_po3_alpha_min <= 0.0)          cfg.ict_po3_alpha_min = 0.55;
+     if(cfg.ict_po3_alpha_min < 0.0)           cfg.ict_po3_alpha_min = 0.0;
+     if(cfg.ict_po3_alpha_min > 1.0)           cfg.ict_po3_alpha_min = 1.0;
+     if(cfg.ict_po3_exec_min <= 0.0)           cfg.ict_po3_exec_min = 0.50;
+     if(cfg.ict_po3_exec_min < 0.0)            cfg.ict_po3_exec_min = 0.0;
+     if(cfg.ict_po3_exec_min > 1.0)            cfg.ict_po3_exec_min = 1.0;
+     if(cfg.ict_po3_risk_max <= 0.0)           cfg.ict_po3_risk_max = 0.65;
+     if(cfg.ict_po3_risk_max < 0.0)            cfg.ict_po3_risk_max = 0.0;
+     if(cfg.ict_po3_risk_max > 1.0)            cfg.ict_po3_risk_max = 1.0;
+   
+     cfg.ict_cont_require_strict_micro         = (cfg.ict_cont_require_strict_micro ? true : false);
+     cfg.ict_cont_require_profile              = (cfg.ict_cont_require_profile ? true : false);
+     cfg.ict_cont_require_volatility_archetype = (cfg.ict_cont_require_volatility_archetype ? true : false);
+     if(cfg.ict_cont_sweep_reject_min01 <= 0.0) cfg.ict_cont_sweep_reject_min01 = 0.55;
+     if(cfg.ict_cont_sweep_reject_min01 < 0.0)  cfg.ict_cont_sweep_reject_min01 = 0.0;
+     if(cfg.ict_cont_sweep_reject_min01 > 1.0)  cfg.ict_cont_sweep_reject_min01 = 1.0;
+     if(cfg.ict_cont_alpha_min <= 0.0)          cfg.ict_cont_alpha_min = 0.55;
+     if(cfg.ict_cont_alpha_min < 0.0)           cfg.ict_cont_alpha_min = 0.0;
+     if(cfg.ict_cont_alpha_min > 1.0)           cfg.ict_cont_alpha_min = 1.0;
+     if(cfg.ict_cont_exec_min <= 0.0)           cfg.ict_cont_exec_min = 0.50;
+     if(cfg.ict_cont_exec_min < 0.0)            cfg.ict_cont_exec_min = 0.0;
+     if(cfg.ict_cont_exec_min > 1.0)            cfg.ict_cont_exec_min = 1.0;
+     if(cfg.ict_cont_risk_max <= 0.0)           cfg.ict_cont_risk_max = 0.65;
+     if(cfg.ict_cont_risk_max < 0.0)            cfg.ict_cont_risk_max = 0.0;
+     if(cfg.ict_cont_risk_max > 1.0)            cfg.ict_cont_risk_max = 1.0;
+   
+     cfg.ict_wyck_require_strict_micro         = (cfg.ict_wyck_require_strict_micro ? true : false);
+     cfg.ict_wyck_require_profile              = (cfg.ict_wyck_require_profile ? true : false);
+     cfg.ict_wyck_require_volatility_archetype = (cfg.ict_wyck_require_volatility_archetype ? true : false);
+     if(cfg.ict_wyck_sweep_reject_min01 <= 0.0) cfg.ict_wyck_sweep_reject_min01 = 0.55;
+     if(cfg.ict_wyck_sweep_reject_min01 < 0.0)  cfg.ict_wyck_sweep_reject_min01 = 0.0;
+     if(cfg.ict_wyck_sweep_reject_min01 > 1.0)  cfg.ict_wyck_sweep_reject_min01 = 1.0;
+     if(cfg.ict_wyck_alpha_min <= 0.0)          cfg.ict_wyck_alpha_min = 0.56;
+     if(cfg.ict_wyck_alpha_min < 0.0)           cfg.ict_wyck_alpha_min = 0.0;
+     if(cfg.ict_wyck_alpha_min > 1.0)           cfg.ict_wyck_alpha_min = 1.0;
+     if(cfg.ict_wyck_exec_min <= 0.0)           cfg.ict_wyck_exec_min = 0.44;
+     if(cfg.ict_wyck_exec_min < 0.0)            cfg.ict_wyck_exec_min = 0.0;
+     if(cfg.ict_wyck_exec_min > 1.0)            cfg.ict_wyck_exec_min = 1.0;
+     if(cfg.ict_wyck_risk_max <= 0.0)           cfg.ict_wyck_risk_max = 0.58;
+     if(cfg.ict_wyck_risk_max < 0.0)            cfg.ict_wyck_risk_max = 0.0;
+     if(cfg.ict_wyck_risk_max > 1.0)            cfg.ict_wyck_risk_max = 1.0;
+   #endif
+
     #ifdef CFG_HAS_TF_TREND_HTF
       if((int)cfg.tf_trend_htf < (int)PERIOD_M1) cfg.tf_trend_htf = cfg.tf_h4; // PERIOD_CURRENT(0) falls here
     #endif
@@ -9449,7 +9841,47 @@ namespace Config
      #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
        cfg.sb_require_vwap_stretch = false;
      #endif
+
+   #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+     cfg.alpha_head_min      = 0.55;
+     cfg.execution_head_min  = 0.50;
+     cfg.risk_head_max       = 0.65;
+   #endif
    
+   #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+     cfg.ict_sb_require_strict_micro         = true;
+     cfg.ict_sb_require_profile              = true;
+     cfg.ict_sb_require_volatility_archetype = true;
+     cfg.ict_sb_sweep_reject_min01           = 0.60;
+     cfg.ict_sb_alpha_min                    = 0.58;
+     cfg.ict_sb_exec_min                     = 0.55;
+     cfg.ict_sb_risk_max                     = 0.62;
+   
+     cfg.ict_po3_require_strict_micro         = true;
+     cfg.ict_po3_require_profile              = true;
+     cfg.ict_po3_require_volatility_archetype = true;
+     cfg.ict_po3_sweep_reject_min01           = 0.55;
+     cfg.ict_po3_alpha_min                    = 0.55;
+     cfg.ict_po3_exec_min                     = 0.50;
+     cfg.ict_po3_risk_max                     = 0.65;
+   
+     cfg.ict_cont_require_strict_micro         = true;
+     cfg.ict_cont_require_profile              = true;
+     cfg.ict_cont_require_volatility_archetype = false;
+     cfg.ict_cont_sweep_reject_min01           = 0.55;
+     cfg.ict_cont_alpha_min                    = 0.55;
+     cfg.ict_cont_exec_min                     = 0.50;
+     cfg.ict_cont_risk_max                     = 0.65;
+   
+     cfg.ict_wyck_require_strict_micro         = true;
+     cfg.ict_wyck_require_profile              = true;
+     cfg.ict_wyck_require_volatility_archetype = true;
+     cfg.ict_wyck_sweep_reject_min01           = 0.55;
+     cfg.ict_wyck_alpha_min                    = 0.56;
+     cfg.ict_wyck_exec_min                     = 0.44;
+     cfg.ict_wyck_risk_max                     = 0.58;
+   #endif
+
      // Risk (percent)
      cfg.risk_pct            = risk_pct;
      cfg.risk_cap_pct        = risk_cap_pct;
@@ -10644,6 +11076,16 @@ namespace Config
     #ifdef CFG_HAS_ORDERFLOW_TH
       s+=",ofTh="+DoubleToString(c.orderflow_th,3);
     #endif
+
+    s+=",mainAl="+DoubleToString(c.main_alpha_min,4);
+    s+=",mainEx="+DoubleToString(c.main_exec_min,4);
+    s+=",mainRk="+DoubleToString(c.main_risk_max,4);
+    s+=",mainPOI="+BoolStr(c.main_require_poi);
+    s+=",mainSwRq="+BoolStr(c.main_require_sweep_reject);
+    s+=",mainSwMin="+DoubleToString(c.main_sweep_reject_min01,4);
+    s+=",mainWPr="+DoubleToString(c.main_profile_weight,4);
+    s+=",mainWPOI="+DoubleToString(c.main_poi_weight,4);
+    s+=",mainWLq="+DoubleToString(c.main_liquidity_event_weight,4);
     
     #ifdef CFG_HAS_SB_REQUIRE_OTE
       s+=",sbReqOTE="+BoolStr(c.sb_require_ote);
@@ -10651,7 +11093,47 @@ namespace Config
     #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
       s+=",sbReqVWAP="+BoolStr(c.sb_require_vwap_stretch);
     #endif
-    
+
+   #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+     s+=",gAl="+DoubleToString(c.alpha_head_min,4);
+     s+=",gEx="+DoubleToString(c.execution_head_min,4);
+     s+=",gRk="+DoubleToString(c.risk_head_max,4);
+   #endif
+   
+   #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+     s+=",sbMic="+BoolStr(c.ict_sb_require_strict_micro);
+     s+=",sbProf="+BoolStr(c.ict_sb_require_profile);
+     s+=",sbVol="+BoolStr(c.ict_sb_require_volatility_archetype);
+     s+=",sbSwMin="+DoubleToString(c.ict_sb_sweep_reject_min01,4);
+     s+=",sbAl="+DoubleToString(c.ict_sb_alpha_min,4);
+     s+=",sbEx="+DoubleToString(c.ict_sb_exec_min,4);
+     s+=",sbRk="+DoubleToString(c.ict_sb_risk_max,4);
+   
+     s+=",po3Mic="+BoolStr(c.ict_po3_require_strict_micro);
+     s+=",po3Prof="+BoolStr(c.ict_po3_require_profile);
+     s+=",po3Vol="+BoolStr(c.ict_po3_require_volatility_archetype);
+     s+=",po3SwMin="+DoubleToString(c.ict_po3_sweep_reject_min01,4);
+     s+=",po3Al="+DoubleToString(c.ict_po3_alpha_min,4);
+     s+=",po3Ex="+DoubleToString(c.ict_po3_exec_min,4);
+     s+=",po3Rk="+DoubleToString(c.ict_po3_risk_max,4);
+   
+     s+=",contMic="+BoolStr(c.ict_cont_require_strict_micro);
+     s+=",contProf="+BoolStr(c.ict_cont_require_profile);
+     s+=",contVol="+BoolStr(c.ict_cont_require_volatility_archetype);
+     s+=",contSwMin="+DoubleToString(c.ict_cont_sweep_reject_min01,4);
+     s+=",contAl="+DoubleToString(c.ict_cont_alpha_min,4);
+     s+=",contEx="+DoubleToString(c.ict_cont_exec_min,4);
+     s+=",contRk="+DoubleToString(c.ict_cont_risk_max,4);
+   
+     s+=",wykMic="+BoolStr(c.ict_wyck_require_strict_micro);
+     s+=",wykProf="+BoolStr(c.ict_wyck_require_profile);
+     s+=",wykVol="+BoolStr(c.ict_wyck_require_volatility_archetype);
+     s+=",wykSwMin="+DoubleToString(c.ict_wyck_sweep_reject_min01,4);
+     s+=",wykAl="+DoubleToString(c.ict_wyck_alpha_min,4);
+     s+=",wykEx="+DoubleToString(c.ict_wyck_exec_min,4);
+     s+=",wykRk="+DoubleToString(c.ict_wyck_risk_max,4);
+   #endif
+
     s+=",xSBtz="+BoolStr(c.extra_silverbullet_tz);
     s+=",wSBtz="+DoubleToString(c.w_silverbullet_tz,3);
 
@@ -11204,6 +11686,9 @@ namespace Config
       s+=",msLqOn="+BoolStr(c.ms_liquidity_trap_gate_on);
 
       s+=",msVpTh="+DoubleToString(c.ms_vpin_threshold,4);
+      s+=",msFlow="+DoubleToString(c.ms_flow_dir_min,4);
+      s+=",msTxMx="+DoubleToString(c.ms_max_toxicity01,4);
+
       s+=",msReTh="+DoubleToString(c.ms_resil_threshold,4);
       s+=",msOFIW="+DoubleToString(c.ms_ofi_weight,4);
       s+=",msOfAbs="+DoubleToString(c.ms_ofi_abs_min,4);
@@ -11216,8 +11701,10 @@ namespace Config
       s+=",msMeta="+DoubleToString(c.ms_metaorder_cost_cap01,4);
 
       s+=",msObs="+DoubleToString(c.ms_min_observability01,4);
+      s+=",msObsPx="+DoubleToString(c.ms_max_observability_penalty01,4);
       s+=",msVen="+DoubleToString(c.ms_min_venue_scope01,4);
       s+=",msTru="+DoubleToString(c.ms_min_truth_tier01,4);
+      s+=",msXvMx="+DoubleToString(c.ms_max_xvenue_dislocation01,4);
 
       s+=",msDpMn="+DoubleToString(c.ms_min_darkpool01,4);
       s+=",msDpCx="+DoubleToString(c.ms_max_darkpool_contradiction01,4);
@@ -11225,6 +11712,12 @@ namespace Config
       s+=",msInvMx="+DoubleToString(c.ms_sd_ob_invalidation_max01,4);
       s+=",msVacMx="+DoubleToString(c.ms_liquidity_vacuum_max01,4);
       s+=",msHunMx="+DoubleToString(c.ms_liquidity_hunt_max01,4);
+
+      s+=",msWPr="+DoubleToString(c.ms_profile_weight,4);
+      s+=",msWLq="+DoubleToString(c.ms_liquidity_event_weight,4);
+      s+=",msVolTr="+DoubleToString(c.ms_volatility_trend_min01,4);
+      s+=",msVolMR="+DoubleToString(c.ms_volatility_mr_max01,4);
+      s+=",msVolBO="+DoubleToString(c.ms_volatility_breakout_min01,4);
 
       s+=",msSchOn="+BoolStr(c.ms_exec_schedule_enable);
       s+=",msSchMd="+IntegerToString(c.ms_exec_schedule_mode);
@@ -12480,6 +12973,44 @@ namespace Config
     return true;
   }
 
+   inline bool _CfgApplyICTStrategyKnobKey(Settings &cfg, const string &k, const string &v)
+   {
+   #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+      if(k=="sbMic")   { cfg.ict_sb_require_strict_micro = ToBool(v); return true; }
+      if(k=="sbProf")  { cfg.ict_sb_require_profile = ToBool(v); return true; }
+      if(k=="sbVol")   { cfg.ict_sb_require_volatility_archetype = ToBool(v); return true; }
+      if(k=="sbSwMin") { cfg.ict_sb_sweep_reject_min01 = ToDouble(v); return true; }
+      if(k=="sbAl")    { cfg.ict_sb_alpha_min = ToDouble(v); return true; }
+      if(k=="sbEx")    { cfg.ict_sb_exec_min = ToDouble(v); return true; }
+      if(k=="sbRk")    { cfg.ict_sb_risk_max = ToDouble(v); return true; }
+   
+      if(k=="po3Mic")  { cfg.ict_po3_require_strict_micro = ToBool(v); return true; }
+      if(k=="po3Prof") { cfg.ict_po3_require_profile = ToBool(v); return true; }
+      if(k=="po3Vol")  { cfg.ict_po3_require_volatility_archetype = ToBool(v); return true; }
+      if(k=="po3SwMin"){ cfg.ict_po3_sweep_reject_min01 = ToDouble(v); return true; }
+      if(k=="po3Al")   { cfg.ict_po3_alpha_min = ToDouble(v); return true; }
+      if(k=="po3Ex")   { cfg.ict_po3_exec_min = ToDouble(v); return true; }
+      if(k=="po3Rk")   { cfg.ict_po3_risk_max = ToDouble(v); return true; }
+   
+      if(k=="contMic") { cfg.ict_cont_require_strict_micro = ToBool(v); return true; }
+      if(k=="contProf"){ cfg.ict_cont_require_profile = ToBool(v); return true; }
+      if(k=="contVol") { cfg.ict_cont_require_volatility_archetype = ToBool(v); return true; }
+      if(k=="contSwMin"){ cfg.ict_cont_sweep_reject_min01 = ToDouble(v); return true; }
+      if(k=="contAl")  { cfg.ict_cont_alpha_min = ToDouble(v); return true; }
+      if(k=="contEx")  { cfg.ict_cont_exec_min = ToDouble(v); return true; }
+      if(k=="contRk")  { cfg.ict_cont_risk_max = ToDouble(v); return true; }
+   
+      if(k=="wykMic")  { cfg.ict_wyck_require_strict_micro = ToBool(v); return true; }
+      if(k=="wykProf") { cfg.ict_wyck_require_profile = ToBool(v); return true; }
+      if(k=="wykVol")  { cfg.ict_wyck_require_volatility_archetype = ToBool(v); return true; }
+      if(k=="wykSwMin"){ cfg.ict_wyck_sweep_reject_min01 = ToDouble(v); return true; }
+      if(k=="wykAl")   { cfg.ict_wyck_alpha_min = ToDouble(v); return true; }
+      if(k=="wykEx")   { cfg.ict_wyck_exec_min = ToDouble(v); return true; }
+      if(k=="wykRk")   { cfg.ict_wyck_risk_max = ToDouble(v); return true; }
+   #endif
+      return false;
+   }
+
   inline bool LoadSettingsCSV(Settings &cfg, const string stem="Settings", const bool from_common=true)
   {
     const string fn = _SanitizeFileStem(stem) + ".csv";
@@ -13038,6 +13569,16 @@ namespace Config
       #ifdef CFG_HAS_ORDERFLOW_TH
         else if(k=="ofTh") cfg.orderflow_th=ToDouble(v);
       #endif
+
+      else if(k=="mainAl")   cfg.main_alpha_min = ToDouble(v);
+      else if(k=="mainEx")   cfg.main_exec_min = ToDouble(v);
+      else if(k=="mainRk")   cfg.main_risk_max = ToDouble(v);
+      else if(k=="mainPOI")  cfg.main_require_poi = ToBool(v);
+      else if(k=="mainSwRq") cfg.main_require_sweep_reject = ToBool(v);
+      else if(k=="mainSwMin")cfg.main_sweep_reject_min01 = ToDouble(v);
+      else if(k=="mainWPr")  cfg.main_profile_weight = ToDouble(v);
+      else if(k=="mainWPOI") cfg.main_poi_weight = ToDouble(v);
+      else if(k=="mainWLq")  cfg.main_liquidity_event_weight = ToDouble(v);
       
       #ifdef CFG_HAS_SB_REQUIRE_OTE
         else if(k=="sbReqOTE") cfg.sb_require_ote = ToBool(v);
@@ -13045,7 +13586,47 @@ namespace Config
       #ifdef CFG_HAS_SB_REQUIRE_VWAP_STRETCH
         else if(k=="sbReqVWAP") cfg.sb_require_vwap_stretch = ToBool(v);
       #endif
+
+      #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+        else if(k=="gAl") cfg.alpha_head_min = ToDouble(v);
+        else if(k=="gEx") cfg.execution_head_min = ToDouble(v);
+        else if(k=="gRk") cfg.risk_head_max = ToDouble(v);
+      #endif
       
+      #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+        else if(k=="sbMic") cfg.ict_sb_require_strict_micro = ToBool(v);
+        else if(k=="sbProf") cfg.ict_sb_require_profile = ToBool(v);
+        else if(k=="sbVol") cfg.ict_sb_require_volatility_archetype = ToBool(v);
+        else if(k=="sbSwMin") cfg.ict_sb_sweep_reject_min01 = ToDouble(v);
+        else if(k=="sbAl") cfg.ict_sb_alpha_min = ToDouble(v);
+        else if(k=="sbEx") cfg.ict_sb_exec_min = ToDouble(v);
+        else if(k=="sbRk") cfg.ict_sb_risk_max = ToDouble(v);
+      
+        else if(k=="po3Mic") cfg.ict_po3_require_strict_micro = ToBool(v);
+        else if(k=="po3Prof") cfg.ict_po3_require_profile = ToBool(v);
+        else if(k=="po3Vol") cfg.ict_po3_require_volatility_archetype = ToBool(v);
+        else if(k=="po3SwMin") cfg.ict_po3_sweep_reject_min01 = ToDouble(v);
+        else if(k=="po3Al") cfg.ict_po3_alpha_min = ToDouble(v);
+        else if(k=="po3Ex") cfg.ict_po3_exec_min = ToDouble(v);
+        else if(k=="po3Rk") cfg.ict_po3_risk_max = ToDouble(v);
+      
+        else if(k=="contMic") cfg.ict_cont_require_strict_micro = ToBool(v);
+        else if(k=="contProf") cfg.ict_cont_require_profile = ToBool(v);
+        else if(k=="contVol") cfg.ict_cont_require_volatility_archetype = ToBool(v);
+        else if(k=="contSwMin") cfg.ict_cont_sweep_reject_min01 = ToDouble(v);
+        else if(k=="contAl") cfg.ict_cont_alpha_min = ToDouble(v);
+        else if(k=="contEx") cfg.ict_cont_exec_min = ToDouble(v);
+        else if(k=="contRk") cfg.ict_cont_risk_max = ToDouble(v);
+      
+        else if(k=="wykMic") cfg.ict_wyck_require_strict_micro = ToBool(v);
+        else if(k=="wykProf") cfg.ict_wyck_require_profile = ToBool(v);
+        else if(k=="wykVol") cfg.ict_wyck_require_volatility_archetype = ToBool(v);
+        else if(k=="wykSwMin") cfg.ict_wyck_sweep_reject_min01 = ToDouble(v);
+        else if(k=="wykAl") cfg.ict_wyck_alpha_min = ToDouble(v);
+        else if(k=="wykEx") cfg.ict_wyck_exec_min = ToDouble(v);
+        else if(k=="wykRk") cfg.ict_wyck_risk_max = ToDouble(v);
+      #endif
+
       else if(k=="xPH") cfg.extra_phase_ctx = ToBool(v);
       else if(k=="wPH") cfg.w_phase_ctx = ToDouble(v);
       
@@ -13549,6 +14130,9 @@ namespace Config
         else if(k=="msLqOn")  cfg.ms_liquidity_trap_gate_on = ToBool(v);
 
         else if(k=="msVpTh")  cfg.ms_vpin_threshold = ToDouble(v);
+        else if(k=="msFlow")  cfg.ms_flow_dir_min = ToDouble(v);
+        else if(k=="msTxMx")  cfg.ms_max_toxicity01 = ToDouble(v);
+
         else if(k=="msReTh")  cfg.ms_resil_threshold = ToDouble(v);
         else if(k=="msOFIW")  cfg.ms_ofi_weight = ToDouble(v);
         else if(k=="msOfAbs") cfg.ms_ofi_abs_min = ToDouble(v);
@@ -13561,8 +14145,10 @@ namespace Config
         else if(k=="msMeta")  cfg.ms_metaorder_cost_cap01 = ToDouble(v);
 
         else if(k=="msObs")   cfg.ms_min_observability01 = ToDouble(v);
+        else if(k=="msObsPx") cfg.ms_max_observability_penalty01 = ToDouble(v);
         else if(k=="msVen")   cfg.ms_min_venue_scope01 = ToDouble(v);
         else if(k=="msTru")   cfg.ms_min_truth_tier01 = ToDouble(v);
+        else if(k=="msXvMx")  cfg.ms_max_xvenue_dislocation01 = ToDouble(v);
 
         else if(k=="msDpMn")  cfg.ms_min_darkpool01 = ToDouble(v);
         else if(k=="msDpCx")  cfg.ms_max_darkpool_contradiction01 = ToDouble(v);
@@ -13570,6 +14156,12 @@ namespace Config
         else if(k=="msInvMx") cfg.ms_sd_ob_invalidation_max01 = ToDouble(v);
         else if(k=="msVacMx") cfg.ms_liquidity_vacuum_max01 = ToDouble(v);
         else if(k=="msHunMx") cfg.ms_liquidity_hunt_max01 = ToDouble(v);
+
+        else if(k=="msWPr")   cfg.ms_profile_weight = ToDouble(v);
+        else if(k=="msWLq")   cfg.ms_liquidity_event_weight = ToDouble(v);
+        else if(k=="msVolTr") cfg.ms_volatility_trend_min01 = ToDouble(v);
+        else if(k=="msVolMR") cfg.ms_volatility_mr_max01 = ToDouble(v);
+        else if(k=="msVolBO") cfg.ms_volatility_breakout_min01 = ToDouble(v);
 
         else if(k=="msSchOn") cfg.ms_exec_schedule_enable = ToBool(v);
         else if(k=="msSchMd") cfg.ms_exec_schedule_mode = ToInt(v);
@@ -13962,6 +14554,14 @@ namespace Config
         else if(k=="ofTh") cfg.orderflow_th = ToDouble(v);
       #endif
 
+      #ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+        else if(k=="gAl") cfg.alpha_head_min = ToDouble(v);
+        else if(k=="gEx") cfg.execution_head_min = ToDouble(v);
+        else if(k=="gRk") cfg.risk_head_max = ToDouble(v);
+      #endif
+      
+      else if(_CfgApplyICTStrategyKnobKey(cfg, k, v)) { }
+
       // Router hints / gates
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
         else if(k=="routerMin") cfg.router_min_score = ToDouble(v);
@@ -14031,29 +14631,6 @@ namespace Config
       #ifdef CFG_HAS_MAGIC_NUMBER
         else if(k=="magic")
           cfg.magic_number = (long)ToLong(v);
-      #endif
-      
-      #ifdef CFG_HAS_ENABLE_HARD_GATE
-         else if(k=="hardGate") cfg.enable_hard_gate = ToBool(v);
-      #endif
-      #ifdef CFG_HAS_MIN_FEATURES_MET
-         else if(k=="minFeat")  cfg.min_features_met  = ToInt(v);
-      #endif
-      #ifdef CFG_HAS_REQUIRE_TREND_FILTER
-         else if(k=="reqTrend") cfg.require_trend_filter = ToBool(v);
-      #endif
-      #ifdef CFG_HAS_REQUIRE_ADX_REGIME
-         else if(k=="reqADX")   cfg.require_adx_regime   = ToBool(v);
-      #endif
-      #ifdef CFG_HAS_REQUIRE_STRUCT_OR_PATTERN_OB
-         else if(k=="reqStructOrOB") cfg.require_struct_or_pattern_ob = ToBool(v);
-      #endif
-      #ifdef CFG_HAS_LONDON_LIQ_POLICY
-         else if(k=="lonPolicy") cfg.london_liquidity_policy = ToBool(v);
-      #endif
-      #ifdef CFG_HAS_ROUTER_HINTS
-        else if(k=="fbConf") cfg.router_fallback_min_confluence = ToDouble(v);
-        else if(k=="fbSpan") cfg.router_fallback_max_span = ToInt(v);
       #endif
     }
     
@@ -14333,7 +14910,15 @@ struct Settings
   double            qualityThresholdHigh;          // "high conviction" setups
   double            qualityThresholdContinuation;  // trend / continuation models
   double            qualityThresholdReversal;      // Wyckoff Spring/UTAD reversals
-  
+
+#ifdef CFG_HAS_GLOBAL_HEAD_THRESHOLDS
+  // Global fallback head thresholds for strategies that do not yet consume
+  // their per-strategy overrides directly.
+  double            alpha_head_min;
+  double            execution_head_min;
+  double            risk_head_max;
+#endif
+
   // --- Challenge protection (account-wide) -----------------------------------
   double          challenge_init_equity;  // 0.0 => auto-capture at first run
   double          max_account_dd_pct;     // e.g., 5.0 => stop trading at -5% from baseline
@@ -14410,6 +14995,18 @@ struct Settings
    bool   main_confirm_any_of_3;   // default true: allow any-of-3 confirmation rule
    bool   main_require_classical;  // optional: require “classical confirm” rule if enabled
    double orderflow_th;            // threshold for orderflow/Δ gate (z or accel threshold)
+
+   double main_alpha_min;          // final strategy alpha head minimum
+   double main_exec_min;           // final strategy execution head minimum
+   double main_risk_max;           // final strategy risk head maximum (risk burden)
+
+   bool   main_require_poi;        // POI/location mandatory before trigger continuation
+   bool   main_require_sweep_reject; // sweep+reject must be present before trigger pass
+   double main_sweep_reject_min01; // minimum liquidity-event quality for staged trigger
+
+   double main_profile_weight;         // reusable profile-state contribution weight
+   double main_poi_weight;             // reusable POI-state contribution weight
+   double main_liquidity_event_weight; // reusable liquidity-event contribution weight
    
    // ===== Base Confluence Toggles =====
    bool cf_inst_zones;       // Institutional zones
@@ -14807,6 +15404,9 @@ struct Settings
 
     // Canonical top-level thresholds
     double ms_vpin_threshold;            // top-level toxicity / VPIN max
+    double ms_flow_dir_min;              // minimum signed flow-direction strength for canonical micro participation
+    double ms_max_toxicity01;            // maximum toxicity burden before hard veto
+
     double ms_resil_threshold;           // top-level resiliency min
     double ms_ofi_weight;                // top-level OFI contribution weight
     double ms_ofi_abs_min;               // minimum |OFI| gate for microstructure participation
@@ -14819,8 +15419,10 @@ struct Settings
     double ms_metaorder_cost_cap01;      // top-level metaorder cost cap
 
     double ms_min_observability01;       // minimum observability confidence
+    double ms_max_observability_penalty01; // maximum observability penalty before hard veto
     double ms_min_venue_scope01;         // minimum venue coverage / venue-scope confidence
     double ms_min_truth_tier01;          // minimum truth-tier / state-trust confidence
+    double ms_max_xvenue_dislocation01;  // maximum cross-venue dislocation before hard veto
 
     double ms_min_darkpool01;            // minimum dark-pool proxy confidence
     double ms_max_darkpool_contradiction01; // max contradictory dark-pool cue intensity
@@ -14828,6 +15430,13 @@ struct Settings
     double ms_sd_ob_invalidation_max01;  // max SD / OB invalidation proximity before veto
     double ms_liquidity_vacuum_max01;    // max liquidity-vacuum severity before veto
     double ms_liquidity_hunt_max01;      // max liquidity-hunt / sweep-trap severity before veto
+
+    double ms_profile_weight;            // reusable profile-state contribution weight
+    double ms_liquidity_event_weight;    // reusable liquidity-event contribution weight
+
+    double ms_volatility_trend_min01;    // minimum volatility regime confidence for trend archetypes
+    double ms_volatility_mr_max01;       // maximum volatility regime level for mean-reversion archetypes
+    double ms_volatility_breakout_min01; // minimum volatility regime confidence for breakout archetypes
 
     // Canonical execution policy controls
     bool   ms_exec_schedule_enable;      // top-level execution schedule policy enable
@@ -16283,6 +16892,50 @@ struct Settings
    bool enable_strat_ict_po3;             // ICT_PO3 session model
    bool enable_strat_ict_continuation;    // ICT_OBFVG_OTE continuation pullback
    bool enable_strat_ict_wyckoff_turn;    // ICT_Wyckoff_SpringUTAD reversal at extremes
+
+#ifdef CFG_HAS_ICT_STRATEGY_KNOBS
+  // -------------------------------------------------
+  // 3B. ICT STRATEGY-SPECIFIC GATING KNOBS
+  // -------------------------------------------------
+  // These are the strategy-local hard-gate / threshold controls that the
+  // ICT family should read before final candidate emission.
+
+  // Silver Bullet
+  bool   ict_sb_require_strict_micro;
+  bool   ict_sb_require_profile;
+  bool   ict_sb_require_volatility_archetype;
+  double ict_sb_sweep_reject_min01;
+  double ict_sb_alpha_min;
+  double ict_sb_exec_min;
+  double ict_sb_risk_max;
+
+  // PO3
+  bool   ict_po3_require_strict_micro;
+  bool   ict_po3_require_profile;
+  bool   ict_po3_require_volatility_archetype;
+  double ict_po3_sweep_reject_min01;
+  double ict_po3_alpha_min;
+  double ict_po3_exec_min;
+  double ict_po3_risk_max;
+
+  // OBFVG / OTE continuation
+  bool   ict_cont_require_strict_micro;
+  bool   ict_cont_require_profile;
+  bool   ict_cont_require_volatility_archetype;
+  double ict_cont_sweep_reject_min01;
+  double ict_cont_alpha_min;
+  double ict_cont_exec_min;
+  double ict_cont_risk_max;
+
+  // Wyckoff Spring / UTAD
+  bool   ict_wyck_require_strict_micro;
+  bool   ict_wyck_require_profile;
+  bool   ict_wyck_require_volatility_archetype;
+  double ict_wyck_sweep_reject_min01;
+  double ict_wyck_alpha_min;
+  double ict_wyck_exec_min;
+  double ict_wyck_risk_max;
+#endif
 
    // -------------------------------------------------
    // 4. PER-STRATEGY MAGIC BASES & RISK MULTIPLIERS

@@ -6,6 +6,8 @@
 //|  - Ensure strategies NEVER place trades directly in live mode.    |
 //|  - Allow direct execution ONLY for regression in Tester/Optimize, |
 //|    and ONLY when explicitly enabled by build macros.              |
+//|  - Enforce veto-tag and alpha/execution/risk head gating before   |
+//|    any direct execution surface is allowed to continue.           |
 //|                                                                  |
 //| Compile-time switches (set in BuildFlags.mqh or project defines): |
 //|  - STRAT_DIRECT_EXEC_TESTER_ONLY  : compile direct-exec surfaces  |
@@ -44,6 +46,17 @@ namespace StrategyDirectExec
    #endif
    }
 
+   inline double Clamp01x(const double v)
+   {
+      if(!MathIsValidNumber(v))
+         return(0.0);
+      if(v < 0.0)
+         return(0.0);
+      if(v > 1.0)
+         return(1.0);
+      return(v);
+   }
+
    // ----------------------------------------------------------------
    // Runtime environment gate (MQL5-native).
    // ----------------------------------------------------------------
@@ -77,6 +90,26 @@ namespace StrategyDirectExec
    inline string Msg_NotTester(const string strategy_name)
    {
       return(Prefix(strategy_name) + " direct execution blocked outside Strategy Tester/Optimization (Router owns live trading)");
+   }
+
+   inline string Msg_TaggedVeto(const string strategy_name,
+                                const string veto_tag,
+                                const string veto_detail)
+   {
+      string msg = Prefix(strategy_name) + " direct execution blocked by veto";
+      if(veto_tag != "")
+         msg += " [" + veto_tag + "]";
+      if(veto_detail != "")
+         msg += " " + veto_detail;
+      return(msg);
+   }
+
+   inline string Msg_HeadFail(const string strategy_name,
+                              const string why_in)
+   {
+      if(why_in == "")
+         return(Prefix(strategy_name) + " direct execution blocked by head thresholds");
+      return(Prefix(strategy_name) + " direct execution blocked by head thresholds (" + why_in + ")");
    }
 
    // ----------------------------------------------------------------
@@ -133,13 +166,168 @@ namespace StrategyDirectExec
    }
 
    // ----------------------------------------------------------------
-   // Convenience: guard for score structs without assuming struct type.
-   // You pass references to the fields you want filled.
-   //
-   // Pattern (before any Exec::RequestEntry* call):
-   //    if(!StrategyDirectExec::GuardScore("ICT_SilverBullet", finalQ,
-   //                                      ss.score, ss.eligible, ss.reason))
-   //       return(false);
+   // Preferred guard: full strategy structs. This is the canonical
+   // direct-exec gate after strategy evaluation has already populated
+   // score + heads + veto metadata.
+   // ----------------------------------------------------------------
+   inline bool GuardStratScore(const string strategy_name,
+                               const Settings &cfg,
+                               StratScore &ss,
+                               ConfluenceBreakdown &bd,
+                               string &why_out)
+   {
+      why_out = "";
+
+      if(!CanRun(strategy_name, why_out))
+      {
+         if(ss.veto_tag == "")
+            ss.veto_tag = "direct_exec_env_block";
+         if(ss.veto_detail == "")
+            ss.veto_detail = why_out;
+
+         ss.eligible = false;
+         ss.reason   = why_out;
+
+         bd.veto = true;
+         bd.meta = why_out;
+         StratCopyHeadMetaToBreakdown(ss, bd);
+
+         MaybeLogBlocked(why_out);
+         return(false);
+      }
+
+      string why_gate = "";
+      if(!StratEligibilityPass(cfg, ss, why_gate))
+      {
+         if(ss.veto_tag != "")
+            why_out = Msg_TaggedVeto(strategy_name, ss.veto_tag, ss.veto_detail);
+         else
+            why_out = Msg_HeadFail(strategy_name, why_gate);
+
+         if(ss.veto_tag == "")
+            ss.veto_tag = "direct_exec_head_gate";
+         if(ss.veto_detail == "")
+            ss.veto_detail = why_gate;
+
+         ss.eligible = false;
+         ss.reason   = why_out;
+
+         bd.veto = true;
+         bd.meta = why_out;
+         StratCopyHeadMetaToBreakdown(ss, bd);
+
+         MaybeLogBlocked(why_out);
+         return(false);
+      }
+
+      bd.veto = false;
+      bd.meta = "";
+      StratCopyHeadMetaToBreakdown(ss, bd);
+      return(true);
+   }
+
+   // ----------------------------------------------------------------
+   // Generic field-based guard for callers that do not pass a full
+   // StratScore struct but still need head-aware blocking.
+   // ----------------------------------------------------------------
+   inline bool GuardScoreEx(const string strategy_name,
+                            const double computed_score,
+                            const double computed_alpha_score,
+                            const double computed_execution_score,
+                            const double computed_risk_score,
+                            const string computed_archetype_label,
+                            const string current_veto_tag,
+                            const string current_veto_detail,
+                            const double alpha_min,
+                            const double exec_min,
+                            const double risk_max,
+                            double &out_score,
+                            double &out_alpha_score,
+                            double &out_execution_score,
+                            double &out_risk_score,
+                            bool   &out_eligible,
+                            string &out_reason,
+                            string &out_veto_tag,
+                            string &out_veto_detail,
+                            string &out_archetype_label)
+   {
+      const double score01 = Clamp01x(computed_score);
+      const double alpha01 = Clamp01x(MathIsValidNumber(computed_alpha_score) ? computed_alpha_score : score01);
+      const double exec01  = Clamp01x(MathIsValidNumber(computed_execution_score) ? computed_execution_score : score01);
+      const double risk01  = Clamp01x(MathIsValidNumber(computed_risk_score) ? computed_risk_score : (1.0 - score01));
+
+      string why = "";
+      if(!CanRun(strategy_name, why))
+      {
+         out_score           = score01;
+         out_alpha_score     = alpha01;
+         out_execution_score = exec01;
+         out_risk_score      = risk01;
+         out_eligible        = false;
+         out_reason          = why;
+         out_veto_tag        = "direct_exec_env_block";
+         out_veto_detail     = why;
+         out_archetype_label = computed_archetype_label;
+
+         MaybeLogBlocked(why);
+         return(false);
+      }
+
+      if(current_veto_tag != "")
+      {
+         why = Msg_TaggedVeto(strategy_name, current_veto_tag, current_veto_detail);
+
+         out_score           = score01;
+         out_alpha_score     = alpha01;
+         out_execution_score = exec01;
+         out_risk_score      = risk01;
+         out_eligible        = false;
+         out_reason          = why;
+         out_veto_tag        = current_veto_tag;
+         out_veto_detail     = (current_veto_detail != "" ? current_veto_detail : why);
+         out_archetype_label = computed_archetype_label;
+
+         MaybeLogBlocked(why);
+         return(false);
+      }
+
+      const double alphaMin = Clamp01x(alpha_min);
+      const double execMin  = Clamp01x(exec_min);
+      const double riskMax  = Clamp01x(risk_max);
+
+      if(alpha01 < alphaMin || exec01 < execMin || risk01 > riskMax)
+      {
+         string why_head = "";
+
+         if(alpha01 < alphaMin)
+            why_head = StringFormat("alpha %.2f < %.2f", alpha01, alphaMin);
+         else if(exec01 < execMin)
+            why_head = StringFormat("exec %.2f < %.2f", exec01, execMin);
+         else
+            why_head = StringFormat("risk %.2f > %.2f", risk01, riskMax);
+
+         why = Msg_HeadFail(strategy_name, why_head);
+
+         out_score           = score01;
+         out_alpha_score     = alpha01;
+         out_execution_score = exec01;
+         out_risk_score      = risk01;
+         out_eligible        = false;
+         out_reason          = why;
+         out_veto_tag        = "direct_exec_head_gate";
+         out_veto_detail     = why_head;
+         out_archetype_label = computed_archetype_label;
+
+         MaybeLogBlocked(why);
+         return(false);
+      }
+
+      return(true);
+   }
+
+   // ----------------------------------------------------------------
+   // Legacy fallback: environment-only guard. Prefer GuardStratScore()
+   // or GuardScoreEx() for head-aware direct execution checks.
    // ----------------------------------------------------------------
    inline bool GuardScore(const string strategy_name,
                           const double computed_score,
@@ -174,16 +362,45 @@ namespace StrategyDirectExec
 //
 // 2) Guard direct execution blocks:
 //
-//    string why="";
-//    if(!StrategyDirectExec::GuardBool("ICT_OBFVG_OTE", why))
+//
+//    // Preferred when you already have full strategy structs:
+//    string why = "";
+//    if(!StrategyDirectExec::GuardStratScore("StrategyMain", cfg, ss, bd, why))
 //       return(false);
 //
-//    // OR when you have ss.score / ss.eligible / ss.reason + computed_score:
+//    // Or field-based when you want head-aware direct-exec gating
+//    // without passing the full structs:
 //
-//    if(!StrategyDirectExec::GuardScore("ICT_Wyckoff_SpringUTAD", finalQ,
-//                                       ss.score, ss.eligible, ss.reason))
+//    if(!StrategyDirectExec::GuardScoreEx("ICT_Wyckoff_SpringUTAD",
+//                                         ss.score,
+//                                         ss.alpha_score,
+//                                         ss.execution_score,
+//                                         ss.risk_score,
+//                                         ss.archetype_label,
+//                                         ss.veto_tag,
+//                                         ss.veto_detail,
+//                                         cfg.main_alpha_min,
+//                                         cfg.main_exec_min,
+//                                         cfg.main_risk_max,
+//                                         ss.score,
+//                                         ss.alpha_score,
+//                                         ss.execution_score,
+//                                         ss.risk_score,
+//                                         ss.eligible,
+//                                         ss.reason,
+//                                         ss.veto_tag,
+//                                         ss.veto_detail,
+//                                         ss.archetype_label))
 //       return(false);
 //
+//    // Legacy env-only fallback:
+//
+//    if(!StrategyDirectExec::GuardScore("ICT_Wyckoff_SpringUTAD",
+//                                       finalQ,
+//                                       ss.score,
+//                                       ss.eligible,
+//                                       ss.reason))
+//       return(false);
 // 3) Direct execution should ONLY happen after the guard passes:
 //    Exec::RequestEntryBuy(...)
 //    Exec::RequestEntrySell(...)

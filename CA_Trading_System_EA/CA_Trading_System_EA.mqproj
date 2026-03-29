@@ -315,11 +315,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Router.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\strategies\\StrategyDirectExecGuards.mqh",
       "compile":false,
       "relative_to_project":true
@@ -446,6 +441,11 @@
     },
     {
       "path":"include\\Confluence.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Router.mqh",
       "compile":false,
       "relative_to_project":true
     }
