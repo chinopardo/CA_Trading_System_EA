@@ -478,6 +478,34 @@ struct Settings;
   #define CFG_HAS_MS_VOL_BREAKOUT_MIN01 1
 #endif
 
+#ifndef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+  #define CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS 1
+#endif
+#ifndef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+  #define CFG_HAS_MS_DIRECT_BLEND_WEIGHTS 1
+#endif
+#ifndef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+  #define CFG_HAS_MS_PROXY_BLEND_WEIGHTS 1
+#endif
+#ifndef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+  #define CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS 1
+#endif
+#ifndef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+  #define CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS 1
+#endif
+#ifndef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+  #define CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS 1
+#endif
+#ifndef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+  #define CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS 1
+#endif
+#ifndef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+  #define CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS 1
+#endif
+#ifndef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+  #define CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS 1
+#endif
+
 #ifndef CFG_HAS_SCAN_TL_SETTINGS
   #define CFG_HAS_SCAN_TL_SETTINGS 1
 #endif
@@ -1624,6 +1652,70 @@ namespace Config
      double ms_volatility_trend_min01;
      double ms_volatility_mr_max01;
      double ms_volatility_breakout_min01;
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+     double ms_observability_direct_min01;
+     double ms_observability_proxy_min01;
+     double ms_observability_structure_only_min01;
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+     double ms_direct_weight_ofi;
+     double ms_direct_weight_obi;
+     double ms_direct_weight_cvd;
+     double ms_direct_weight_absorption;
+     double ms_direct_weight_resiliency;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+     double ms_proxy_weight_delta;
+     double ms_proxy_weight_footprint;
+     double ms_proxy_weight_profile;
+     double ms_proxy_weight_vsa;
+     double ms_proxy_weight_absorption;
+     double ms_proxy_weight_liquidity_reject;
+     double ms_proxy_weight_vwap_location;
+     double ms_proxy_weight_vwap_stretch_inv;
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+     double ms_toxicity_weight_vpin;
+     double ms_toxicity_weight_spread_shock;
+     double ms_toxicity_weight_impact_lambda;
+     double ms_toxicity_weight_resiliency_inverse;
+     double ms_toxicity_weight_slippage_stress;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+     double ms_proxy_toxicity_weight_spread_shock;
+     double ms_proxy_toxicity_weight_slippage_stress;
+     double ms_proxy_toxicity_weight_volatility_stress;
+     double ms_proxy_toxicity_weight_quote_instability;
+     double ms_proxy_toxicity_weight_observability_penalty;
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+     double ms_truth_min_continuation01;
+     double ms_truth_min_breakout01;
+     double ms_truth_min_reversal01;
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+     double router_specialist_alpha_edge_min01;
+     double router_max_observability_disadvantage01;
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+     double risk_proxy_size_haircut01;
+     double risk_structure_only_size_floor01;
+     bool   risk_structure_only_breakout_veto;
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+     double ms_exec_posture_passive_max01;
+     double ms_exec_posture_standard_min01;
+     double ms_exec_posture_aggressive_min01;
+#endif
 
      bool   vsa_allow_tick_volume; // VSA reliability: allow tick volume fallback (FX-friendly)
      int    vsa_lookback;          // VSA scan lookback bars (0/<=0 => internal fallback / Normalize() default)
@@ -2909,7 +3001,71 @@ namespace Config
      cfg.ms_volatility_trend_min01      = x.ms_volatility_trend_min01;
      cfg.ms_volatility_mr_max01         = x.ms_volatility_mr_max01;
      cfg.ms_volatility_breakout_min01   = x.ms_volatility_breakout_min01;
-     
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+     cfg.ms_observability_direct_min01         = x.ms_observability_direct_min01;
+     cfg.ms_observability_proxy_min01          = x.ms_observability_proxy_min01;
+     cfg.ms_observability_structure_only_min01 = x.ms_observability_structure_only_min01;
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+     cfg.ms_direct_weight_ofi                  = x.ms_direct_weight_ofi;
+     cfg.ms_direct_weight_obi                  = x.ms_direct_weight_obi;
+     cfg.ms_direct_weight_cvd                  = x.ms_direct_weight_cvd;
+     cfg.ms_direct_weight_absorption           = x.ms_direct_weight_absorption;
+     cfg.ms_direct_weight_resiliency           = x.ms_direct_weight_resiliency;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+     cfg.ms_proxy_weight_delta                 = x.ms_proxy_weight_delta;
+     cfg.ms_proxy_weight_footprint             = x.ms_proxy_weight_footprint;
+     cfg.ms_proxy_weight_profile               = x.ms_proxy_weight_profile;
+     cfg.ms_proxy_weight_vsa                   = x.ms_proxy_weight_vsa;
+     cfg.ms_proxy_weight_absorption            = x.ms_proxy_weight_absorption;
+     cfg.ms_proxy_weight_liquidity_reject      = x.ms_proxy_weight_liquidity_reject;
+     cfg.ms_proxy_weight_vwap_location         = x.ms_proxy_weight_vwap_location;
+     cfg.ms_proxy_weight_vwap_stretch_inv      = x.ms_proxy_weight_vwap_stretch_inv;
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+     cfg.ms_toxicity_weight_vpin               = x.ms_toxicity_weight_vpin;
+     cfg.ms_toxicity_weight_spread_shock       = x.ms_toxicity_weight_spread_shock;
+     cfg.ms_toxicity_weight_impact_lambda      = x.ms_toxicity_weight_impact_lambda;
+     cfg.ms_toxicity_weight_resiliency_inverse = x.ms_toxicity_weight_resiliency_inverse;
+     cfg.ms_toxicity_weight_slippage_stress    = x.ms_toxicity_weight_slippage_stress;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+     cfg.ms_proxy_toxicity_weight_spread_shock         = x.ms_proxy_toxicity_weight_spread_shock;
+     cfg.ms_proxy_toxicity_weight_slippage_stress      = x.ms_proxy_toxicity_weight_slippage_stress;
+     cfg.ms_proxy_toxicity_weight_volatility_stress    = x.ms_proxy_toxicity_weight_volatility_stress;
+     cfg.ms_proxy_toxicity_weight_quote_instability    = x.ms_proxy_toxicity_weight_quote_instability;
+     cfg.ms_proxy_toxicity_weight_observability_penalty= x.ms_proxy_toxicity_weight_observability_penalty;
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+     cfg.ms_truth_min_continuation01           = x.ms_truth_min_continuation01;
+     cfg.ms_truth_min_breakout01               = x.ms_truth_min_breakout01;
+     cfg.ms_truth_min_reversal01               = x.ms_truth_min_reversal01;
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+     cfg.router_specialist_alpha_edge_min01    = x.router_specialist_alpha_edge_min01;
+     cfg.router_max_observability_disadvantage01 = x.router_max_observability_disadvantage01;
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+     cfg.risk_proxy_size_haircut01             = x.risk_proxy_size_haircut01;
+     cfg.risk_structure_only_size_floor01      = x.risk_structure_only_size_floor01;
+     cfg.risk_structure_only_breakout_veto     = x.risk_structure_only_breakout_veto;
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+     cfg.ms_exec_posture_passive_max01         = x.ms_exec_posture_passive_max01;
+     cfg.ms_exec_posture_standard_min01        = x.ms_exec_posture_standard_min01;
+     cfg.ms_exec_posture_aggressive_min01      = x.ms_exec_posture_aggressive_min01;
+#endif
+
      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
        cfg.vsa_allow_tick_volume = x.vsa_allow_tick_volume;
      #endif
@@ -3623,6 +3779,70 @@ namespace Config
      x.ms_volatility_trend_min01      = 0.55;
      x.ms_volatility_mr_max01         = 0.45;
      x.ms_volatility_breakout_min01   = 0.70;
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+     x.ms_observability_direct_min01         = 0.85;
+     x.ms_observability_proxy_min01          = 0.60;
+     x.ms_observability_structure_only_min01 = 0.35;
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+     x.ms_direct_weight_ofi                  = 0.35;
+     x.ms_direct_weight_obi                  = 0.25;
+     x.ms_direct_weight_cvd                  = 0.15;
+     x.ms_direct_weight_absorption           = 0.15;
+     x.ms_direct_weight_resiliency           = 0.10;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+     x.ms_proxy_weight_delta                 = 0.20;
+     x.ms_proxy_weight_footprint             = 0.15;
+     x.ms_proxy_weight_profile               = 0.15;
+     x.ms_proxy_weight_vsa                   = 0.15;
+     x.ms_proxy_weight_absorption            = 0.10;
+     x.ms_proxy_weight_liquidity_reject      = 0.10;
+     x.ms_proxy_weight_vwap_location         = 0.10;
+     x.ms_proxy_weight_vwap_stretch_inv      = 0.05;
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+     x.ms_toxicity_weight_vpin               = 0.40;
+     x.ms_toxicity_weight_spread_shock       = 0.20;
+     x.ms_toxicity_weight_impact_lambda      = 0.15;
+     x.ms_toxicity_weight_resiliency_inverse = 0.15;
+     x.ms_toxicity_weight_slippage_stress    = 0.10;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+     x.ms_proxy_toxicity_weight_spread_shock          = 0.30;
+     x.ms_proxy_toxicity_weight_slippage_stress       = 0.20;
+     x.ms_proxy_toxicity_weight_volatility_stress     = 0.20;
+     x.ms_proxy_toxicity_weight_quote_instability     = 0.15;
+     x.ms_proxy_toxicity_weight_observability_penalty = 0.15;
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+     x.ms_truth_min_continuation01           = 0.60;
+     x.ms_truth_min_breakout01               = 0.70;
+     x.ms_truth_min_reversal01               = 0.35;
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+     x.router_specialist_alpha_edge_min01    = 0.05;
+     x.router_max_observability_disadvantage01 = 0.15;
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+     x.risk_proxy_size_haircut01             = 0.25;
+     x.risk_structure_only_size_floor01      = 0.25;
+     x.risk_structure_only_breakout_veto     = true;
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+     x.ms_exec_posture_passive_max01         = 0.45;
+     x.ms_exec_posture_standard_min01        = 0.45;
+     x.ms_exec_posture_aggressive_min01      = 0.72;
+#endif
 
      x.vsa_allow_tick_volume  = true;          // default true (FX tick volume is what you actually have)
      x.vsa_lookback         = 60;           // VSA scan lookback bars (matches Normalize() default)
@@ -4677,6 +4897,70 @@ namespace Config
       cfg.ms_volatility_trend_min01    = 0.55;
       cfg.ms_volatility_mr_max01       = 0.45;
       cfg.ms_volatility_breakout_min01 = 0.70;
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+      cfg.ms_observability_direct_min01         = 0.85;
+      cfg.ms_observability_proxy_min01          = 0.60;
+      cfg.ms_observability_structure_only_min01 = 0.35;
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+      cfg.ms_direct_weight_ofi                  = 0.35;
+      cfg.ms_direct_weight_obi                  = 0.25;
+      cfg.ms_direct_weight_cvd                  = 0.15;
+      cfg.ms_direct_weight_absorption           = 0.15;
+      cfg.ms_direct_weight_resiliency           = 0.10;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+      cfg.ms_proxy_weight_delta                 = 0.20;
+      cfg.ms_proxy_weight_footprint             = 0.15;
+      cfg.ms_proxy_weight_profile               = 0.15;
+      cfg.ms_proxy_weight_vsa                   = 0.15;
+      cfg.ms_proxy_weight_absorption            = 0.10;
+      cfg.ms_proxy_weight_liquidity_reject      = 0.10;
+      cfg.ms_proxy_weight_vwap_location         = 0.10;
+      cfg.ms_proxy_weight_vwap_stretch_inv      = 0.05;
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+      cfg.ms_toxicity_weight_vpin               = 0.40;
+      cfg.ms_toxicity_weight_spread_shock       = 0.20;
+      cfg.ms_toxicity_weight_impact_lambda      = 0.15;
+      cfg.ms_toxicity_weight_resiliency_inverse = 0.15;
+      cfg.ms_toxicity_weight_slippage_stress    = 0.10;
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+      cfg.ms_proxy_toxicity_weight_spread_shock          = 0.30;
+      cfg.ms_proxy_toxicity_weight_slippage_stress       = 0.20;
+      cfg.ms_proxy_toxicity_weight_volatility_stress     = 0.20;
+      cfg.ms_proxy_toxicity_weight_quote_instability     = 0.15;
+      cfg.ms_proxy_toxicity_weight_observability_penalty = 0.15;
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+      cfg.ms_truth_min_continuation01           = 0.60;
+      cfg.ms_truth_min_breakout01               = 0.70;
+      cfg.ms_truth_min_reversal01               = 0.35;
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+      cfg.router_specialist_alpha_edge_min01    = 0.05;
+      cfg.router_max_observability_disadvantage01 = 0.15;
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+      cfg.risk_proxy_size_haircut01             = 0.25;
+      cfg.risk_structure_only_size_floor01      = 0.25;
+      cfg.risk_structure_only_breakout_veto     = true;
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+      cfg.ms_exec_posture_passive_max01         = 0.45;
+      cfg.ms_exec_posture_standard_min01        = 0.45;
+      cfg.ms_exec_posture_aggressive_min01      = 0.72;
+#endif
 
       // Canonical execution controls
       cfg.ms_exec_schedule_enable      = true;
@@ -5825,6 +6109,215 @@ namespace Config
       if(cfg.ms_volatility_breakout_min01 < cfg.ms_volatility_trend_min01)
          cfg.ms_volatility_breakout_min01 = cfg.ms_volatility_trend_min01;
 
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+      if(cfg.ms_observability_direct_min01 < 0.0) cfg.ms_observability_direct_min01 = 0.0;
+      if(cfg.ms_observability_direct_min01 > 1.0) cfg.ms_observability_direct_min01 = 1.0;
+
+      if(cfg.ms_observability_proxy_min01 < 0.0) cfg.ms_observability_proxy_min01 = 0.0;
+      if(cfg.ms_observability_proxy_min01 > 1.0) cfg.ms_observability_proxy_min01 = 1.0;
+
+      if(cfg.ms_observability_structure_only_min01 < 0.0) cfg.ms_observability_structure_only_min01 = 0.0;
+      if(cfg.ms_observability_structure_only_min01 > 1.0) cfg.ms_observability_structure_only_min01 = 1.0;
+
+      if(cfg.ms_observability_proxy_min01 > cfg.ms_observability_direct_min01)
+         cfg.ms_observability_proxy_min01 = cfg.ms_observability_direct_min01;
+
+      if(cfg.ms_observability_structure_only_min01 > cfg.ms_observability_proxy_min01)
+         cfg.ms_observability_structure_only_min01 = cfg.ms_observability_proxy_min01;
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+      if(cfg.ms_direct_weight_ofi < 0.0) cfg.ms_direct_weight_ofi = 0.0;
+      if(cfg.ms_direct_weight_obi < 0.0) cfg.ms_direct_weight_obi = 0.0;
+      if(cfg.ms_direct_weight_cvd < 0.0) cfg.ms_direct_weight_cvd = 0.0;
+      if(cfg.ms_direct_weight_absorption < 0.0) cfg.ms_direct_weight_absorption = 0.0;
+      if(cfg.ms_direct_weight_resiliency < 0.0) cfg.ms_direct_weight_resiliency = 0.0;
+
+      double ms_direct_sum =
+         cfg.ms_direct_weight_ofi +
+         cfg.ms_direct_weight_obi +
+         cfg.ms_direct_weight_cvd +
+         cfg.ms_direct_weight_absorption +
+         cfg.ms_direct_weight_resiliency;
+
+      if(ms_direct_sum <= 0.0)
+      {
+         cfg.ms_direct_weight_ofi        = 0.35;
+         cfg.ms_direct_weight_obi        = 0.25;
+         cfg.ms_direct_weight_cvd        = 0.15;
+         cfg.ms_direct_weight_absorption = 0.15;
+         cfg.ms_direct_weight_resiliency = 0.10;
+      }
+      else
+      {
+         cfg.ms_direct_weight_ofi        /= ms_direct_sum;
+         cfg.ms_direct_weight_obi        /= ms_direct_sum;
+         cfg.ms_direct_weight_cvd        /= ms_direct_sum;
+         cfg.ms_direct_weight_absorption /= ms_direct_sum;
+         cfg.ms_direct_weight_resiliency /= ms_direct_sum;
+      }
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+      if(cfg.ms_proxy_weight_delta < 0.0) cfg.ms_proxy_weight_delta = 0.0;
+      if(cfg.ms_proxy_weight_footprint < 0.0) cfg.ms_proxy_weight_footprint = 0.0;
+      if(cfg.ms_proxy_weight_profile < 0.0) cfg.ms_proxy_weight_profile = 0.0;
+      if(cfg.ms_proxy_weight_vsa < 0.0) cfg.ms_proxy_weight_vsa = 0.0;
+      if(cfg.ms_proxy_weight_absorption < 0.0) cfg.ms_proxy_weight_absorption = 0.0;
+      if(cfg.ms_proxy_weight_liquidity_reject < 0.0) cfg.ms_proxy_weight_liquidity_reject = 0.0;
+      if(cfg.ms_proxy_weight_vwap_location < 0.0) cfg.ms_proxy_weight_vwap_location = 0.0;
+      if(cfg.ms_proxy_weight_vwap_stretch_inv < 0.0) cfg.ms_proxy_weight_vwap_stretch_inv = 0.0;
+
+      double ms_proxy_sum =
+         cfg.ms_proxy_weight_delta +
+         cfg.ms_proxy_weight_footprint +
+         cfg.ms_proxy_weight_profile +
+         cfg.ms_proxy_weight_vsa +
+         cfg.ms_proxy_weight_absorption +
+         cfg.ms_proxy_weight_liquidity_reject +
+         cfg.ms_proxy_weight_vwap_location +
+         cfg.ms_proxy_weight_vwap_stretch_inv;
+
+      if(ms_proxy_sum <= 0.0)
+      {
+         cfg.ms_proxy_weight_delta            = 0.20;
+         cfg.ms_proxy_weight_footprint        = 0.15;
+         cfg.ms_proxy_weight_profile          = 0.15;
+         cfg.ms_proxy_weight_vsa              = 0.15;
+         cfg.ms_proxy_weight_absorption       = 0.10;
+         cfg.ms_proxy_weight_liquidity_reject = 0.10;
+         cfg.ms_proxy_weight_vwap_location    = 0.10;
+         cfg.ms_proxy_weight_vwap_stretch_inv = 0.05;
+      }
+      else
+      {
+         cfg.ms_proxy_weight_delta            /= ms_proxy_sum;
+         cfg.ms_proxy_weight_footprint        /= ms_proxy_sum;
+         cfg.ms_proxy_weight_profile          /= ms_proxy_sum;
+         cfg.ms_proxy_weight_vsa              /= ms_proxy_sum;
+         cfg.ms_proxy_weight_absorption       /= ms_proxy_sum;
+         cfg.ms_proxy_weight_liquidity_reject /= ms_proxy_sum;
+         cfg.ms_proxy_weight_vwap_location    /= ms_proxy_sum;
+         cfg.ms_proxy_weight_vwap_stretch_inv /= ms_proxy_sum;
+      }
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+      if(cfg.ms_toxicity_weight_vpin < 0.0) cfg.ms_toxicity_weight_vpin = 0.0;
+      if(cfg.ms_toxicity_weight_spread_shock < 0.0) cfg.ms_toxicity_weight_spread_shock = 0.0;
+      if(cfg.ms_toxicity_weight_impact_lambda < 0.0) cfg.ms_toxicity_weight_impact_lambda = 0.0;
+      if(cfg.ms_toxicity_weight_resiliency_inverse < 0.0) cfg.ms_toxicity_weight_resiliency_inverse = 0.0;
+      if(cfg.ms_toxicity_weight_slippage_stress < 0.0) cfg.ms_toxicity_weight_slippage_stress = 0.0;
+
+      double ms_toxicity_sum =
+         cfg.ms_toxicity_weight_vpin +
+         cfg.ms_toxicity_weight_spread_shock +
+         cfg.ms_toxicity_weight_impact_lambda +
+         cfg.ms_toxicity_weight_resiliency_inverse +
+         cfg.ms_toxicity_weight_slippage_stress;
+
+      if(ms_toxicity_sum <= 0.0)
+      {
+         cfg.ms_toxicity_weight_vpin               = 0.40;
+         cfg.ms_toxicity_weight_spread_shock       = 0.20;
+         cfg.ms_toxicity_weight_impact_lambda      = 0.15;
+         cfg.ms_toxicity_weight_resiliency_inverse = 0.15;
+         cfg.ms_toxicity_weight_slippage_stress    = 0.10;
+      }
+      else
+      {
+         cfg.ms_toxicity_weight_vpin               /= ms_toxicity_sum;
+         cfg.ms_toxicity_weight_spread_shock       /= ms_toxicity_sum;
+         cfg.ms_toxicity_weight_impact_lambda      /= ms_toxicity_sum;
+         cfg.ms_toxicity_weight_resiliency_inverse /= ms_toxicity_sum;
+         cfg.ms_toxicity_weight_slippage_stress    /= ms_toxicity_sum;
+      }
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+      if(cfg.ms_proxy_toxicity_weight_spread_shock < 0.0) cfg.ms_proxy_toxicity_weight_spread_shock = 0.0;
+      if(cfg.ms_proxy_toxicity_weight_slippage_stress < 0.0) cfg.ms_proxy_toxicity_weight_slippage_stress = 0.0;
+      if(cfg.ms_proxy_toxicity_weight_volatility_stress < 0.0) cfg.ms_proxy_toxicity_weight_volatility_stress = 0.0;
+      if(cfg.ms_proxy_toxicity_weight_quote_instability < 0.0) cfg.ms_proxy_toxicity_weight_quote_instability = 0.0;
+      if(cfg.ms_proxy_toxicity_weight_observability_penalty < 0.0) cfg.ms_proxy_toxicity_weight_observability_penalty = 0.0;
+
+      double ms_proxy_toxicity_sum =
+         cfg.ms_proxy_toxicity_weight_spread_shock +
+         cfg.ms_proxy_toxicity_weight_slippage_stress +
+         cfg.ms_proxy_toxicity_weight_volatility_stress +
+         cfg.ms_proxy_toxicity_weight_quote_instability +
+         cfg.ms_proxy_toxicity_weight_observability_penalty;
+
+      if(ms_proxy_toxicity_sum <= 0.0)
+      {
+         cfg.ms_proxy_toxicity_weight_spread_shock          = 0.30;
+         cfg.ms_proxy_toxicity_weight_slippage_stress       = 0.20;
+         cfg.ms_proxy_toxicity_weight_volatility_stress     = 0.20;
+         cfg.ms_proxy_toxicity_weight_quote_instability     = 0.15;
+         cfg.ms_proxy_toxicity_weight_observability_penalty = 0.15;
+      }
+      else
+      {
+         cfg.ms_proxy_toxicity_weight_spread_shock          /= ms_proxy_toxicity_sum;
+         cfg.ms_proxy_toxicity_weight_slippage_stress       /= ms_proxy_toxicity_sum;
+         cfg.ms_proxy_toxicity_weight_volatility_stress     /= ms_proxy_toxicity_sum;
+         cfg.ms_proxy_toxicity_weight_quote_instability     /= ms_proxy_toxicity_sum;
+         cfg.ms_proxy_toxicity_weight_observability_penalty /= ms_proxy_toxicity_sum;
+      }
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+      if(cfg.ms_truth_min_continuation01 < 0.0) cfg.ms_truth_min_continuation01 = 0.0;
+      if(cfg.ms_truth_min_continuation01 > 1.0) cfg.ms_truth_min_continuation01 = 1.0;
+
+      if(cfg.ms_truth_min_breakout01 < 0.0) cfg.ms_truth_min_breakout01 = 0.0;
+      if(cfg.ms_truth_min_breakout01 > 1.0) cfg.ms_truth_min_breakout01 = 1.0;
+
+      if(cfg.ms_truth_min_reversal01 < 0.0) cfg.ms_truth_min_reversal01 = 0.0;
+      if(cfg.ms_truth_min_reversal01 > 1.0) cfg.ms_truth_min_reversal01 = 1.0;
+
+      if(cfg.ms_truth_min_continuation01 < cfg.ms_truth_min_reversal01)
+         cfg.ms_truth_min_continuation01 = cfg.ms_truth_min_reversal01;
+
+      if(cfg.ms_truth_min_breakout01 < cfg.ms_truth_min_continuation01)
+         cfg.ms_truth_min_breakout01 = cfg.ms_truth_min_continuation01;
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+      if(cfg.router_specialist_alpha_edge_min01 < 0.0) cfg.router_specialist_alpha_edge_min01 = 0.0;
+      if(cfg.router_specialist_alpha_edge_min01 > 1.0) cfg.router_specialist_alpha_edge_min01 = 1.0;
+
+      if(cfg.router_max_observability_disadvantage01 < 0.0) cfg.router_max_observability_disadvantage01 = 0.0;
+      if(cfg.router_max_observability_disadvantage01 > 1.0) cfg.router_max_observability_disadvantage01 = 1.0;
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+      if(cfg.risk_proxy_size_haircut01 < 0.0) cfg.risk_proxy_size_haircut01 = 0.0;
+      if(cfg.risk_proxy_size_haircut01 > 1.0) cfg.risk_proxy_size_haircut01 = 1.0;
+
+      if(cfg.risk_structure_only_size_floor01 < 0.0) cfg.risk_structure_only_size_floor01 = 0.0;
+      if(cfg.risk_structure_only_size_floor01 > 1.0) cfg.risk_structure_only_size_floor01 = 1.0;
+
+      cfg.risk_structure_only_breakout_veto = (cfg.risk_structure_only_breakout_veto ? true : false);
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+      if(cfg.ms_exec_posture_passive_max01 < 0.0) cfg.ms_exec_posture_passive_max01 = 0.0;
+      if(cfg.ms_exec_posture_passive_max01 > 1.0) cfg.ms_exec_posture_passive_max01 = 1.0;
+
+      if(cfg.ms_exec_posture_standard_min01 < 0.0) cfg.ms_exec_posture_standard_min01 = 0.0;
+      if(cfg.ms_exec_posture_standard_min01 > 1.0) cfg.ms_exec_posture_standard_min01 = 1.0;
+
+      if(cfg.ms_exec_posture_aggressive_min01 < 0.0) cfg.ms_exec_posture_aggressive_min01 = 0.0;
+      if(cfg.ms_exec_posture_aggressive_min01 > 1.0) cfg.ms_exec_posture_aggressive_min01 = 1.0;
+
+      if(cfg.ms_exec_posture_standard_min01 < cfg.ms_exec_posture_passive_max01)
+         cfg.ms_exec_posture_standard_min01 = cfg.ms_exec_posture_passive_max01;
+
+      if(cfg.ms_exec_posture_aggressive_min01 < cfg.ms_exec_posture_standard_min01)
+         cfg.ms_exec_posture_aggressive_min01 = cfg.ms_exec_posture_standard_min01;
+#endif
+
       cfg.ms_exec_schedule_mode =
          MathMin(MathMax(cfg.ms_exec_schedule_mode, CFG_INST_EXEC_SCHEDULE_PASSIVE),
                  CFG_INST_EXEC_SCHEDULE_URGENCY);
@@ -6452,6 +6945,95 @@ namespace Config
 
       if(cfg.ms_volatility_breakout_min01 < 0.0 || cfg.ms_volatility_breakout_min01 > 1.0)
          warns += "ms_volatility_breakout_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+      if(cfg.ms_observability_direct_min01 < 0.0 || cfg.ms_observability_direct_min01 > 1.0)
+         warns += "ms_observability_direct_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_observability_proxy_min01 < 0.0 || cfg.ms_observability_proxy_min01 > 1.0)
+         warns += "ms_observability_proxy_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_observability_structure_only_min01 < 0.0 || cfg.ms_observability_structure_only_min01 > 1.0)
+         warns += "ms_observability_structure_only_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_observability_proxy_min01 > cfg.ms_observability_direct_min01 ||
+         cfg.ms_observability_structure_only_min01 > cfg.ms_observability_proxy_min01)
+         warns += "observability mode cutoffs are misordered; NormalizeMicrostructureFamily() enforces direct >= proxy >= structure-only.\n";
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+      if((cfg.ms_direct_weight_ofi +
+          cfg.ms_direct_weight_obi +
+          cfg.ms_direct_weight_cvd +
+          cfg.ms_direct_weight_absorption +
+          cfg.ms_direct_weight_resiliency) <= 0.0)
+         warns += "all direct micro blend weights are zero; NormalizeMicrostructureFamily() reseeds the canonical direct-flow blend.\n";
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+      if((cfg.ms_proxy_weight_delta +
+          cfg.ms_proxy_weight_footprint +
+          cfg.ms_proxy_weight_profile +
+          cfg.ms_proxy_weight_vsa +
+          cfg.ms_proxy_weight_absorption +
+          cfg.ms_proxy_weight_liquidity_reject +
+          cfg.ms_proxy_weight_vwap_location +
+          cfg.ms_proxy_weight_vwap_stretch_inv) <= 0.0)
+         warns += "all proxy micro blend weights are zero; NormalizeMicrostructureFamily() reseeds the canonical proxy-flow blend.\n";
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+      if((cfg.ms_toxicity_weight_vpin +
+          cfg.ms_toxicity_weight_spread_shock +
+          cfg.ms_toxicity_weight_impact_lambda +
+          cfg.ms_toxicity_weight_resiliency_inverse +
+          cfg.ms_toxicity_weight_slippage_stress) <= 0.0)
+         warns += "all direct toxicity blend weights are zero; NormalizeMicrostructureFamily() reseeds the canonical toxicity blend.\n";
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+      if((cfg.ms_proxy_toxicity_weight_spread_shock +
+          cfg.ms_proxy_toxicity_weight_slippage_stress +
+          cfg.ms_proxy_toxicity_weight_volatility_stress +
+          cfg.ms_proxy_toxicity_weight_quote_instability +
+          cfg.ms_proxy_toxicity_weight_observability_penalty) <= 0.0)
+         warns += "all proxy toxicity blend weights are zero; NormalizeMicrostructureFamily() reseeds the canonical proxy-toxicity blend.\n";
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+      if(cfg.ms_truth_min_continuation01 < 0.0 || cfg.ms_truth_min_continuation01 > 1.0)
+         warns += "ms_truth_min_continuation01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_truth_min_breakout01 < 0.0 || cfg.ms_truth_min_breakout01 > 1.0)
+         warns += "ms_truth_min_breakout01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_truth_min_reversal01 < 0.0 || cfg.ms_truth_min_reversal01 > 1.0)
+         warns += "ms_truth_min_reversal01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_truth_min_breakout01 < cfg.ms_truth_min_continuation01 ||
+         cfg.ms_truth_min_continuation01 < cfg.ms_truth_min_reversal01)
+         warns += "truth-tier archetype thresholds are misordered; NormalizeMicrostructureFamily() enforces breakout >= continuation >= reversal.\n";
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+      if(cfg.router_specialist_alpha_edge_min01 < 0.0 || cfg.router_specialist_alpha_edge_min01 > 1.0)
+         warns += "router_specialist_alpha_edge_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.router_max_observability_disadvantage01 < 0.0 || cfg.router_max_observability_disadvantage01 > 1.0)
+         warns += "router_max_observability_disadvantage01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+      if(cfg.risk_proxy_size_haircut01 < 0.0 || cfg.risk_proxy_size_haircut01 > 1.0)
+         warns += "risk_proxy_size_haircut01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.risk_structure_only_size_floor01 < 0.0 || cfg.risk_structure_only_size_floor01 > 1.0)
+         warns += "risk_structure_only_size_floor01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+      if(cfg.ms_exec_posture_passive_max01 < 0.0 || cfg.ms_exec_posture_passive_max01 > 1.0)
+         warns += "ms_exec_posture_passive_max01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_exec_posture_standard_min01 < 0.0 || cfg.ms_exec_posture_standard_min01 > 1.0)
+         warns += "ms_exec_posture_standard_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_exec_posture_aggressive_min01 < 0.0 || cfg.ms_exec_posture_aggressive_min01 > 1.0)
+         warns += "ms_exec_posture_aggressive_min01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+      if(cfg.ms_exec_posture_standard_min01 < cfg.ms_exec_posture_passive_max01 ||
+         cfg.ms_exec_posture_aggressive_min01 < cfg.ms_exec_posture_standard_min01)
+         warns += "execution posture thresholds are misordered; NormalizeMicrostructureFamily() enforces passive <= standard <= aggressive.\n";
+#endif
 
       if(cfg.ms_exec_schedule_mode < CFG_INST_EXEC_SCHEDULE_PASSIVE ||
          cfg.ms_exec_schedule_mode > CFG_INST_EXEC_SCHEDULE_URGENCY)
@@ -11729,6 +12311,70 @@ namespace Config
       s+=",msScW="+BoolStr(c.ms_exec_allow_vwap);
       s+=",msScT="+BoolStr(c.ms_exec_allow_twap);
       s+=",msScU="+BoolStr(c.ms_exec_allow_urgency);
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+      s+=",msObsDir="+DoubleToString(c.ms_observability_direct_min01,4);
+      s+=",msObsPxy="+DoubleToString(c.ms_observability_proxy_min01,4);
+      s+=",msObsStr="+DoubleToString(c.ms_observability_structure_only_min01,4);
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+      s+=",msDwOFI="+DoubleToString(c.ms_direct_weight_ofi,4);
+      s+=",msDwOBI="+DoubleToString(c.ms_direct_weight_obi,4);
+      s+=",msDwCVD="+DoubleToString(c.ms_direct_weight_cvd,4);
+      s+=",msDwAbs="+DoubleToString(c.ms_direct_weight_absorption,4);
+      s+=",msDwRes="+DoubleToString(c.ms_direct_weight_resiliency,4);
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+      s+=",msPwDel="+DoubleToString(c.ms_proxy_weight_delta,4);
+      s+=",msPwFpt="+DoubleToString(c.ms_proxy_weight_footprint,4);
+      s+=",msPwPro="+DoubleToString(c.ms_proxy_weight_profile,4);
+      s+=",msPwVSA="+DoubleToString(c.ms_proxy_weight_vsa,4);
+      s+=",msPwAbs="+DoubleToString(c.ms_proxy_weight_absorption,4);
+      s+=",msPwLqR="+DoubleToString(c.ms_proxy_weight_liquidity_reject,4);
+      s+=",msPwVWL="+DoubleToString(c.ms_proxy_weight_vwap_location,4);
+      s+=",msPwVWS="+DoubleToString(c.ms_proxy_weight_vwap_stretch_inv,4);
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+      s+=",msTwVp="+DoubleToString(c.ms_toxicity_weight_vpin,4);
+      s+=",msTwSp="+DoubleToString(c.ms_toxicity_weight_spread_shock,4);
+      s+=",msTwIm="+DoubleToString(c.ms_toxicity_weight_impact_lambda,4);
+      s+=",msTwRi="+DoubleToString(c.ms_toxicity_weight_resiliency_inverse,4);
+      s+=",msTwSl="+DoubleToString(c.ms_toxicity_weight_slippage_stress,4);
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+      s+=",msPTwSp="+DoubleToString(c.ms_proxy_toxicity_weight_spread_shock,4);
+      s+=",msPTwSl="+DoubleToString(c.ms_proxy_toxicity_weight_slippage_stress,4);
+      s+=",msPTwVo="+DoubleToString(c.ms_proxy_toxicity_weight_volatility_stress,4);
+      s+=",msPTwQi="+DoubleToString(c.ms_proxy_toxicity_weight_quote_instability,4);
+      s+=",msPTwOb="+DoubleToString(c.ms_proxy_toxicity_weight_observability_penalty,4);
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+      s+=",msTrCt="+DoubleToString(c.ms_truth_min_continuation01,4);
+      s+=",msTrBo="+DoubleToString(c.ms_truth_min_breakout01,4);
+      s+=",msTrRv="+DoubleToString(c.ms_truth_min_reversal01,4);
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+      s+=",rtSpEd="+DoubleToString(c.router_specialist_alpha_edge_min01,4);
+      s+=",rtSpOb="+DoubleToString(c.router_max_observability_disadvantage01,4);
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+      s+=",rkPxHr="+DoubleToString(c.risk_proxy_size_haircut01,4);
+      s+=",rkStFl="+DoubleToString(c.risk_structure_only_size_floor01,4);
+      s+=",rkStVt="+BoolStr(c.risk_structure_only_breakout_veto);
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+      s+=",msExPs="+DoubleToString(c.ms_exec_posture_passive_max01,4);
+      s+=",msExSt="+DoubleToString(c.ms_exec_posture_standard_min01,4);
+      s+=",msExAg="+DoubleToString(c.ms_exec_posture_aggressive_min01,4);
+#endif
 #endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
@@ -13011,58 +13657,10 @@ namespace Config
       return false;
    }
 
-  inline bool LoadSettingsCSV(Settings &cfg, const string stem="Settings", const bool from_common=true)
-  {
-    const string fn = _SanitizeFileStem(stem) + ".csv";
-    const int flags = FILE_READ | FILE_TXT | (from_common?FILE_COMMON:0);
-    int h = FileOpen(fn, flags, ';');
-    if(h==INVALID_HANDLE){ PrintFormat("LoadSettingsCSV: not found '%s'", fn); return false; }
+   inline bool _CfgApplyCsvCoreKey(Settings &cfg, const string &k, const string &v)
+   {
+      if(false) { }
 
-    // read lines and pick the longest CSV-ish line
-    string best=""; int bestLen=0;
-    while(!FileIsEnding(h))
-    {
-      string line = Trim(FileReadString(h));
-      if(StringLen(line)>bestLen && StringFind(line,"=")>=0 && StringFind(line,",")>=0)
-      { best=line; bestLen=StringLen(line); }
-    }
-    FileClose(h);
-    if(bestLen<=0){ Print("LoadSettingsCSV: no CSV payload"); return false; }
-
-    // tokenization by ','
-    string tok[]; int n=StringSplit(best, ',', tok);
-    bool seenMainReq=false, seenMainAny3=false, seenMainCls=false, seenVsaTick=false;
-    bool seenVsaMode=false, seenVsaNv=false, seenVsaNs=false, seenVsaNt=false;
-    bool seenVsaK=false, seenVsaMtf=false, seenVsaMtfTf=false, seenVsaNorm=false;
-    bool seenVsaLb=false;
-    
-    bool seenVsaRvL=false, seenVsaRvH=false, seenVsaRvVH=false, seenVsaRvUH=false;
-    bool seenVsaRsN=false, seenVsaRsW=false;
-    bool seenVsaClvU=false, seenVsaClvD=false;
-    bool seenVsaAbsL=false, seenVsaAbsN=false, seenVsaScT=false;
-    bool seenVsaSwRV=false, seenVsaSwRS=false, seenVsaSwCL=false;
-    bool seenVsaReqCf=false, seenVsaFtCf=false, seenVsaCfVU=false, seenVsaNDTr=false;
-    
-    bool seenVsaTR=false, seenVsaEmaPair=false, seenVsaEmaF=false, seenVsaEmaS=false;
-    bool seenVsaFinalNorm=false, seenVsaUTPrev=false;
-
-    bool seenVsaMk=false, seenVsaVB=false;
-    bool seenVsaSessV=false, seenVsaSessLb=false;
-    bool seenVsaPR=false, seenVsaPRLb=false, seenVsaPRHi=false, seenVsaPRLo=false;
-    bool seenVsaSprZ=false, seenVsaSprZL=false;
-    bool seenVsaAbsZ=false, seenVsaAbsZH=false;
-    bool seenVsaERLb=false;
-    bool seenVsaSVZ=false, seenVsaSVR=false, seenVsaUTZ=false, seenVsaUTR=false;
-
-    bool seenVsaUTLb=false;
-    bool seenVsaSVCL=false, seenVsaBCCL=false, seenVsaSCCL=false;
-
-    bool seenScVHBs=false; // scanner VSA-hook rel-vol basis
-    
-    for(int i=0;i<n;i++)
-    {
-      string k,v; if(!SplitKV(tok[i],k,v)) continue;
-      // map
       if(k=="assets"){ ParseAssets(v, cfg.asset_list); }
       else if(k=="tf") cfg.tf_entry=(ENUM_TIMEFRAMES)ToInt(v);
       else if(k=="h1") cfg.tf_h1=(ENUM_TIMEFRAMES)ToInt(v);
@@ -13191,6 +13789,21 @@ namespace Config
         cfg.auto_vol_estimator_mode = _ClampVolatilityEstimatorModeInt(ToInt(v));
         _ApplyVolatilityEstimatorMode_NoNormalize(cfg, (VolatilityEstimatorMode)cfg.auto_vol_estimator_mode);
       }
+
+      else return false;
+      return true;
+   }
+   
+   inline bool _CfgApplyCsvStrategyKey(
+      Settings &cfg,
+      const string &k,
+      const string &v,
+      bool &seenMainReq,
+      bool &seenMainAny3,
+      bool &seenMainCls
+   )
+   {
+      if(false) { }
 
       // Directional bias mode (manual vs ICT auto)
       else if(k=="dirBias")
@@ -13627,237 +14240,19 @@ namespace Config
         else if(k=="wykRk") cfg.ict_wyck_risk_max = ToDouble(v);
       #endif
 
-      else if(k=="xPH") cfg.extra_phase_ctx = ToBool(v);
-      else if(k=="wPH") cfg.w_phase_ctx = ToDouble(v);
-      
-      else if(k=="xSBtz") cfg.extra_silverbullet_tz = ToBool(v);
-      else if(k=="wSBtz") cfg.w_silverbullet_tz = ToDouble(v);
+      else return false;
+      return true;
+   }
+   
+   inline bool _CfgApplyCsvScannerKey(
+      Settings &cfg,
+      const string &k,
+      const string &v,
+      bool &seenScVHBs
+   )
+   {
+      if(false) { }
 
-      else if(k=="xAMD")  cfg.extra_amd_htf = ToBool(v);
-      else if(k=="wAMDh1") cfg.w_amd_h1 = ToDouble(v);
-      else if(k=="wAMDh4") cfg.w_amd_h4 = ToDouble(v);
-
-      else if(k=="xPO3")   cfg.extra_po3_htf = ToBool(v);
-      else if(k=="wPO3h1") cfg.w_po3_h1 = ToDouble(v);
-      else if(k=="wPO3h4") cfg.w_po3_h4 = ToDouble(v);
-
-      else if(k=="xWYT") cfg.extra_wyckoff_turn = ToBool(v);
-      else if(k=="wWYT") cfg.w_wyckoff_turn = ToDouble(v);
-
-      #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
-        else if(k=="wyRLB")   cfg.wyck_range_lookback = ToInt(v);
-        else if(k=="wyMinRB") cfg.wyck_min_range_bars = ToInt(v);
-        else if(k=="wyEqATR") cfg.wyck_eq_tol_atr = ToDouble(v);
-        else if(k=="wyMaxATR")cfg.wyck_max_range_atr = ToDouble(v);
-
-        else if(k=="wyATRc")  cfg.wyck_use_atr_compression = ToBool(v);
-        else if(k=="wyATRn")  cfg.wyck_atr_len = ToInt(v);
-        else if(k=="wyATRm")  cfg.wyck_atr_ma_len = ToInt(v);
-
-        else if(k=="wyBBc")   cfg.wyck_use_bb_compression = ToBool(v);
-        else if(k=="wyBBn")   cfg.wyck_bb_len = ToInt(v);
-        else if(k=="wyBBd")   cfg.wyck_bb_dev = ToDouble(v);
-        else if(k=="wyBBw")   cfg.wyck_bb_width_thr = ToDouble(v);
-
-        else if(k=="wySwL")   cfg.wyck_swingL = ToInt(v);
-        else if(k=="wySwR")   cfg.wyck_swingR = ToInt(v);
-
-        else if(k=="wyBosC")  cfg.wyck_bos_confirm_closes = ToInt(v);
-
-        else if(k=="wyManQ")  cfg.wyck_manip_min_quality = ToDouble(v);
-        else if(k=="wyWick")  cfg.wyck_wick_min_ratio = ToDouble(v);
-        else if(k=="wyClsIn") cfg.wyck_close_inside_min = ToDouble(v);
-
-        else if(k=="wyARw")   cfg.wyck_ar_window_bars = ToInt(v);
-        else if(k=="wyVolN")  cfg.wyck_vol_len = ToInt(v);
-        else if(k=="wyVolM")  cfg.wyck_vol_mult = ToDouble(v);
-
-        // WCI (Wyckoff Composite Indicator) core settings
-        else if(k=="wyWCIOn")  cfg.wyck_wci_enable = ToBool(v);
-
-        else if(k=="wyWCIAtr") cfg.wyck_wci_atr_period = ToInt(v);
-        else if(k=="wyWCIVol") cfg.wyck_wci_vol_ma_period = ToInt(v);
-        else if(k=="wyWCIRLB") cfg.wyck_wci_range_lookback = ToInt(v);
-        else if(k=="wyWCIFst") cfg.wyck_wci_trend_ema_fast = ToInt(v);
-        else if(k=="wyWCISlw") cfg.wyck_wci_trend_ema_slow = ToInt(v);
-        else if(k=="wyWCIMom") cfg.wyck_wci_momentum_lookback = ToInt(v);
-        else if(k=="wyWCINPn") cfg.wyck_wci_np_norm_lookback = ToInt(v);
-
-        else if(k=="wyWCIFXW") cfg.wyck_wci_fx_tickvol_weighting = ToBool(v);
-        else if(k=="wyWCIFXA") cfg.wyck_wci_fx_atr_sma_period = ToInt(v);
-
-        else if(k=="wyWCIRvC") cfg.wyck_wci_rv_climax = ToDouble(v);
-        else if(k=="wyWCIRvL") cfg.wyck_wci_rv_low = ToDouble(v);
-        else if(k=="wyWCIEAb") cfg.wyck_wci_evr_absorption_max = ToDouble(v);
-        else if(k=="wyWCIETr") cfg.wyck_wci_evr_trend_min = ToDouble(v);
-        else if(k=="wyWCISCp") cfg.wyck_wci_spring_cpv_min = ToDouble(v);
-        else if(k=="wyWCIUTp") cfg.wyck_wci_upthrust_cpv_max = ToDouble(v);
-        else if(k=="wyWCIMUp") cfg.wyck_wci_phase_comp_mark_up = ToDouble(v);
-        else if(k=="wyWCIMDn") cfg.wyck_wci_phase_comp_mark_dn = ToDouble(v);
-
-        else if(k=="wyWCIA1")  cfg.wyck_wci_a_np = ToDouble(v);
-        else if(k=="wyWCIA2")  cfg.wyck_wci_a_evr = ToDouble(v);
-        else if(k=="wyWCIA3")  cfg.wyck_wci_a_trend = ToDouble(v);
-        else if(k=="wyWCIA4")  cfg.wyck_wci_a_momo = ToDouble(v);
-
-        else if(k=="wyWCIAS1") cfg.wyck_wci_as_w1_prox = ToDouble(v);
-        else if(k=="wyWCIAS2") cfg.wyck_wci_as_w2_rv = ToDouble(v);
-        else if(k=="wyWCIAS3") cfg.wyck_wci_as_w3_evr = ToDouble(v);
-
-        else if(k=="wyWCIDS1") cfg.wyck_wci_ds_w1_prox = ToDouble(v);
-        else if(k=="wyWCIDS2") cfg.wyck_wci_ds_w2_rv = ToDouble(v);
-        else if(k=="wyWCIDS3") cfg.wyck_wci_ds_w3_evr = ToDouble(v);
-      #endif
-
-      else if(k=="xMTFZ")  cfg.extra_mtf_zones = ToBool(v);
-      else if(k=="wZ1")    cfg.w_mtf_zone_h1 = ToDouble(v);
-      else if(k=="wZ4")    cfg.w_mtf_zone_h4 = ToDouble(v);
-      else if(k=="zMaxATR") cfg.mtf_zone_max_dist_atr = ToDouble(v);
-
-      // Feature toggles
-      else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
-      else if(k=="vsaMax") cfg.vsa_penalty_max = ToDouble(v);
-
-      // UTD (Universal Trend Detector)
-      else if(k=="utd")      cfg.utd_enable = ToBool(v);
-      else if(k=="utdEff")   cfg.utd_eff_period = ToInt(v);
-      else if(k=="utdMom")   cfg.utd_mom_period = ToInt(v);
-      else if(k=="utdAS")    cfg.utd_atr_short  = ToInt(v);
-      else if(k=="utdAL")    cfg.utd_atr_long   = ToInt(v);
-      else if(k=="utdFdi")   cfg.utd_fdi_period = ToInt(v);
-      else if(k=="utdBuy")   cfg.utd_buy_th     = ToDouble(v);
-      else if(k=="utdStrong")cfg.utd_strong_th  = ToDouble(v);
-      else if(k=="utdExit")  cfg.utd_exit_th    = ToDouble(v);
-      else if(k=="utdMtf")   cfg.utd_mtf_confirm= ToBool(v);
-      else if(k=="utdMtfTf") cfg.utd_mtf_tf     = (ENUM_TIMEFRAMES)ToInt(v);
-      
-      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
-        else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
-      #endif
-
-      else if(k=="vsaLb")      { cfg.vsa_lookback = ToInt(v); seenVsaLb=true; }
-
-      else if(k=="vsaMode")    { cfg.vsa_mode = ToInt(v); seenVsaMode=true; }
-      else if(k=="vsaNv")      { cfg.vsa_vol_lb = ToInt(v); seenVsaNv=true; }
-      else if(k=="vsaNs")      { cfg.vsa_spread_lb = ToInt(v); seenVsaNs=true; }
-      else if(k=="vsaNt")      { cfg.vsa_trend_lb = ToInt(v); seenVsaNt=true; }
-      else if(k=="vsaK")       { cfg.vsa_strength_k = ToDouble(v); seenVsaK=true; }
-      else if(k=="vsaMtf")     { cfg.vsa_mtf_confirm = ToBool(v); seenVsaMtf=true; }
-      else if(k=="vsaMtfTf")   { cfg.vsa_mtf_tf = (ENUM_TIMEFRAMES)ToInt(v); seenVsaMtfTf=true; }
-      else if(k=="vsaNorm")    { cfg.vsa_normscore_abs_th = ToDouble(v); seenVsaNorm=true; }
-      
-      else if(k=="vsaRvL")    { cfg.vsa_rv_low_th = ToDouble(v); seenVsaRvL=true; }
-      else if(k=="vsaRvH")    { cfg.vsa_rv_high_th = ToDouble(v); seenVsaRvH=true; }
-      else if(k=="vsaRvVH")   { cfg.vsa_rv_very_high_th = ToDouble(v); seenVsaRvVH=true; }
-      else if(k=="vsaRvUH")   { cfg.vsa_rv_ultra_high_th = ToDouble(v); seenVsaRvUH=true; }
-
-      else if(k=="vsaRsN")    { cfg.vsa_rs_narrow_th = ToDouble(v); seenVsaRsN=true; }
-      else if(k=="vsaRsW")    { cfg.vsa_rs_wide_th = ToDouble(v); seenVsaRsW=true; }
-
-      else if(k=="vsaClvU")   { cfg.vsa_clv_strong_up_th = ToDouble(v); seenVsaClvU=true; }
-      else if(k=="vsaClvD")   { cfg.vsa_clv_strong_dn_th = ToDouble(v); seenVsaClvD=true; }
-
-      else if(k=="vsaAbsL")   { cfg.vsa_abs_lb = ToInt(v); seenVsaAbsL=true; }
-      else if(k=="vsaAbsN")   { cfg.vsa_norm_abs_high_th = ToDouble(v); seenVsaAbsN=true; }
-      else if(k=="vsaScT")    { cfg.vsa_score_strong_th = ToDouble(v); seenVsaScT=true; }
-
-      else if(k=="vsaSwRV")   { cfg.vsa_score_w_rv = ToDouble(v); seenVsaSwRV=true; }
-      else if(k=="vsaSwRS")   { cfg.vsa_score_w_rs = ToDouble(v); seenVsaSwRS=true; }
-      else if(k=="vsaSwCL")   { cfg.vsa_score_w_clv = ToDouble(v); seenVsaSwCL=true; }
-      
-      else if(k=="vsaTR")        { cfg.vsa_use_true_range = ToBool(v); seenVsaTR=true; }
-      else if(k=="vsaEmaPair")   { cfg.vsa_trend_use_ema_pair = ToBool(v); seenVsaEmaPair=true; }
-      else if(k=="vsaEmaF")      { cfg.vsa_ema_fast = ToInt(v); seenVsaEmaF=true; }
-      else if(k=="vsaEmaS")      { cfg.vsa_ema_slow = ToInt(v); seenVsaEmaS=true; }
-      else if(k=="vsaFinalNorm") { cfg.vsa_use_normscore_gate_on_final = ToBool(v); seenVsaFinalNorm=true; }
-      else if(k=="vsaUTPrev")    { cfg.vsa_require_prev_hhll_ut_shake = ToBool(v); seenVsaUTPrev=true; }
-
-      else if(k=="vsaReqCf")  { cfg.vsa_require_confirm = ToBool(v); seenVsaReqCf=true; }
-      else if(k=="vsaFtCf")   { cfg.vsa_followthrough_confirm_enable = ToBool(v); seenVsaFtCf=true; }
-      else if(k=="vsaCfVU")   { cfg.vsa_confirm_volume_up_only = ToBool(v); seenVsaCfVU=true; }
-      else if(k=="vsaNDTr")   { cfg.vsa_alert_ndns_require_trend = ToBool(v); seenVsaNDTr=true; }
-      
-      else if(k=="vsaMk")      { cfg.vsa_market_mode = ToInt(v); seenVsaMk=true; }
-      else if(k=="vsaVB")      { cfg.vsa_vol_class_mode = ToInt(v); seenVsaVB=true; }
-
-      else if(k=="vsaSessV")   { cfg.vsa_use_session_vol_norm = ToBool(v); seenVsaSessV=true; }
-      else if(k=="vsaSessLb")  { cfg.vsa_session_vol_lb = ToInt(v); seenVsaSessLb=true; }
-
-      else if(k=="vsaPR")      { cfg.vsa_use_vol_percent_rank = ToBool(v); seenVsaPR=true; }
-      else if(k=="vsaPRLb")    { cfg.vsa_percent_rank_lb = ToInt(v); seenVsaPRLb=true; }
-      else if(k=="vsaPRHi")    { cfg.vsa_percent_rank_high_th = ToDouble(v); seenVsaPRHi=true; }
-      else if(k=="vsaPRLo")    { cfg.vsa_percent_rank_low_th = ToDouble(v); seenVsaPRLo=true; }
-
-      else if(k=="vsaSprZ")    { cfg.vsa_spread_zscore_enable = ToBool(v); seenVsaSprZ=true; }
-      else if(k=="vsaSprZL")   { cfg.vsa_spread_z_lb = ToInt(v); seenVsaSprZL=true; }
-
-      else if(k=="vsaAbsZ")    { cfg.vsa_absorption_zscore_enable = ToBool(v); seenVsaAbsZ=true; }
-      else if(k=="vsaAbsZH")   { cfg.vsa_absorption_z_high_th = ToDouble(v); seenVsaAbsZH=true; }
-
-      else if(k=="vsaERLb")    { cfg.vsa_er_lb = ToInt(v); seenVsaERLb=true; }
-      else if(k=="vsaUTLb")   { cfg.vsa_utso_breakout_lb = ToInt(v); seenVsaUTLb=true; }
-
-      else if(k=="vsaSVZ")     { cfg.vsa_stopvol_zv_th = ToDouble(v); seenVsaSVZ=true; }
-      else if(k=="vsaSVR")     { cfg.vsa_stopvol_rs_th = ToDouble(v); seenVsaSVR=true; }
-      else if(k=="vsaUTZ")     { cfg.vsa_utso_zv_th = ToDouble(v); seenVsaUTZ=true; }
-      else if(k=="vsaUTR")     { cfg.vsa_utso_rs_th = ToDouble(v); seenVsaUTR=true; }
-
-      else if(k=="vsaSVCL")   { cfg.vsa_stopvol_clv_min = ToDouble(v); seenVsaSVCL=true; }
-      else if(k=="vsaBCCL")   { cfg.vsa_buyclimax_clv_max = ToDouble(v); seenVsaBCCL=true; }
-      else if(k=="vsaSCCL")   { cfg.vsa_sellclimax_clv_min = ToDouble(v); seenVsaSCCL=true; }
-      
-      else if(k=="struct") cfg.structure_enable = ToBool(v);
-      else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
-      else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
-
-      // LFM global math / weighting params
-      else if(k=="lfmAtr")  cfg.lfm_atr_period = ToInt(v);
-      else if(k=="lfmVolE") cfg.lfm_vol_ema = ToInt(v);
-      else if(k=="lfmPerE") cfg.lfm_per_ema = ToInt(v);
-      else if(k=="lfmArE")  cfg.lfm_ar_ema = ToInt(v);
-      else if(k=="lfmSprE") cfg.lfm_spread_ema = ToInt(v);
-      else if(k=="lfmEps")  cfg.lfm_epsilon = ToDouble(v);
-
-      else if(k=="lfmWPer") cfg.lfm_w_per = ToDouble(v);
-      else if(k=="lfmWVCI") cfg.lfm_w_vci = ToDouble(v);
-      else if(k=="lfmWSPI") cfg.lfm_w_spi = ToDouble(v);
-      else if(k=="lfmWVNF") cfg.lfm_w_vnf = ToDouble(v);
-      else if(k=="lfmWAR")  cfg.lfm_w_ar = ToDouble(v);
-
-      else if(k=="lfmFXOn") cfg.lfm_fx_session_weight_on = ToBool(v);
-      else if(k=="lfmFXOv") cfg.lfm_fx_weight_overlap = ToDouble(v);
-      else if(k=="lfmFXLN") cfg.lfm_fx_weight_london_or_ny = ToDouble(v);
-      else if(k=="lfmFXAs") cfg.lfm_fx_weight_asia = ToDouble(v);
-
-      else if(k=="lfmDpOn") cfg.lfm_depth_enhance_on = ToBool(v);
-      else if(k=="lfmDpW")  cfg.lfm_depth_weight = ToDouble(v);
-      else if(k=="lfmDpBW") cfg.lfm_base_weight_after_depth = ToDouble(v);
-      
-      // Post-confirm extras (DOM / correlation)
-      else if(k=="xDOM")    cfg.extra_dom_imbalance = ToBool(v);
-      else if(k=="wDOM")    cfg.w_dom_imbalance = ToDouble(v);
-      else if(k=="domPad")  cfg.dom_zone_pad_points = ToInt(v);
-      else if(k=="domMin")  cfg.dom_min_abs_imb = ToDouble(v);
-      else if(k=="domDbg")  cfg.debug_dom = ToBool(v);
-      
-      // OBI aliases (same meaning as xDOM/wDOM)
-      else if(k=="xOBI") cfg.extra_dom_imbalance = ToBool(v);
-      else if(k=="wOBI") cfg.w_dom_imbalance = ToDouble(v);
-
-      // Trendlines
-      else if(k=="xTL") cfg.extra_trendlines = ToBool(v);
-      else if(k=="wTL") cfg.w_trendlines = ToDouble(v);
-
-      else if(k=="xCorr")    cfg.extra_correlation = ToBool(v);
-      else if(k=="wCorr")    cfg.w_correlation = ToDouble(v);
-      else if(k=="corrLb")   cfg.corr_lookback = ToInt(v);
-      else if(k=="corrAbs")  cfg.corr_min_abs = ToDouble(v);
-      else if(k=="corrRef")  cfg.corr_ref_symbol = v;
-      else if(k=="corrAuto") cfg.corr_auto_ref_fallback = ToBool(v);
-      else if(k=="corrTF")   cfg.corr_ema_tf = (ENUM_TIMEFRAMES)ToInt(v);
-      else if(k=="corrEF")   cfg.corr_ema_fast = ToInt(v);
-      else if(k=="corrES")   cfg.corr_ema_slow = ToInt(v);
-      
       else if(k=="scTF")  cfg.scan_tf_mask = ToInt(v);
       else if(k=="scInt") cfg.auto_scan_interval_sec = ToInt(v);
       else if(k=="scLB")  cfg.auto_scan_lookback_bars = ToInt(v);
@@ -14173,6 +14568,70 @@ namespace Config
         else if(k=="msScW")   cfg.ms_exec_allow_vwap = ToBool(v);
         else if(k=="msScT")   cfg.ms_exec_allow_twap = ToBool(v);
         else if(k=="msScU")   cfg.ms_exec_allow_urgency = ToBool(v);
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+        else if(k=="msObsDir") cfg.ms_observability_direct_min01 = ToDouble(v);
+        else if(k=="msObsPxy") cfg.ms_observability_proxy_min01 = ToDouble(v);
+        else if(k=="msObsStr") cfg.ms_observability_structure_only_min01 = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+        else if(k=="msDwOFI") cfg.ms_direct_weight_ofi = ToDouble(v);
+        else if(k=="msDwOBI") cfg.ms_direct_weight_obi = ToDouble(v);
+        else if(k=="msDwCVD") cfg.ms_direct_weight_cvd = ToDouble(v);
+        else if(k=="msDwAbs") cfg.ms_direct_weight_absorption = ToDouble(v);
+        else if(k=="msDwRes") cfg.ms_direct_weight_resiliency = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+        else if(k=="msPwDel") cfg.ms_proxy_weight_delta = ToDouble(v);
+        else if(k=="msPwFpt") cfg.ms_proxy_weight_footprint = ToDouble(v);
+        else if(k=="msPwPro") cfg.ms_proxy_weight_profile = ToDouble(v);
+        else if(k=="msPwVSA") cfg.ms_proxy_weight_vsa = ToDouble(v);
+        else if(k=="msPwAbs") cfg.ms_proxy_weight_absorption = ToDouble(v);
+        else if(k=="msPwLqR") cfg.ms_proxy_weight_liquidity_reject = ToDouble(v);
+        else if(k=="msPwVWL") cfg.ms_proxy_weight_vwap_location = ToDouble(v);
+        else if(k=="msPwVWS") cfg.ms_proxy_weight_vwap_stretch_inv = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+        else if(k=="msTwVp") cfg.ms_toxicity_weight_vpin = ToDouble(v);
+        else if(k=="msTwSp") cfg.ms_toxicity_weight_spread_shock = ToDouble(v);
+        else if(k=="msTwIm") cfg.ms_toxicity_weight_impact_lambda = ToDouble(v);
+        else if(k=="msTwRi") cfg.ms_toxicity_weight_resiliency_inverse = ToDouble(v);
+        else if(k=="msTwSl") cfg.ms_toxicity_weight_slippage_stress = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+        else if(k=="msPTwSp") cfg.ms_proxy_toxicity_weight_spread_shock = ToDouble(v);
+        else if(k=="msPTwSl") cfg.ms_proxy_toxicity_weight_slippage_stress = ToDouble(v);
+        else if(k=="msPTwVo") cfg.ms_proxy_toxicity_weight_volatility_stress = ToDouble(v);
+        else if(k=="msPTwQi") cfg.ms_proxy_toxicity_weight_quote_instability = ToDouble(v);
+        else if(k=="msPTwOb") cfg.ms_proxy_toxicity_weight_observability_penalty = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+        else if(k=="msTrCt") cfg.ms_truth_min_continuation01 = ToDouble(v);
+        else if(k=="msTrBo") cfg.ms_truth_min_breakout01 = ToDouble(v);
+        else if(k=="msTrRv") cfg.ms_truth_min_reversal01 = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+        else if(k=="rtSpEd") cfg.router_specialist_alpha_edge_min01 = ToDouble(v);
+        else if(k=="rtSpOb") cfg.router_max_observability_disadvantage01 = ToDouble(v);
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+        else if(k=="rkPxHr") cfg.risk_proxy_size_haircut01 = ToDouble(v);
+        else if(k=="rkStFl") cfg.risk_structure_only_size_floor01 = ToDouble(v);
+        else if(k=="rkStVt") cfg.risk_structure_only_breakout_veto = ToBool(v);
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+        else if(k=="msExPs") cfg.ms_exec_posture_passive_max01 = ToDouble(v);
+        else if(k=="msExSt") cfg.ms_exec_posture_standard_min01 = ToDouble(v);
+        else if(k=="msExAg") cfg.ms_exec_posture_aggressive_min01 = ToDouble(v);
+#endif
 #endif
 
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
@@ -14477,7 +14936,15 @@ namespace Config
       else if(k=="cfLFMIc") cfg.cf_lfm_contra_imb_floor = ToDouble(v);
       else if(k=="cfLFMTS") cfg.cf_lfm_tight_score_min = ToDouble(v);
       else if(k=="cfLFMTI") cfg.cf_lfm_tight_imb_min = ToDouble(v);
-      
+
+      else return false;
+      return true;
+   }
+   
+   inline bool _CfgApplyCsvTailKey(Settings &cfg, const string &k, const string &v)
+   {
+      if(false) { }
+
       // Liquidity Pools (Lux-style)
       else if(k=="liqMinTouch") cfg.liqPoolMinTouches = ToInt(v);
       else if(k=="liqGap")      cfg.liqPoolGapBars = ToInt(v);
@@ -14632,6 +15099,299 @@ namespace Config
         else if(k=="magic")
           cfg.magic_number = (long)ToLong(v);
       #endif
+
+      else return false;
+      return true;
+   }
+
+  inline bool LoadSettingsCSV(Settings &cfg, const string stem="Settings", const bool from_common=true)
+  {
+    const string fn = _SanitizeFileStem(stem) + ".csv";
+    const int flags = FILE_READ | FILE_TXT | (from_common?FILE_COMMON:0);
+    int h = FileOpen(fn, flags, ';');
+    if(h==INVALID_HANDLE){ PrintFormat("LoadSettingsCSV: not found '%s'", fn); return false; }
+
+    // read lines and pick the longest CSV-ish line
+    string best=""; int bestLen=0;
+    while(!FileIsEnding(h))
+    {
+      string line = Trim(FileReadString(h));
+      if(StringLen(line)>bestLen && StringFind(line,"=")>=0 && StringFind(line,",")>=0)
+      { best=line; bestLen=StringLen(line); }
+    }
+    FileClose(h);
+    if(bestLen<=0){ Print("LoadSettingsCSV: no CSV payload"); return false; }
+
+    // tokenization by ','
+    string tok[]; int n=StringSplit(best, ',', tok);
+    bool seenMainReq=false, seenMainAny3=false, seenMainCls=false, seenVsaTick=false;
+    bool seenVsaMode=false, seenVsaNv=false, seenVsaNs=false, seenVsaNt=false;
+    bool seenVsaK=false, seenVsaMtf=false, seenVsaMtfTf=false, seenVsaNorm=false;
+    bool seenVsaLb=false;
+    
+    bool seenVsaRvL=false, seenVsaRvH=false, seenVsaRvVH=false, seenVsaRvUH=false;
+    bool seenVsaRsN=false, seenVsaRsW=false;
+    bool seenVsaClvU=false, seenVsaClvD=false;
+    bool seenVsaAbsL=false, seenVsaAbsN=false, seenVsaScT=false;
+    bool seenVsaSwRV=false, seenVsaSwRS=false, seenVsaSwCL=false;
+    bool seenVsaReqCf=false, seenVsaFtCf=false, seenVsaCfVU=false, seenVsaNDTr=false;
+    
+    bool seenVsaTR=false, seenVsaEmaPair=false, seenVsaEmaF=false, seenVsaEmaS=false;
+    bool seenVsaFinalNorm=false, seenVsaUTPrev=false;
+
+    bool seenVsaMk=false, seenVsaVB=false;
+    bool seenVsaSessV=false, seenVsaSessLb=false;
+    bool seenVsaPR=false, seenVsaPRLb=false, seenVsaPRHi=false, seenVsaPRLo=false;
+    bool seenVsaSprZ=false, seenVsaSprZL=false;
+    bool seenVsaAbsZ=false, seenVsaAbsZH=false;
+    bool seenVsaERLb=false;
+    bool seenVsaSVZ=false, seenVsaSVR=false, seenVsaUTZ=false, seenVsaUTR=false;
+
+    bool seenVsaUTLb=false;
+    bool seenVsaSVCL=false, seenVsaBCCL=false, seenVsaSCCL=false;
+
+    bool seenScVHBs=false; // scanner VSA-hook rel-vol basis
+    
+    for(int i=0;i<n;i++)
+    {
+      string k,v; if(!SplitKV(tok[i],k,v)) continue;
+      // map
+      if(_CfgApplyCsvCoreKey(cfg, k, v)) { }
+      else if(_CfgApplyCsvStrategyKey(cfg, k, v, seenMainReq, seenMainAny3, seenMainCls)) { }
+
+      else if(k=="xPH") cfg.extra_phase_ctx = ToBool(v);
+      else if(k=="wPH") cfg.w_phase_ctx = ToDouble(v);
+      
+      else if(k=="xSBtz") cfg.extra_silverbullet_tz = ToBool(v);
+      else if(k=="wSBtz") cfg.w_silverbullet_tz = ToDouble(v);
+
+      else if(k=="xAMD")  cfg.extra_amd_htf = ToBool(v);
+      else if(k=="wAMDh1") cfg.w_amd_h1 = ToDouble(v);
+      else if(k=="wAMDh4") cfg.w_amd_h4 = ToDouble(v);
+
+      else if(k=="xPO3")   cfg.extra_po3_htf = ToBool(v);
+      else if(k=="wPO3h1") cfg.w_po3_h1 = ToDouble(v);
+      else if(k=="wPO3h4") cfg.w_po3_h4 = ToDouble(v);
+
+      else if(k=="xWYT") cfg.extra_wyckoff_turn = ToBool(v);
+      else if(k=="wWYT") cfg.w_wyckoff_turn = ToDouble(v);
+
+      #ifdef CFG_HAS_WYCK_CYCLE_SETTINGS
+        else if(k=="wyRLB")   cfg.wyck_range_lookback = ToInt(v);
+        else if(k=="wyMinRB") cfg.wyck_min_range_bars = ToInt(v);
+        else if(k=="wyEqATR") cfg.wyck_eq_tol_atr = ToDouble(v);
+        else if(k=="wyMaxATR")cfg.wyck_max_range_atr = ToDouble(v);
+
+        else if(k=="wyATRc")  cfg.wyck_use_atr_compression = ToBool(v);
+        else if(k=="wyATRn")  cfg.wyck_atr_len = ToInt(v);
+        else if(k=="wyATRm")  cfg.wyck_atr_ma_len = ToInt(v);
+
+        else if(k=="wyBBc")   cfg.wyck_use_bb_compression = ToBool(v);
+        else if(k=="wyBBn")   cfg.wyck_bb_len = ToInt(v);
+        else if(k=="wyBBd")   cfg.wyck_bb_dev = ToDouble(v);
+        else if(k=="wyBBw")   cfg.wyck_bb_width_thr = ToDouble(v);
+
+        else if(k=="wySwL")   cfg.wyck_swingL = ToInt(v);
+        else if(k=="wySwR")   cfg.wyck_swingR = ToInt(v);
+
+        else if(k=="wyBosC")  cfg.wyck_bos_confirm_closes = ToInt(v);
+
+        else if(k=="wyManQ")  cfg.wyck_manip_min_quality = ToDouble(v);
+        else if(k=="wyWick")  cfg.wyck_wick_min_ratio = ToDouble(v);
+        else if(k=="wyClsIn") cfg.wyck_close_inside_min = ToDouble(v);
+
+        else if(k=="wyARw")   cfg.wyck_ar_window_bars = ToInt(v);
+        else if(k=="wyVolN")  cfg.wyck_vol_len = ToInt(v);
+        else if(k=="wyVolM")  cfg.wyck_vol_mult = ToDouble(v);
+
+        // WCI (Wyckoff Composite Indicator) core settings
+        else if(k=="wyWCIOn")  cfg.wyck_wci_enable = ToBool(v);
+
+        else if(k=="wyWCIAtr") cfg.wyck_wci_atr_period = ToInt(v);
+        else if(k=="wyWCIVol") cfg.wyck_wci_vol_ma_period = ToInt(v);
+        else if(k=="wyWCIRLB") cfg.wyck_wci_range_lookback = ToInt(v);
+        else if(k=="wyWCIFst") cfg.wyck_wci_trend_ema_fast = ToInt(v);
+        else if(k=="wyWCISlw") cfg.wyck_wci_trend_ema_slow = ToInt(v);
+        else if(k=="wyWCIMom") cfg.wyck_wci_momentum_lookback = ToInt(v);
+        else if(k=="wyWCINPn") cfg.wyck_wci_np_norm_lookback = ToInt(v);
+
+        else if(k=="wyWCIFXW") cfg.wyck_wci_fx_tickvol_weighting = ToBool(v);
+        else if(k=="wyWCIFXA") cfg.wyck_wci_fx_atr_sma_period = ToInt(v);
+
+        else if(k=="wyWCIRvC") cfg.wyck_wci_rv_climax = ToDouble(v);
+        else if(k=="wyWCIRvL") cfg.wyck_wci_rv_low = ToDouble(v);
+        else if(k=="wyWCIEAb") cfg.wyck_wci_evr_absorption_max = ToDouble(v);
+        else if(k=="wyWCIETr") cfg.wyck_wci_evr_trend_min = ToDouble(v);
+        else if(k=="wyWCISCp") cfg.wyck_wci_spring_cpv_min = ToDouble(v);
+        else if(k=="wyWCIUTp") cfg.wyck_wci_upthrust_cpv_max = ToDouble(v);
+        else if(k=="wyWCIMUp") cfg.wyck_wci_phase_comp_mark_up = ToDouble(v);
+        else if(k=="wyWCIMDn") cfg.wyck_wci_phase_comp_mark_dn = ToDouble(v);
+
+        else if(k=="wyWCIA1")  cfg.wyck_wci_a_np = ToDouble(v);
+        else if(k=="wyWCIA2")  cfg.wyck_wci_a_evr = ToDouble(v);
+        else if(k=="wyWCIA3")  cfg.wyck_wci_a_trend = ToDouble(v);
+        else if(k=="wyWCIA4")  cfg.wyck_wci_a_momo = ToDouble(v);
+
+        else if(k=="wyWCIAS1") cfg.wyck_wci_as_w1_prox = ToDouble(v);
+        else if(k=="wyWCIAS2") cfg.wyck_wci_as_w2_rv = ToDouble(v);
+        else if(k=="wyWCIAS3") cfg.wyck_wci_as_w3_evr = ToDouble(v);
+
+        else if(k=="wyWCIDS1") cfg.wyck_wci_ds_w1_prox = ToDouble(v);
+        else if(k=="wyWCIDS2") cfg.wyck_wci_ds_w2_rv = ToDouble(v);
+        else if(k=="wyWCIDS3") cfg.wyck_wci_ds_w3_evr = ToDouble(v);
+      #endif
+
+      else if(k=="xMTFZ")  cfg.extra_mtf_zones = ToBool(v);
+      else if(k=="wZ1")    cfg.w_mtf_zone_h1 = ToDouble(v);
+      else if(k=="wZ4")    cfg.w_mtf_zone_h4 = ToDouble(v);
+      else if(k=="zMaxATR") cfg.mtf_zone_max_dist_atr = ToDouble(v);
+
+      // Feature toggles
+      else if(k=="vsa")    cfg.vsa_enable = ToBool(v);
+      else if(k=="vsaMax") cfg.vsa_penalty_max = ToDouble(v);
+
+      // UTD (Universal Trend Detector)
+      else if(k=="utd")      cfg.utd_enable = ToBool(v);
+      else if(k=="utdEff")   cfg.utd_eff_period = ToInt(v);
+      else if(k=="utdMom")   cfg.utd_mom_period = ToInt(v);
+      else if(k=="utdAS")    cfg.utd_atr_short  = ToInt(v);
+      else if(k=="utdAL")    cfg.utd_atr_long   = ToInt(v);
+      else if(k=="utdFdi")   cfg.utd_fdi_period = ToInt(v);
+      else if(k=="utdBuy")   cfg.utd_buy_th     = ToDouble(v);
+      else if(k=="utdStrong")cfg.utd_strong_th  = ToDouble(v);
+      else if(k=="utdExit")  cfg.utd_exit_th    = ToDouble(v);
+      else if(k=="utdMtf")   cfg.utd_mtf_confirm= ToBool(v);
+      else if(k=="utdMtfTf") cfg.utd_mtf_tf     = (ENUM_TIMEFRAMES)ToInt(v);
+      
+      #ifdef CFG_HAS_VSA_ALLOW_TICK_VOLUME
+        else if(k=="vsaTick"){ cfg.vsa_allow_tick_volume = ToBool(v); seenVsaTick=true; }
+      #endif
+
+      else if(k=="vsaLb")      { cfg.vsa_lookback = ToInt(v); seenVsaLb=true; }
+
+      else if(k=="vsaMode")    { cfg.vsa_mode = ToInt(v); seenVsaMode=true; }
+      else if(k=="vsaNv")      { cfg.vsa_vol_lb = ToInt(v); seenVsaNv=true; }
+      else if(k=="vsaNs")      { cfg.vsa_spread_lb = ToInt(v); seenVsaNs=true; }
+      else if(k=="vsaNt")      { cfg.vsa_trend_lb = ToInt(v); seenVsaNt=true; }
+      else if(k=="vsaK")       { cfg.vsa_strength_k = ToDouble(v); seenVsaK=true; }
+      else if(k=="vsaMtf")     { cfg.vsa_mtf_confirm = ToBool(v); seenVsaMtf=true; }
+      else if(k=="vsaMtfTf")   { cfg.vsa_mtf_tf = (ENUM_TIMEFRAMES)ToInt(v); seenVsaMtfTf=true; }
+      else if(k=="vsaNorm")    { cfg.vsa_normscore_abs_th = ToDouble(v); seenVsaNorm=true; }
+      
+      else if(k=="vsaRvL")    { cfg.vsa_rv_low_th = ToDouble(v); seenVsaRvL=true; }
+      else if(k=="vsaRvH")    { cfg.vsa_rv_high_th = ToDouble(v); seenVsaRvH=true; }
+      else if(k=="vsaRvVH")   { cfg.vsa_rv_very_high_th = ToDouble(v); seenVsaRvVH=true; }
+      else if(k=="vsaRvUH")   { cfg.vsa_rv_ultra_high_th = ToDouble(v); seenVsaRvUH=true; }
+
+      else if(k=="vsaRsN")    { cfg.vsa_rs_narrow_th = ToDouble(v); seenVsaRsN=true; }
+      else if(k=="vsaRsW")    { cfg.vsa_rs_wide_th = ToDouble(v); seenVsaRsW=true; }
+
+      else if(k=="vsaClvU")   { cfg.vsa_clv_strong_up_th = ToDouble(v); seenVsaClvU=true; }
+      else if(k=="vsaClvD")   { cfg.vsa_clv_strong_dn_th = ToDouble(v); seenVsaClvD=true; }
+
+      else if(k=="vsaAbsL")   { cfg.vsa_abs_lb = ToInt(v); seenVsaAbsL=true; }
+      else if(k=="vsaAbsN")   { cfg.vsa_norm_abs_high_th = ToDouble(v); seenVsaAbsN=true; }
+      else if(k=="vsaScT")    { cfg.vsa_score_strong_th = ToDouble(v); seenVsaScT=true; }
+
+      else if(k=="vsaSwRV")   { cfg.vsa_score_w_rv = ToDouble(v); seenVsaSwRV=true; }
+      else if(k=="vsaSwRS")   { cfg.vsa_score_w_rs = ToDouble(v); seenVsaSwRS=true; }
+      else if(k=="vsaSwCL")   { cfg.vsa_score_w_clv = ToDouble(v); seenVsaSwCL=true; }
+      
+      else if(k=="vsaTR")        { cfg.vsa_use_true_range = ToBool(v); seenVsaTR=true; }
+      else if(k=="vsaEmaPair")   { cfg.vsa_trend_use_ema_pair = ToBool(v); seenVsaEmaPair=true; }
+      else if(k=="vsaEmaF")      { cfg.vsa_ema_fast = ToInt(v); seenVsaEmaF=true; }
+      else if(k=="vsaEmaS")      { cfg.vsa_ema_slow = ToInt(v); seenVsaEmaS=true; }
+      else if(k=="vsaFinalNorm") { cfg.vsa_use_normscore_gate_on_final = ToBool(v); seenVsaFinalNorm=true; }
+      else if(k=="vsaUTPrev")    { cfg.vsa_require_prev_hhll_ut_shake = ToBool(v); seenVsaUTPrev=true; }
+
+      else if(k=="vsaReqCf")  { cfg.vsa_require_confirm = ToBool(v); seenVsaReqCf=true; }
+      else if(k=="vsaFtCf")   { cfg.vsa_followthrough_confirm_enable = ToBool(v); seenVsaFtCf=true; }
+      else if(k=="vsaCfVU")   { cfg.vsa_confirm_volume_up_only = ToBool(v); seenVsaCfVU=true; }
+      else if(k=="vsaNDTr")   { cfg.vsa_alert_ndns_require_trend = ToBool(v); seenVsaNDTr=true; }
+      
+      else if(k=="vsaMk")      { cfg.vsa_market_mode = ToInt(v); seenVsaMk=true; }
+      else if(k=="vsaVB")      { cfg.vsa_vol_class_mode = ToInt(v); seenVsaVB=true; }
+
+      else if(k=="vsaSessV")   { cfg.vsa_use_session_vol_norm = ToBool(v); seenVsaSessV=true; }
+      else if(k=="vsaSessLb")  { cfg.vsa_session_vol_lb = ToInt(v); seenVsaSessLb=true; }
+
+      else if(k=="vsaPR")      { cfg.vsa_use_vol_percent_rank = ToBool(v); seenVsaPR=true; }
+      else if(k=="vsaPRLb")    { cfg.vsa_percent_rank_lb = ToInt(v); seenVsaPRLb=true; }
+      else if(k=="vsaPRHi")    { cfg.vsa_percent_rank_high_th = ToDouble(v); seenVsaPRHi=true; }
+      else if(k=="vsaPRLo")    { cfg.vsa_percent_rank_low_th = ToDouble(v); seenVsaPRLo=true; }
+
+      else if(k=="vsaSprZ")    { cfg.vsa_spread_zscore_enable = ToBool(v); seenVsaSprZ=true; }
+      else if(k=="vsaSprZL")   { cfg.vsa_spread_z_lb = ToInt(v); seenVsaSprZL=true; }
+
+      else if(k=="vsaAbsZ")    { cfg.vsa_absorption_zscore_enable = ToBool(v); seenVsaAbsZ=true; }
+      else if(k=="vsaAbsZH")   { cfg.vsa_absorption_z_high_th = ToDouble(v); seenVsaAbsZH=true; }
+
+      else if(k=="vsaERLb")    { cfg.vsa_er_lb = ToInt(v); seenVsaERLb=true; }
+      else if(k=="vsaUTLb")   { cfg.vsa_utso_breakout_lb = ToInt(v); seenVsaUTLb=true; }
+
+      else if(k=="vsaSVZ")     { cfg.vsa_stopvol_zv_th = ToDouble(v); seenVsaSVZ=true; }
+      else if(k=="vsaSVR")     { cfg.vsa_stopvol_rs_th = ToDouble(v); seenVsaSVR=true; }
+      else if(k=="vsaUTZ")     { cfg.vsa_utso_zv_th = ToDouble(v); seenVsaUTZ=true; }
+      else if(k=="vsaUTR")     { cfg.vsa_utso_rs_th = ToDouble(v); seenVsaUTR=true; }
+
+      else if(k=="vsaSVCL")   { cfg.vsa_stopvol_clv_min = ToDouble(v); seenVsaSVCL=true; }
+      else if(k=="vsaBCCL")   { cfg.vsa_buyclimax_clv_max = ToDouble(v); seenVsaBCCL=true; }
+      else if(k=="vsaSCCL")   { cfg.vsa_sellclimax_clv_min = ToDouble(v); seenVsaSCCL=true; }
+      
+      else if(k=="struct") cfg.structure_enable = ToBool(v);
+      else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
+      else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
+
+      // LFM global math / weighting params
+      else if(k=="lfmAtr")  cfg.lfm_atr_period = ToInt(v);
+      else if(k=="lfmVolE") cfg.lfm_vol_ema = ToInt(v);
+      else if(k=="lfmPerE") cfg.lfm_per_ema = ToInt(v);
+      else if(k=="lfmArE")  cfg.lfm_ar_ema = ToInt(v);
+      else if(k=="lfmSprE") cfg.lfm_spread_ema = ToInt(v);
+      else if(k=="lfmEps")  cfg.lfm_epsilon = ToDouble(v);
+
+      else if(k=="lfmWPer") cfg.lfm_w_per = ToDouble(v);
+      else if(k=="lfmWVCI") cfg.lfm_w_vci = ToDouble(v);
+      else if(k=="lfmWSPI") cfg.lfm_w_spi = ToDouble(v);
+      else if(k=="lfmWVNF") cfg.lfm_w_vnf = ToDouble(v);
+      else if(k=="lfmWAR")  cfg.lfm_w_ar = ToDouble(v);
+
+      else if(k=="lfmFXOn") cfg.lfm_fx_session_weight_on = ToBool(v);
+      else if(k=="lfmFXOv") cfg.lfm_fx_weight_overlap = ToDouble(v);
+      else if(k=="lfmFXLN") cfg.lfm_fx_weight_london_or_ny = ToDouble(v);
+      else if(k=="lfmFXAs") cfg.lfm_fx_weight_asia = ToDouble(v);
+
+      else if(k=="lfmDpOn") cfg.lfm_depth_enhance_on = ToBool(v);
+      else if(k=="lfmDpW")  cfg.lfm_depth_weight = ToDouble(v);
+      else if(k=="lfmDpBW") cfg.lfm_base_weight_after_depth = ToDouble(v);
+      
+      // Post-confirm extras (DOM / correlation)
+      else if(k=="xDOM")    cfg.extra_dom_imbalance = ToBool(v);
+      else if(k=="wDOM")    cfg.w_dom_imbalance = ToDouble(v);
+      else if(k=="domPad")  cfg.dom_zone_pad_points = ToInt(v);
+      else if(k=="domMin")  cfg.dom_min_abs_imb = ToDouble(v);
+      else if(k=="domDbg")  cfg.debug_dom = ToBool(v);
+      
+      // OBI aliases (same meaning as xDOM/wDOM)
+      else if(k=="xOBI") cfg.extra_dom_imbalance = ToBool(v);
+      else if(k=="wOBI") cfg.w_dom_imbalance = ToDouble(v);
+
+      // Trendlines
+      else if(k=="xTL") cfg.extra_trendlines = ToBool(v);
+      else if(k=="wTL") cfg.w_trendlines = ToDouble(v);
+
+      else if(k=="xCorr")    cfg.extra_correlation = ToBool(v);
+      else if(k=="wCorr")    cfg.w_correlation = ToDouble(v);
+      else if(k=="corrLb")   cfg.corr_lookback = ToInt(v);
+      else if(k=="corrAbs")  cfg.corr_min_abs = ToDouble(v);
+      else if(k=="corrRef")  cfg.corr_ref_symbol = v;
+      else if(k=="corrAuto") cfg.corr_auto_ref_fallback = ToBool(v);
+      else if(k=="corrTF")   cfg.corr_ema_tf = (ENUM_TIMEFRAMES)ToInt(v);
+      else if(k=="corrEF")   cfg.corr_ema_fast = ToInt(v);
+      else if(k=="corrES")   cfg.corr_ema_slow = ToInt(v);
+
+      else if(_CfgApplyCsvScannerKey(cfg, k, v, seenScVHBs)) { }
+      else if(_CfgApplyCsvTailKey(cfg, k, v)) { }
     }
     
     #ifdef CFG_HAS_MAIN_REQUIRE_CHECKLIST
@@ -15437,6 +16197,70 @@ struct Settings
     double ms_volatility_trend_min01;    // minimum volatility regime confidence for trend archetypes
     double ms_volatility_mr_max01;       // maximum volatility regime level for mean-reversion archetypes
     double ms_volatility_breakout_min01; // minimum volatility regime confidence for breakout archetypes
+
+#ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+    double ms_observability_direct_min01;         // direct-micro mode observability cutoff
+    double ms_observability_proxy_min01;          // proxy-micro mode observability cutoff
+    double ms_observability_structure_only_min01; // structure-only mode observability cutoff
+#endif
+
+#ifdef CFG_HAS_MS_DIRECT_BLEND_WEIGHTS
+    double ms_direct_weight_ofi;                  // direct flow blend: OFI
+    double ms_direct_weight_obi;                  // direct flow blend: OBI
+    double ms_direct_weight_cvd;                  // direct flow blend: CVD
+    double ms_direct_weight_absorption;           // direct flow blend: absorption
+    double ms_direct_weight_resiliency;           // direct flow blend: resiliency
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_BLEND_WEIGHTS
+    double ms_proxy_weight_delta;                 // proxy flow blend: DeltaProxy
+    double ms_proxy_weight_footprint;             // proxy flow blend: FootprintProxy
+    double ms_proxy_weight_profile;               // proxy flow blend: VolumeProfile
+    double ms_proxy_weight_vsa;                   // proxy flow blend: VSA
+    double ms_proxy_weight_absorption;            // proxy flow blend: absorption
+    double ms_proxy_weight_liquidity_reject;      // proxy flow blend: liquidity rejection
+    double ms_proxy_weight_vwap_location;         // proxy flow blend: VWAP location
+    double ms_proxy_weight_vwap_stretch_inv;      // proxy flow blend: inverse VWAP stretch
+#endif
+
+#ifdef CFG_HAS_MS_TOXICITY_BLEND_WEIGHTS
+    double ms_toxicity_weight_vpin;               // direct toxicity blend: VPIN
+    double ms_toxicity_weight_spread_shock;       // direct toxicity blend: spread shock
+    double ms_toxicity_weight_impact_lambda;      // direct toxicity blend: impact lambda
+    double ms_toxicity_weight_resiliency_inverse; // direct toxicity blend: 1-resiliency
+    double ms_toxicity_weight_slippage_stress;    // direct toxicity blend: slippage stress
+#endif
+
+#ifdef CFG_HAS_MS_PROXY_TOXICITY_BLEND_WEIGHTS
+    double ms_proxy_toxicity_weight_spread_shock;          // proxy toxicity blend
+    double ms_proxy_toxicity_weight_slippage_stress;       // proxy toxicity blend
+    double ms_proxy_toxicity_weight_volatility_stress;     // proxy toxicity blend
+    double ms_proxy_toxicity_weight_quote_instability;     // proxy toxicity blend
+    double ms_proxy_toxicity_weight_observability_penalty; // proxy toxicity blend
+#endif
+
+#ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+    double ms_truth_min_continuation01;           // minimum truth tier for continuation archetypes
+    double ms_truth_min_breakout01;               // minimum truth tier for breakout archetypes
+    double ms_truth_min_reversal01;               // minimum truth tier for reversal/location archetypes
+#endif
+
+#ifdef CFG_HAS_ROUTER_SPECIALIST_PREF_THRESHOLDS
+    double router_specialist_alpha_edge_min01;      // specialist must beat Main by at least this alpha edge
+    double router_max_observability_disadvantage01; // max allowed specialist observability disadvantage vs Main
+#endif
+
+#ifdef CFG_HAS_MS_RISK_OBSERVABILITY_ADJUSTMENTS
+    double risk_proxy_size_haircut01;             // risk haircut in proxy-only mode
+    double risk_structure_only_size_floor01;      // minimum remaining size fraction in structure-only mode
+    bool   risk_structure_only_breakout_veto;     // veto breakout/continuation when only structure-only mode is available
+#endif
+
+#ifdef CFG_HAS_MS_EXEC_POSTURE_THRESHOLDS
+    double ms_exec_posture_passive_max01;         // <= this -> passive / resting posture
+    double ms_exec_posture_standard_min01;        // >= this -> standard posture allowed
+    double ms_exec_posture_aggressive_min01;      // >= this -> aggressive posture allowed
+#endif
 
     // Canonical execution policy controls
     bool   ms_exec_schedule_enable;      // top-level execution schedule policy enable

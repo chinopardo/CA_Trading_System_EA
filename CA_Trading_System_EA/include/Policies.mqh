@@ -385,6 +385,258 @@
   #endif
 #endif
 
+#ifndef POLICIES_INST_MIN_RESILIENCY01
+  #define POLICIES_INST_MIN_RESILIENCY01 0.30
+#endif
+
+#ifndef POLICIES_INST_ENABLE_TRUTH_POSTURE_VETO
+  #define POLICIES_INST_ENABLE_TRUTH_POSTURE_VETO 1
+#endif
+
+#ifndef POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE
+  #define POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE 0.70
+#endif
+
+#ifndef POLICIES_INST_ENABLE_INVALIDATION_EVENT_VETO
+  #define POLICIES_INST_ENABLE_INVALIDATION_EVENT_VETO 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_LIQUIDITY_TRAP_EVENT_VETO
+  #define POLICIES_INST_ENABLE_LIQUIDITY_TRAP_EVENT_VETO 1
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_TRUTH_TIER01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TRUTH_TIER01
+    #define POLICIES_HAS_INST_TRANSPORT_TRUTH_TIER01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TRUTH_TIER
+      #define POLICIES_HAS_INST_TRANSPORT_TRUTH_TIER01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_EXECUTION_POSTURE_MODE
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_EXECUTION_POSTURE_MODE
+    #define POLICIES_HAS_INST_TRANSPORT_EXECUTION_POSTURE_MODE 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_EXECUTION_POSTURE_MODE
+      #define POLICIES_HAS_INST_TRANSPORT_EXECUTION_POSTURE_MODE 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_REDUCED_ONLY
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REDUCED_ONLY
+    #define POLICIES_HAS_INST_TRANSPORT_REDUCED_ONLY 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ICT_EXECUTION_REDUCED_ONLY
+      #define POLICIES_HAS_INST_TRANSPORT_REDUCED_ONLY 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_INVALIDATION_EVENT01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SD_OB_INVALIDATION_EVENT01
+    #define POLICIES_HAS_INST_TRANSPORT_INVALIDATION_EVENT01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SM_INVALIDATION_EVENT01
+      #define POLICIES_HAS_INST_TRANSPORT_INVALIDATION_EVENT01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_TRAP_EVENT01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_TRAP_EVENT01
+    #define POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_TRAP_EVENT01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_SWEEP_TRAP_EVENT01
+      #define POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_TRAP_EVENT01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_INST_FLOW_MODE_DIRECT
+  #define POLICIES_INST_FLOW_MODE_DIRECT 0
+#endif
+
+#ifndef POLICIES_INST_FLOW_MODE_PROXY
+  #define POLICIES_INST_FLOW_MODE_PROXY 1
+#endif
+
+#ifndef POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY
+  #define POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY 2
+#endif
+
+#ifndef POLICIES_INST_PROXY_DERISK_MULT01
+  #define POLICIES_INST_PROXY_DERISK_MULT01 0.70
+#endif
+
+#ifndef POLICIES_INST_STRUCTURE_ONLY_DERISK_MULT01
+  #define POLICIES_INST_STRUCTURE_ONLY_DERISK_MULT01 0.45
+#endif
+
+#ifndef POLICIES_INST_ENABLE_STRUCTURE_ONLY_AGGRESSIVE_VETO
+  #define POLICIES_INST_ENABLE_STRUCTURE_ONLY_AGGRESSIVE_VETO 1
+#endif
+
+#ifndef POLICIES_INST_ENABLE_PROXY_FORCE_REDUCED_ONLY
+  #define POLICIES_INST_ENABLE_PROXY_FORCE_REDUCED_ONLY 1
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY_PENALTY01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OBSERVABILITY_PENALTY01
+    #define POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY_PENALTY01 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_FLOW_MODE
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_FLOW_MODE
+    #define POLICIES_HAS_INST_TRANSPORT_FLOW_MODE 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MICRO_MODE
+      #define POLICIES_HAS_INST_TRANSPORT_FLOW_MODE 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_DIRECT_MICRO_AVAILABLE
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_DIRECT_MICRO_AVAILABLE
+    #define POLICIES_HAS_INST_TRANSPORT_DIRECT_MICRO_AVAILABLE 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_PROXY_MICRO_AVAILABLE
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_PROXY_MICRO_AVAILABLE
+    #define POLICIES_HAS_INST_TRANSPORT_PROXY_MICRO_AVAILABLE 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_OFI01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_OFI01
+    #define POLICIES_HAS_INST_TRANSPORT_OFI01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OFI01
+      #define POLICIES_HAS_INST_TRANSPORT_OFI01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_OBI01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_OBI01
+    #define POLICIES_HAS_INST_TRANSPORT_OBI01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OBI01
+      #define POLICIES_HAS_INST_TRANSPORT_OBI01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_CVD01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_CVD01
+    #define POLICIES_HAS_INST_TRANSPORT_CVD01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_CVD01
+      #define POLICIES_HAS_INST_TRANSPORT_CVD01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_DELTA_PROXY01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_DELTA_PROXY01
+    #define POLICIES_HAS_INST_TRANSPORT_DELTA_PROXY01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_DELTA_PROXY01
+      #define POLICIES_HAS_INST_TRANSPORT_DELTA_PROXY01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_FOOTPRINT01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_FOOTPRINT01
+    #define POLICIES_HAS_INST_TRANSPORT_FOOTPRINT01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_FOOTPRINT01
+      #define POLICIES_HAS_INST_TRANSPORT_FOOTPRINT01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_PROFILE01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_PROFILE01
+    #define POLICIES_HAS_INST_TRANSPORT_PROFILE01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_PROFILE01
+      #define POLICIES_HAS_INST_TRANSPORT_PROFILE01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_ABSORPTION01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_ABSORPTION01
+    #define POLICIES_HAS_INST_TRANSPORT_ABSORPTION01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ABSORPTION01
+      #define POLICIES_HAS_INST_TRANSPORT_ABSORPTION01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_REPLENISHMENT01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_REPLENISHMENT01
+    #define POLICIES_HAS_INST_TRANSPORT_REPLENISHMENT01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REPLENISHMENT01
+      #define POLICIES_HAS_INST_TRANSPORT_REPLENISHMENT01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_VWAP_LOCATION01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_VWAP_LOCATION01
+    #define POLICIES_HAS_INST_TRANSPORT_VWAP_LOCATION01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VWAP_LOCATION01
+      #define POLICIES_HAS_INST_TRANSPORT_VWAP_LOCATION01 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_REJECT01
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_LIQUIDITY_REJECT01
+    #define POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_REJECT01 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_REJECT01
+      #define POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_REJECT01 1
+    #else
+      #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REJECTION01
+        #define POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_REJECT01 1
+      #endif
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_CONFLUENCE_VETO_MASK
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_CONFLUENCE_VETO_MASK
+    #define POLICIES_HAS_INST_TRANSPORT_CONFLUENCE_VETO_MASK 1
+  #else
+    #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_CONFLUENCE_VETO_MASK
+      #define POLICIES_HAS_INST_TRANSPORT_CONFLUENCE_VETO_MASK 1
+    #endif
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_ROUTE_REASON
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ROUTE_REASON
+    #define POLICIES_HAS_INST_TRANSPORT_ROUTE_REASON 1
+  #endif
+#endif
+
+#ifndef POLICIES_HAS_INST_TRANSPORT_VETO_REASON
+  #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VETO_REASON
+    #define POLICIES_HAS_INST_TRANSPORT_VETO_REASON 1
+  #endif
+#endif
+
 #ifndef POLICIES_SIZING_RESET_MULT_DEFAULT
   #define POLICIES_SIZING_RESET_MULT_DEFAULT 0.50
 #endif
@@ -447,6 +699,7 @@ enum PolicyBlockCode
   POLICY_MICRO_THIN_LIQUIDITY    = 30,
   POLICY_MICRO_TOXICITY          = 31,
   POLICY_MICRO_SPREAD_STRESS     = 32,
+  POLICY_MICRO_TRUTH             = 33,
   POLICY_BLOCKED_OTHER           = 99
 };
 
@@ -484,7 +737,8 @@ namespace Policies
     GATE_MICRO_QUOTE_INSTABILITY = 36,
     GATE_MICRO_THIN_LIQUIDITY    = 37,
     GATE_MICRO_TOXICITY          = 38,
-    GATE_MICRO_SPREAD_STRESS     = 39
+    GATE_MICRO_SPREAD_STRESS     = 39,
+    GATE_MICRO_TRUTH             = 40
   };
 
   inline string ReasonString(const int r)
@@ -521,6 +775,7 @@ namespace Policies
       case GATE_MICRO_THIN_LIQUIDITY:    return "MICRO_THIN_LIQUIDITY";
       case GATE_MICRO_TOXICITY:          return "MICRO_TOXICITY";
       case GATE_MICRO_SPREAD_STRESS:     return "MICRO_SPREAD_STRESS";
+      case GATE_MICRO_TRUTH:            return "MICRO_TRUTH";
 
       default: return "UNKNOWN";
     }
@@ -566,6 +821,7 @@ namespace Policies
        case GATE_MICRO_THIN_LIQUIDITY:    return POLICY_MICRO_THIN_LIQUIDITY;
        case GATE_MICRO_TOXICITY:          return POLICY_MICRO_TOXICITY;
        case GATE_MICRO_SPREAD_STRESS:     return POLICY_MICRO_SPREAD_STRESS;
+       case GATE_MICRO_TRUTH:             return POLICY_MICRO_TRUTH;
 
        default: return POLICY_BLOCKED_OTHER;
      }
@@ -605,6 +861,7 @@ namespace Policies
   #define CA_POLMASK_MICRO_THIN_LIQUIDITY    (((ulong)1) << 26)
   #define CA_POLMASK_MICRO_TOXICITY          (((ulong)1) << 27)
   #define CA_POLMASK_MICRO_SPREAD_STRESS     (((ulong)1) << 28)
+  #define CA_POLMASK_MICRO_TRUTH            (((ulong)1) << 29)
   #define CA_POLMASK_INSTITUTIONAL      (((ulong)1) << 18)
   #define CA_POLMASK_MICRO_OBSERVABILITY (((ulong)1) << 19)
   #define CA_POLMASK_MICRO_VENUE         (((ulong)1) << 20)
@@ -737,6 +994,13 @@ namespace Policies
     double impact_lambda01;
     double impact_lambda_max01;
 
+    double truth_tier01;
+    double truth_tier_aggressive_min01;
+    int    execution_posture_mode;
+    bool   reduced_only;
+    bool   invalidation_event01;
+    bool   liquidity_trap_event01;
+
     double darkpool01;
     double darkpool_min01;
     double darkpool_contradiction01;
@@ -749,6 +1013,28 @@ namespace Policies
     double liquidity_vacuum_max01;
     double liquidity_hunt01;
     double liquidity_hunt_max01;
+
+    double observability_penalty01;
+
+    bool   direct_micro_available;
+    bool   proxy_micro_available;
+    int    flow_mode;
+
+    double inst_ofi01;
+    double inst_obi01;
+    double inst_cvd01;
+
+    double inst_delta_proxy01;
+    double inst_footprint01;
+    double inst_profile01;
+    double inst_absorption01;
+    double inst_replenishment01;
+    double inst_vwap_location01;
+    double inst_liquidity_reject01;
+
+    int    confluence_veto_mask;
+    string route_reason;
+    string veto_reason;
 
     // Daily counters (for veto print precision)
     int    entries_today;
@@ -797,6 +1083,13 @@ namespace Policies
     r.impact_lambda01     = (double)POLICIES_INST_DEFAULT_IMPACT_LAMBDA01;
     r.impact_lambda_max01 = (double)POLICIES_INST_MAX_IMPACT_LAMBDA01;
 
+    r.truth_tier01                 = 1.0;
+    r.truth_tier_aggressive_min01  = (double)POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE;
+    r.execution_posture_mode       = 0;
+    r.reduced_only                 = false;
+    r.invalidation_event01         = false;
+    r.liquidity_trap_event01       = false;
+
     r.darkpool01                    = (double)POLICIES_INST_DEFAULT_DARKPOOL01;
     r.darkpool_min01                = (double)POLICIES_INST_MIN_DARKPOOL01;
     r.darkpool_contradiction01      = (double)POLICIES_INST_DEFAULT_DARKPOOL_CONTRADICTION01;
@@ -809,6 +1102,28 @@ namespace Policies
     r.liquidity_vacuum_max01        = (double)POLICIES_INST_MAX_LIQUIDITY_VACUUM01;
     r.liquidity_hunt01              = (double)POLICIES_INST_DEFAULT_LIQUIDITY_HUNT01;
     r.liquidity_hunt_max01          = (double)POLICIES_INST_MAX_LIQUIDITY_HUNT01;
+
+    r.observability_penalty01       = Clamp01(1.0 - r.observability_confidence01);
+
+    r.direct_micro_available        = false;
+    r.proxy_micro_available         = false;
+    r.flow_mode                     = POLICIES_INST_FLOW_MODE_PROXY;
+
+    r.inst_ofi01                    = 0.5;
+    r.inst_obi01                    = 0.5;
+    r.inst_cvd01                    = 0.5;
+
+    r.inst_delta_proxy01            = 0.5;
+    r.inst_footprint01              = 0.5;
+    r.inst_profile01                = 0.5;
+    r.inst_absorption01             = 0.5;
+    r.inst_replenishment01          = 0.5;
+    r.inst_vwap_location01          = 0.5;
+    r.inst_liquidity_reject01       = 0.0;
+
+    r.confluence_veto_mask          = 0;
+    r.route_reason                  = "";
+    r.veto_reason                   = "none";
   }
 
   inline void _PolicyVeto(PolicyResult &r, const int gate_reason, const ulong mask_bit)
@@ -1326,7 +1641,7 @@ namespace Policies
         #ifdef CFG_HAS_RESILIENCY_THRESHOLD
           return Clamp01(cfg.resiliency_threshold);
         #else
-          return 0.0;
+          return (double)POLICIES_INST_MIN_RESILIENCY01;
         #endif
       #endif
     #endif
@@ -1590,6 +1905,81 @@ namespace Policies
         #else
           return (double)POLICIES_INST_MAX_LIQUIDITY_HUNT01;
         #endif
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroContinuationObservabilityMin01(const Settings &cfg)
+  {
+    double baseMin = CfgMicroObservabilityMin01(cfg);
+
+    #ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
+      const double pxy = Clamp01(cfg.ms_observability_proxy_min01);
+      if(pxy > baseMin)
+        baseMin = pxy;
+    #endif
+
+    return baseMin;
+  }
+
+  inline double CfgMicroTruthTierAggressiveMin01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+      if(cfg.ms_truth_min_breakout01 > 0.0)
+        return Clamp01(cfg.ms_truth_min_breakout01);
+    #endif
+
+    return (double)POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE;
+  }
+
+  inline double CfgMicroProxyDeriskMult01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_PROXY_DERISK_MULT01
+      return Clamp(cfg.ms_proxy_derisk_mult01, 0.10, 1.00);
+    #else
+      #ifdef CFG_HAS_INST_PROXY_DERISK_MULT01
+        return Clamp(cfg.inst_proxy_derisk_mult01, 0.10, 1.00);
+      #else
+        return (double)POLICIES_INST_PROXY_DERISK_MULT01;
+      #endif
+    #endif
+  }
+
+  inline double CfgMicroStructureOnlyDeriskMult01(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_STRUCTURE_ONLY_DERISK_MULT01
+      return Clamp(cfg.ms_structure_only_derisk_mult01, 0.05, 1.00);
+    #else
+      #ifdef CFG_HAS_INST_STRUCTURE_ONLY_DERISK_MULT01
+        return Clamp(cfg.inst_structure_only_derisk_mult01, 0.05, 1.00);
+      #else
+        return (double)POLICIES_INST_STRUCTURE_ONLY_DERISK_MULT01;
+      #endif
+    #endif
+  }
+
+  inline bool CfgMicroStructureOnlyAggressiveVetoOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_STRUCTURE_ONLY_AGGRESSIVE_VETO
+      return (bool)cfg.ms_structure_only_aggressive_veto;
+    #else
+      #ifdef CFG_HAS_INST_STRUCTURE_ONLY_AGGRESSIVE_VETO
+        return (bool)cfg.inst_structure_only_aggressive_veto;
+      #else
+        return (bool)POLICIES_INST_ENABLE_STRUCTURE_ONLY_AGGRESSIVE_VETO;
+      #endif
+    #endif
+  }
+
+  inline bool CfgMicroProxyForceReducedOnlyOn(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_MS_PROXY_FORCE_REDUCED_ONLY
+      return (bool)cfg.ms_proxy_force_reduced_only;
+    #else
+      #ifdef CFG_HAS_INST_PROXY_FORCE_REDUCED_ONLY
+        return (bool)cfg.inst_proxy_force_reduced_only;
+      #else
+        return (bool)POLICIES_INST_ENABLE_PROXY_FORCE_REDUCED_ONLY;
       #endif
     #endif
   }
@@ -3287,6 +3677,12 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.impact_lambda01, r.impact_lambda_max01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
+       case GATE_MICRO_TRUTH:
+         return StringFormat("MicroTruth truth=%.3f min=%.3f posture=%d reduced=%d alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.truth_tier01, r.truth_tier_aggressive_min01,
+                             r.execution_posture_mode, (r.reduced_only ? 1 : 0),
+                             r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
+
        case GATE_MICRO_DARKPOOL:
          return StringFormat("MicroDarkPool dark=%.3f min=%.3f contra=%.3f maxContra=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
                              r.darkpool01, r.darkpool_min01,
@@ -3312,10 +3708,14 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_INSTITUTIONAL:
-         return StringFormat("Institutional gate=%d alpha=%.3f exec=%.3f risk=%.3f q=%.3f obs=%.3f venue=%.3f xvenue=%.3f",
+         return StringFormat("Institutional gate=%d flow=%s route=%s veto=%s alpha=%.3f exec=%.3f risk=%.3f q=%.3f obs=%.3f venue=%.3f xvenue=%.3f posture=%d reduced=%d",
                              (r.institutional_gate_pass?1:0),
+                             InstitutionalFlowModeText(r.flow_mode),
+                             r.route_reason,
+                             r.veto_reason,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01,
-                             r.observability_confidence01, r.venue_coverage01, r.cross_venue_dislocation01) + pool_tag;
+                             r.observability_confidence01, r.venue_coverage01, r.cross_venue_dislocation01,
+                             r.execution_posture_mode, (r.reduced_only ? 1 : 0)) + pool_tag;
 
        default:
          return _FmtPoolTag(sym); // or "" + _FmtPoolTag(sym) if you want consistent presence
@@ -3579,6 +3979,19 @@ inline void NotifyTradeResult(const double r_multiple)
               " mask=", (string)r.veto_mask);
         break;
 
+      case GATE_MICRO_TRUTH:
+        Print("[Policy][VETO] reason=MICRO_TRUTH sym=", sym,
+              " truth=", DoubleToString(r.truth_tier01,3),
+              " min=", DoubleToString(r.truth_tier_aggressive_min01,3),
+              " posture=", IntegerToString(r.execution_posture_mode),
+              " reduced=", IntegerToString((int)r.reduced_only),
+              " alpha=", DoubleToString(r.alpha_score,3),
+              " exec=", DoubleToString(r.execution_score,3),
+              " risk=", DoubleToString(r.risk_score,3),
+              " q=", DoubleToString(r.state_quality01,3),
+              " mask=", (string)r.veto_mask);
+        break;
+
       case GATE_MICRO_DARKPOOL:
         Print("[Policy][VETO] reason=MICRO_DARKPOOL sym=", sym,
               " dark=", DoubleToString(r.darkpool01,3),
@@ -3633,6 +4046,9 @@ inline void NotifyTradeResult(const double r_multiple)
       case GATE_INSTITUTIONAL:
         Print("[Policy][VETO] reason=INSTITUTIONAL_STATE sym=", sym,
               " gate=", (r.institutional_gate_pass?"1":"0"),
+              " flow=", InstitutionalFlowModeText(r.flow_mode),
+              " route=", r.route_reason,
+              " veto=", r.veto_reason,
               " alpha=", DoubleToString(r.alpha_score,3),
               " exec=", DoubleToString(r.execution_score,3),
               " risk=", DoubleToString(r.risk_score,3),
@@ -3640,6 +4056,8 @@ inline void NotifyTradeResult(const double r_multiple)
               " obs=", DoubleToString(r.observability_confidence01,3),
               " venue=", DoubleToString(r.venue_coverage01,3),
               " xvenue=", DoubleToString(r.cross_venue_dislocation01,3),
+              " posture=", IntegerToString(r.execution_posture_mode),
+              " reduced=", IntegerToString((int)r.reduced_only),
               " mask=", (string)r.veto_mask);
         break;
 
@@ -4422,6 +4840,10 @@ inline void NotifyTradeResult(const double r_multiple)
     double impact_beta01;
     double impact_lambda01;
 
+    double truth_tier01;
+    int    execution_posture_mode;
+    bool   reduced_only;
+
     double darkpool01;
     double darkpool_contradiction01;
 
@@ -4436,6 +4858,31 @@ inline void NotifyTradeResult(const double r_multiple)
 
     double toxicity01;
     double spread_stress01;
+
+    bool   invalidation_event01;
+    bool   liquidity_trap_event01;
+
+    double observability_penalty01;
+
+    bool   direct_micro_available;
+    bool   proxy_micro_available;
+    int    flow_mode;
+
+    double inst_ofi01;
+    double inst_obi01;
+    double inst_cvd01;
+
+    double inst_delta_proxy01;
+    double inst_footprint01;
+    double inst_profile01;
+    double inst_absorption01;
+    double inst_replenishment01;
+    double inst_vwap_location01;
+    double inst_liquidity_reject01;
+
+    int    confluence_veto_mask;
+    string route_reason;
+    string veto_reason;
   };
 
   inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
@@ -4456,6 +4903,12 @@ inline void NotifyTradeResult(const double r_multiple)
     v.impact_beta01                  = (double)POLICIES_INST_DEFAULT_IMPACT_BETA01;
     v.impact_lambda01                = (double)POLICIES_INST_DEFAULT_IMPACT_LAMBDA01;
 
+    v.truth_tier01                  = 1.0;
+    v.execution_posture_mode        = 0;
+    v.reduced_only                  = false;
+    v.invalidation_event01          = false;
+    v.liquidity_trap_event01        = false;
+
     v.darkpool01                     = (double)POLICIES_INST_DEFAULT_DARKPOOL01;
     v.darkpool_contradiction01       = (double)POLICIES_INST_DEFAULT_DARKPOOL_CONTRADICTION01;
 
@@ -4463,6 +4916,28 @@ inline void NotifyTradeResult(const double r_multiple)
 
     v.liquidity_vacuum01             = (double)POLICIES_INST_DEFAULT_LIQUIDITY_VACUUM01;
     v.liquidity_hunt01               = (double)POLICIES_INST_DEFAULT_LIQUIDITY_HUNT01;
+
+    v.observability_penalty01       = Clamp01(1.0 - v.observability_confidence01);
+
+    v.direct_micro_available        = false;
+    v.proxy_micro_available         = false;
+    v.flow_mode                     = POLICIES_INST_FLOW_MODE_PROXY;
+
+    v.inst_ofi01                    = 0.5;
+    v.inst_obi01                    = 0.5;
+    v.inst_cvd01                    = 0.5;
+
+    v.inst_delta_proxy01            = 0.5;
+    v.inst_footprint01              = 0.5;
+    v.inst_profile01                = 0.5;
+    v.inst_absorption01             = 0.5;
+    v.inst_replenishment01          = 0.5;
+    v.inst_vwap_location01          = 0.5;
+    v.inst_liquidity_reject01       = 0.0;
+
+    v.confluence_veto_mask          = 0;
+    v.route_reason                  = "";
+    v.veto_reason                   = "none";
   }
 
   inline double InstitutionalQuoteInstability01(const InstitutionalStatePolicyView &v)
@@ -4475,6 +4950,74 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     return Clamp01(MathMax(v.liquidity_vacuum01,
                            v.liquidity_hunt01));
+  }
+
+  inline double PolicyTruthTierOrdinalTo01(const int truthTier)
+  {
+    if(truthTier >= 4) return 1.00;
+    if(truthTier == 3) return 0.75;
+    if(truthTier == 2) return 0.55;
+    if(truthTier == 1) return 0.45;
+    return 0.35;
+  }
+
+  inline bool InstitutionalAggressivePosture(const InstitutionalStatePolicyView &v)
+  {
+    #ifdef TYPES_HAS_EXECUTION_POSTURE_ENUM
+      return (v.execution_posture_mode == EXEC_POSTURE_URGENT);
+    #else
+      return (v.execution_posture_mode == 3);
+    #endif
+  }
+
+  inline bool InstitutionalNeedsStrongObservability(const InstitutionalStatePolicyView &v)
+  {
+    #ifdef TYPES_HAS_EXECUTION_POSTURE_ENUM
+      if(v.execution_posture_mode == EXEC_POSTURE_URGENT)
+        return true;
+
+      if(v.execution_posture_mode == EXEC_POSTURE_NORMAL && !v.reduced_only)
+        return true;
+    #else
+      if(v.execution_posture_mode == 3)
+        return true;
+
+      if(v.execution_posture_mode == 2 && !v.reduced_only)
+        return true;
+    #endif
+
+    return false;
+  }
+
+  inline int InstitutionalFlowModeFromObservability01(const double obs01)
+  {
+    if(obs01 >= 0.95)
+      return POLICIES_INST_FLOW_MODE_DIRECT;
+
+    if(obs01 >= 0.60)
+      return POLICIES_INST_FLOW_MODE_PROXY;
+
+    return POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY;
+  }
+
+  inline string InstitutionalFlowModeText(const int mode)
+  {
+    if(mode == POLICIES_INST_FLOW_MODE_DIRECT)         return "direct";
+    if(mode == POLICIES_INST_FLOW_MODE_PROXY)          return "proxy";
+    if(mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY) return "structure_only";
+    return "unknown";
+  }
+
+  inline bool InstitutionalStructureOnlyPostureTooAggressive(const InstitutionalStatePolicyView &v)
+  {
+    if(v.flow_mode != POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+      return false;
+
+    #ifdef TYPES_HAS_EXECUTION_POSTURE_ENUM
+      return (v.execution_posture_mode == EXEC_POSTURE_URGENT);
+    #else
+      return (v.execution_posture_mode >= 3);
+    #endif
   }
 
   inline bool LoadInstitutionalStateFromConfluence(const string sym,
@@ -4556,6 +5099,22 @@ inline void NotifyTradeResult(const double r_multiple)
           out_view.observability_confidence01 = Clamp01(inst.observability_confidence01);
         #endif
 
+        #ifdef POLICIES_HAS_INST_TRANSPORT_OBSERVABILITY_PENALTY01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OBSERVABILITY_PENALTY01
+            out_view.observability_penalty01 = Clamp01(inst.observability_penalty01);
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_TRUTH_TIER01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TRUTH_TIER01
+            out_view.truth_tier01 = Clamp01(inst.truth_tier01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_TRUTH_TIER
+              out_view.truth_tier01 = PolicyTruthTierOrdinalTo01((int)inst.truthTier);
+            #endif
+          #endif
+        #endif
+
         #ifdef POLICIES_HAS_INST_TRANSPORT_VENUE_COVERAGE01
           out_view.venue_coverage01 = Clamp01(inst.venue_coverage01);
         #endif
@@ -4582,6 +5141,44 @@ inline void NotifyTradeResult(const double r_multiple)
               out_view.impact_lambda01 = Clamp01(inst.inst_impact_lambda01);
             #endif
           #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_EXECUTION_POSTURE_MODE
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_EXECUTION_POSTURE_MODE
+            out_view.execution_posture_mode = (int)inst.execution_posture_mode;
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_EXECUTION_POSTURE_MODE
+              out_view.execution_posture_mode = (int)inst.inst_execution_posture_mode;
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_REDUCED_ONLY
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REDUCED_ONLY
+            out_view.reduced_only = (bool)inst.reduced_only;
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ICT_EXECUTION_REDUCED_ONLY
+              out_view.reduced_only = (bool)inst.ict_execution_reduced_only;
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_FLOW_MODE
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_FLOW_MODE
+            out_view.flow_mode = (int)inst.inst_flow_mode;
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_MICRO_MODE
+              out_view.flow_mode = (int)inst.micro_mode;
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_DIRECT_MICRO_AVAILABLE
+          out_view.direct_micro_available = (bool)inst.direct_micro_available;
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_PROXY_MICRO_AVAILABLE
+          out_view.proxy_micro_available = (bool)inst.proxy_micro_available;
         #endif
 
         #ifdef POLICIES_HAS_INST_TRANSPORT_DARKPOOL01
@@ -4632,6 +5229,174 @@ inline void NotifyTradeResult(const double r_multiple)
           #endif
         #endif
 
+        #ifdef POLICIES_HAS_INST_TRANSPORT_OFI01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_OFI01
+            out_view.inst_ofi01 = Clamp01(inst.inst_ofi01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OFI01
+              out_view.inst_ofi01 = Clamp01(inst.ofi01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_OBI01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_OBI01
+            out_view.inst_obi01 = Clamp01(inst.inst_obi01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_OBI01
+              out_view.inst_obi01 = Clamp01(inst.obi01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_CVD01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_CVD01
+            out_view.inst_cvd01 = Clamp01(inst.inst_cvd01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_CVD01
+              out_view.inst_cvd01 = Clamp01(inst.cvd01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_DELTA_PROXY01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_DELTA_PROXY01
+            out_view.inst_delta_proxy01 = Clamp01(inst.inst_delta_proxy01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_DELTA_PROXY01
+              out_view.inst_delta_proxy01 = Clamp01(inst.delta_proxy01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_FOOTPRINT01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_FOOTPRINT01
+            out_view.inst_footprint01 = Clamp01(inst.inst_footprint01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_FOOTPRINT01
+              out_view.inst_footprint01 = Clamp01(inst.footprint01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_PROFILE01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_PROFILE01
+            out_view.inst_profile01 = Clamp01(inst.inst_profile01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_PROFILE01
+              out_view.inst_profile01 = Clamp01(inst.profile01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_ABSORPTION01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_ABSORPTION01
+            out_view.inst_absorption01 = Clamp01(inst.inst_absorption01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ABSORPTION01
+              out_view.inst_absorption01 = Clamp01(inst.absorption01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_REPLENISHMENT01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_REPLENISHMENT01
+            out_view.inst_replenishment01 = Clamp01(inst.inst_replenishment01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REPLENISHMENT01
+              out_view.inst_replenishment01 = Clamp01(inst.replenishment01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_VWAP_LOCATION01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_VWAP_LOCATION01
+            out_view.inst_vwap_location01 = Clamp01(inst.inst_vwap_location01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VWAP_LOCATION01
+              out_view.inst_vwap_location01 = Clamp01(inst.vwap_location01);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_REJECT01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_LIQUIDITY_REJECT01
+            out_view.inst_liquidity_reject01 = Clamp01(inst.inst_liquidity_reject01);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_REJECT01
+              out_view.inst_liquidity_reject01 = Clamp01(inst.liquidity_reject01);
+            #else
+              #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_REJECTION01
+                out_view.inst_liquidity_reject01 = Clamp01(inst.rejection01);
+              #endif
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_CONFLUENCE_VETO_MASK
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_CONFLUENCE_VETO_MASK
+            out_view.confluence_veto_mask = (int)inst.confluence_veto_mask;
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_INST_CONFLUENCE_VETO_MASK
+              out_view.confluence_veto_mask = (int)inst.inst_confluence_veto_mask;
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_ROUTE_REASON
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_ROUTE_REASON
+            out_view.route_reason = inst.route_reason;
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_VETO_REASON
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_VETO_REASON
+            out_view.veto_reason = inst.veto_reason;
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_INVALIDATION_EVENT01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SD_OB_INVALIDATION_EVENT01
+            out_view.invalidation_event01 = (inst.sd_ob_invalidation_event01 > 0.5);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_SM_INVALIDATION_EVENT01
+              out_view.invalidation_event01 = (inst.sm_invalidation_event01 > 0.5);
+            #endif
+          #endif
+        #endif
+
+        #ifdef POLICIES_HAS_INST_TRANSPORT_LIQUIDITY_TRAP_EVENT01
+          #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_TRAP_EVENT01
+            out_view.liquidity_trap_event01 = (inst.liquidity_trap_event01 > 0.5);
+          #else
+            #ifdef CONFL_MACHINE_STATE_TRANSPORT_HAS_LIQUIDITY_SWEEP_TRAP_EVENT01
+              out_view.liquidity_trap_event01 = (inst.liquidity_sweep_trap01 > 0.5);
+            #endif
+          #endif
+        #endif
+
+        if(out_view.flow_mode != POLICIES_INST_FLOW_MODE_DIRECT &&
+           out_view.flow_mode != POLICIES_INST_FLOW_MODE_PROXY &&
+           out_view.flow_mode != POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+        {
+          out_view.flow_mode = InstitutionalFlowModeFromObservability01(out_view.observability_confidence01);
+        }
+
+        if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_DIRECT)
+          out_view.direct_micro_available = true;
+
+        if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_PROXY)
+          out_view.proxy_micro_available = true;
+
+        if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+          out_view.reduced_only = true;
+
+        if(StringLen(out_view.route_reason) <= 0)
+          out_view.route_reason = InstitutionalFlowModeText(out_view.flow_mode);
+
+        if(StringLen(out_view.veto_reason) <= 0)
+          out_view.veto_reason = "none";
+
         return true;
       #endif
     #endif
@@ -4675,6 +5440,13 @@ inline void NotifyTradeResult(const double r_multiple)
     out.impact_lambda01                = v.impact_lambda01;
     out.impact_lambda_max01            = CfgMicroImpactLambdaMax01(cfg);
 
+    out.truth_tier01                  = v.truth_tier01;
+    out.truth_tier_aggressive_min01   = CfgMicroTruthTierAggressiveMin01(cfg);
+    out.execution_posture_mode        = v.execution_posture_mode;
+    out.reduced_only                  = v.reduced_only;
+    out.invalidation_event01          = v.invalidation_event01;
+    out.liquidity_trap_event01        = v.liquidity_trap_event01;
+
     out.darkpool01                     = v.darkpool01;
     out.darkpool_min01                 = CfgMicroDarkPoolMin01(cfg);
     out.darkpool_contradiction01       = v.darkpool_contradiction01;
@@ -4687,6 +5459,28 @@ inline void NotifyTradeResult(const double r_multiple)
     out.liquidity_vacuum_max01         = CfgLiquidityVacuumMax01(cfg);
     out.liquidity_hunt01               = v.liquidity_hunt01;
     out.liquidity_hunt_max01           = CfgLiquidityHuntMax01(cfg);
+
+    out.observability_penalty01        = v.observability_penalty01;
+
+    out.direct_micro_available         = v.direct_micro_available;
+    out.proxy_micro_available          = v.proxy_micro_available;
+    out.flow_mode                      = v.flow_mode;
+
+    out.inst_ofi01                     = v.inst_ofi01;
+    out.inst_obi01                     = v.inst_obi01;
+    out.inst_cvd01                     = v.inst_cvd01;
+
+    out.inst_delta_proxy01             = v.inst_delta_proxy01;
+    out.inst_footprint01               = v.inst_footprint01;
+    out.inst_profile01                 = v.inst_profile01;
+    out.inst_absorption01              = v.inst_absorption01;
+    out.inst_replenishment01           = v.inst_replenishment01;
+    out.inst_vwap_location01           = v.inst_vwap_location01;
+    out.inst_liquidity_reject01        = v.inst_liquidity_reject01;
+
+    out.confluence_veto_mask           = v.confluence_veto_mask;
+    out.route_reason                   = v.route_reason;
+    out.veto_reason                    = v.veto_reason;
   }
 
   inline bool ApplyInstitutionalStatePolicy(const Settings &cfg,
@@ -4700,6 +5494,21 @@ inline void NotifyTradeResult(const double r_multiple)
       return true; // no canonical transport yet => do not invent pseudo-state here
 
     out_view.gate_reason = GATE_OK;
+    // Canonical fused veto from Confluence transport beats any local optimism.
+    if(out_view.confluence_veto_mask != 0)
+    {
+      out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_INSTITUTIONAL;
+
+      if(StringLen(out_view.veto_reason) <= 0)
+        out_view.veto_reason = "confluence_veto";
+
+      return false;
+    }
+
+    // Structure-only is always reduced-only from policy perspective.
+    if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+      out_view.reduced_only = true;
 
     // Hard canonical veto from the fused transport
     if(!out_view.trade_gate_pass)
@@ -4725,6 +5534,41 @@ inline void NotifyTradeResult(const double r_multiple)
         out_view.gate_reason = GATE_MICRO_OBSERVABILITY;
         return false;
       }
+    }
+
+    // Stronger observability gate for continuation / breakout style posture.
+    // Policies does not own archetypes; it uses posture + reduced_only as the hard proxy.
+    {
+      const double ostrong = CfgMicroContinuationObservabilityMin01(cfg);
+      if(ostrong > 0.0 &&
+         InstitutionalNeedsStrongObservability(out_view) &&
+         out_view.observability_confidence01 < ostrong)
+      {
+        out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_MICRO_OBSERVABILITY;
+        return false;
+      }
+    }
+
+    if(CfgMicroStructureOnlyAggressiveVetoOn(cfg) &&
+       InstitutionalStructureOnlyPostureTooAggressive(out_view))
+    {
+      out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_MICRO_TRUTH;
+
+      if(StringLen(out_view.veto_reason) <= 0)
+        out_view.veto_reason = "structure_only_posture";
+
+      return false;
+    }
+
+    if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_PROXY &&
+       CfgMicroProxyForceReducedOnlyOn(cfg) &&
+       !out_view.reduced_only &&
+       out_view.observability_confidence01 < CfgMicroContinuationObservabilityMin01(cfg))
+    {
+      out_view.reduced_only = true;
+      out_view.derisk_recommended = true;
     }
 
     // Venue coverage gate
@@ -4817,6 +5661,19 @@ inline void NotifyTradeResult(const double r_multiple)
       }
     #endif
 
+    #ifdef POLICIES_INST_ENABLE_TRUTH_POSTURE_VETO
+      if(InstitutionalAggressivePosture(out_view))
+      {
+        const double tmin = CfgMicroTruthTierAggressiveMin01(cfg);
+        if(tmin > 0.0 && out_view.truth_tier01 < tmin)
+        {
+          out_view.delay_recommended = true;
+          out_view.gate_reason = GATE_MICRO_TRUTH;
+          return false;
+        }
+      }
+    #endif
+
     #ifdef POLICIES_INST_ENABLE_DARKPOOL_VETO
       if(CfgMicroDarkPoolGateOn(cfg))
       {
@@ -4830,6 +5687,15 @@ inline void NotifyTradeResult(const double r_multiple)
           out_view.gate_reason = GATE_MICRO_DARKPOOL;
           return false;
         }
+      }
+    #endif
+
+    #ifdef POLICIES_INST_ENABLE_INVALIDATION_EVENT_VETO
+      if(out_view.invalidation_event01)
+      {
+        out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_SM_INVALIDATION;
+        return false;
       }
     #endif
 
@@ -4868,6 +5734,15 @@ inline void NotifyTradeResult(const double r_multiple)
       }
     #endif
 
+    #ifdef POLICIES_INST_ENABLE_LIQUIDITY_TRAP_EVENT_VETO
+      if(out_view.liquidity_trap_event01)
+      {
+        out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_LIQUIDITY_TRAP;
+        return false;
+      }
+    #endif
+
     // Weak execution head => delay / no-trade-now
     if(out_view.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
     {
@@ -4890,6 +5765,18 @@ inline void NotifyTradeResult(const double r_multiple)
       ss.risk_mult = Clamp01(ss.risk_mult * Clamp(out_view.risk_score, 0.25, 1.0));
     }
 
+    if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_PROXY)
+    {
+      ss.risk_mult = Clamp01(ss.risk_mult * CfgMicroProxyDeriskMult01(cfg));
+      out_view.derisk_recommended = true;
+    }
+    else if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+    {
+      ss.risk_mult = Clamp01(ss.risk_mult * CfgMicroStructureOnlyDeriskMult01(cfg));
+      out_view.reduced_only = true;
+      out_view.derisk_recommended = true;
+    }
+    
     return true;
   }
 
@@ -4907,6 +5794,7 @@ inline void NotifyTradeResult(const double r_multiple)
     if(gr == GATE_MICRO_THIN_LIQUIDITY)    return CA_POLMASK_MICRO_THIN_LIQUIDITY;
     if(gr == GATE_MICRO_TOXICITY)          return CA_POLMASK_MICRO_TOXICITY;
     if(gr == GATE_MICRO_SPREAD_STRESS)     return CA_POLMASK_MICRO_SPREAD_STRESS;
+    if(gr == GATE_MICRO_TRUTH)             return CA_POLMASK_MICRO_TRUTH;
     return CA_POLMASK_INSTITUTIONAL;
   }
 
@@ -5322,6 +6210,8 @@ inline void NotifyTradeResult(const double r_multiple)
        aux_out = (int)MathRound(1000.0 * PolicyQuoteInstability01(r));
      else if(r.primary_reason == GATE_MICRO_IMPACT)
        aux_out = (int)MathRound(1000.0 * MathMax(r.impact_beta01, r.impact_lambda01));
+     else if(r.primary_reason == GATE_MICRO_TRUTH)
+       aux_out = (int)MathRound(1000.0 * r.truth_tier01);
      else if(r.primary_reason == GATE_MICRO_DARKPOOL)
        aux_out = (int)MathRound(1000.0 * MathMax(1.0 - r.darkpool01, r.darkpool_contradiction01));
      else if(r.primary_reason == GATE_SM_INVALIDATION)
@@ -5524,6 +6414,31 @@ inline void NotifyTradeResult(const double r_multiple)
     bool        institutional_delay_recommended;
     bool        institutional_derisk_recommended;
 
+    double      observability_penalty01;
+
+    bool        direct_micro_available;
+    bool        proxy_micro_available;
+    int         flow_mode;
+
+    int         execution_posture_mode;
+    bool        reduced_only;
+
+    double      inst_ofi01;
+    double      inst_obi01;
+    double      inst_cvd01;
+
+    double      inst_delta_proxy01;
+    double      inst_footprint01;
+    double      inst_profile01;
+    double      inst_absorption01;
+    double      inst_replenishment01;
+    double      inst_vwap_location01;
+    double      inst_liquidity_reject01;
+
+    int         confluence_veto_mask;
+    string      route_reason;
+    string      veto_reason;
+
     string      tag;
     StratScore  ss;
     ConfluenceBreakdown bd;
@@ -5568,7 +6483,93 @@ inline void NotifyTradeResult(const double r_multiple)
     ti.institutional_delay_recommended=false;
     ti.institutional_derisk_recommended=false;
 
+    ti.observability_penalty01 = Clamp01(1.0 - ti.observability_confidence01);
+
+    ti.direct_micro_available = false;
+    ti.proxy_micro_available  = false;
+    ti.flow_mode              = POLICIES_INST_FLOW_MODE_PROXY;
+
+    ti.execution_posture_mode = 0;
+    ti.reduced_only           = false;
+
+    ti.inst_ofi01             = 0.5;
+    ti.inst_obi01             = 0.5;
+    ti.inst_cvd01             = 0.5;
+
+    ti.inst_delta_proxy01     = 0.5;
+    ti.inst_footprint01       = 0.5;
+    ti.inst_profile01         = 0.5;
+    ti.inst_absorption01      = 0.5;
+    ti.inst_replenishment01   = 0.5;
+    ti.inst_vwap_location01   = 0.5;
+    ti.inst_liquidity_reject01= 0.0;
+
+    ti.confluence_veto_mask   = 0;
+    ti.route_reason           = "";
+    ti.veto_reason            = "none";
+
     ti.reason=GATE_OK;
+  }
+
+  inline void _FillIntentInstitutionalPolicy(TradeIntent &ti, const PolicyResult &r)
+  {
+    ti.alpha_score                     = r.alpha_score;
+    ti.execution_score                 = r.execution_score;
+    ti.risk_score                      = r.risk_score;
+    ti.state_quality01                 = r.state_quality01;
+    ti.observability_confidence01      = r.observability_confidence01;
+    ti.observability_penalty01         = r.observability_penalty01;
+    ti.venue_coverage01                = r.venue_coverage01;
+    ti.cross_venue_dislocation01       = r.cross_venue_dislocation01;
+
+    ti.vpin01                          = r.vpin01;
+    ti.vpin_limit01                    = r.vpin_limit01;
+    ti.resiliency01                    = r.resiliency01;
+    ti.resiliency_min01                = r.resiliency_min01;
+
+    ti.impact_beta01                   = r.impact_beta01;
+    ti.impact_beta_max01               = r.impact_beta_max01;
+    ti.impact_lambda01                 = r.impact_lambda01;
+    ti.impact_lambda_max01             = r.impact_lambda_max01;
+
+    ti.darkpool01                      = r.darkpool01;
+    ti.darkpool_min01                  = r.darkpool_min01;
+    ti.darkpool_contradiction01        = r.darkpool_contradiction01;
+    ti.darkpool_contradiction_max01    = r.darkpool_contradiction_max01;
+
+    ti.sd_ob_invalidation_proximity01  = r.sd_ob_invalidation_proximity01;
+    ti.sd_ob_invalidation_max01        = r.sd_ob_invalidation_max01;
+
+    ti.liquidity_vacuum01              = r.liquidity_vacuum01;
+    ti.liquidity_vacuum_max01          = r.liquidity_vacuum_max01;
+    ti.liquidity_hunt01                = r.liquidity_hunt01;
+    ti.liquidity_hunt_max01            = r.liquidity_hunt_max01;
+
+    ti.institutional_gate_pass         = r.institutional_gate_pass;
+    ti.institutional_delay_recommended = r.institutional_delay_recommended;
+    ti.institutional_derisk_recommended= r.institutional_derisk_recommended;
+
+    ti.direct_micro_available          = r.direct_micro_available;
+    ti.proxy_micro_available           = r.proxy_micro_available;
+    ti.flow_mode                       = r.flow_mode;
+    ti.execution_posture_mode          = r.execution_posture_mode;
+    ti.reduced_only                    = r.reduced_only;
+
+    ti.inst_ofi01                      = r.inst_ofi01;
+    ti.inst_obi01                      = r.inst_obi01;
+    ti.inst_cvd01                      = r.inst_cvd01;
+
+    ti.inst_delta_proxy01              = r.inst_delta_proxy01;
+    ti.inst_footprint01                = r.inst_footprint01;
+    ti.inst_profile01                  = r.inst_profile01;
+    ti.inst_absorption01               = r.inst_absorption01;
+    ti.inst_replenishment01            = r.inst_replenishment01;
+    ti.inst_vwap_location01            = r.inst_vwap_location01;
+    ti.inst_liquidity_reject01         = r.inst_liquidity_reject01;
+
+    ti.confluence_veto_mask            = r.confluence_veto_mask;
+    ti.route_reason                    = r.route_reason;
+    ti.veto_reason                     = r.veto_reason;
   }
 
   inline string MakeTag(const string sym, const string strat_name, const Direction d, const double sc)
@@ -5613,40 +6614,42 @@ inline void NotifyTradeResult(const double r_multiple)
 
     if(!EvaluateFinalSendGate(cfg, symbol, SS, final_gate, inst_view))
     {
-      out_intent.alpha_score                     = final_gate.alpha_score;
-      out_intent.execution_score                 = final_gate.execution_score;
-      out_intent.risk_score                      = final_gate.risk_score;
-      out_intent.state_quality01                 = final_gate.state_quality01;
-      out_intent.observability_confidence01      = final_gate.observability_confidence01;
-      out_intent.venue_coverage01                = final_gate.venue_coverage01;
-      out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
+//      out_intent.alpha_score                     = final_gate.alpha_score;
+//      out_intent.execution_score                 = final_gate.execution_score;
+//      out_intent.risk_score                      = final_gate.risk_score;
+//      out_intent.state_quality01                 = final_gate.state_quality01;
+//      out_intent.observability_confidence01      = final_gate.observability_confidence01;
+//      out_intent.venue_coverage01                = final_gate.venue_coverage01;
+//      out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
+//
+//      out_intent.vpin01                          = final_gate.vpin01;
+//      out_intent.vpin_limit01                    = final_gate.vpin_limit01;
+//      out_intent.resiliency01                    = final_gate.resiliency01;
+//      out_intent.resiliency_min01                = final_gate.resiliency_min01;
+//
+//      out_intent.impact_beta01                   = final_gate.impact_beta01;
+//      out_intent.impact_beta_max01               = final_gate.impact_beta_max01;
+//      out_intent.impact_lambda01                 = final_gate.impact_lambda01;
+//      out_intent.impact_lambda_max01             = final_gate.impact_lambda_max01;
+//
+//      out_intent.darkpool01                      = final_gate.darkpool01;
+//      out_intent.darkpool_min01                  = final_gate.darkpool_min01;
+//      out_intent.darkpool_contradiction01        = final_gate.darkpool_contradiction01;
+//      out_intent.darkpool_contradiction_max01    = final_gate.darkpool_contradiction_max01;
+//
+//      out_intent.sd_ob_invalidation_proximity01  = final_gate.sd_ob_invalidation_proximity01;
+//      out_intent.sd_ob_invalidation_max01        = final_gate.sd_ob_invalidation_max01;
+//
+//      out_intent.liquidity_vacuum01              = final_gate.liquidity_vacuum01;
+//      out_intent.liquidity_vacuum_max01          = final_gate.liquidity_vacuum_max01;
+//      out_intent.liquidity_hunt01                = final_gate.liquidity_hunt01;
+//      out_intent.liquidity_hunt_max01            = final_gate.liquidity_hunt_max01;
+//
+//      out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
+//      out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
+//      out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
 
-      out_intent.vpin01                          = final_gate.vpin01;
-      out_intent.vpin_limit01                    = final_gate.vpin_limit01;
-      out_intent.resiliency01                    = final_gate.resiliency01;
-      out_intent.resiliency_min01                = final_gate.resiliency_min01;
-
-      out_intent.impact_beta01                   = final_gate.impact_beta01;
-      out_intent.impact_beta_max01               = final_gate.impact_beta_max01;
-      out_intent.impact_lambda01                 = final_gate.impact_lambda01;
-      out_intent.impact_lambda_max01             = final_gate.impact_lambda_max01;
-
-      out_intent.darkpool01                      = final_gate.darkpool01;
-      out_intent.darkpool_min01                  = final_gate.darkpool_min01;
-      out_intent.darkpool_contradiction01        = final_gate.darkpool_contradiction01;
-      out_intent.darkpool_contradiction_max01    = final_gate.darkpool_contradiction_max01;
-
-      out_intent.sd_ob_invalidation_proximity01  = final_gate.sd_ob_invalidation_proximity01;
-      out_intent.sd_ob_invalidation_max01        = final_gate.sd_ob_invalidation_max01;
-
-      out_intent.liquidity_vacuum01              = final_gate.liquidity_vacuum01;
-      out_intent.liquidity_vacuum_max01          = final_gate.liquidity_vacuum_max01;
-      out_intent.liquidity_hunt01                = final_gate.liquidity_hunt01;
-      out_intent.liquidity_hunt_max01            = final_gate.liquidity_hunt_max01;
-
-      out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
-      out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
-      out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
+      _FillIntentInstitutionalPolicy(out_intent, final_gate);
 
       gate_reason       = final_gate.primary_reason;
       out_intent.reason = gate_reason;
@@ -5668,40 +6671,41 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.tp        = plan.tp;
     out_intent.lots      = plan.lots;
 
-    out_intent.alpha_score                     = final_gate.alpha_score;
-    out_intent.execution_score                 = final_gate.execution_score;
-    out_intent.risk_score                      = final_gate.risk_score;
-    out_intent.state_quality01                 = final_gate.state_quality01;
-    out_intent.observability_confidence01      = final_gate.observability_confidence01;
-    out_intent.venue_coverage01                = final_gate.venue_coverage01;
-    out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
-
-    out_intent.vpin01                          = final_gate.vpin01;
-    out_intent.vpin_limit01                    = final_gate.vpin_limit01;
-    out_intent.resiliency01                    = final_gate.resiliency01;
-    out_intent.resiliency_min01                = final_gate.resiliency_min01;
-
-    out_intent.impact_beta01                   = final_gate.impact_beta01;
-    out_intent.impact_beta_max01               = final_gate.impact_beta_max01;
-    out_intent.impact_lambda01                 = final_gate.impact_lambda01;
-    out_intent.impact_lambda_max01             = final_gate.impact_lambda_max01;
-
-    out_intent.darkpool01                      = final_gate.darkpool01;
-    out_intent.darkpool_min01                  = final_gate.darkpool_min01;
-    out_intent.darkpool_contradiction01        = final_gate.darkpool_contradiction01;
-    out_intent.darkpool_contradiction_max01    = final_gate.darkpool_contradiction_max01;
-
-    out_intent.sd_ob_invalidation_proximity01  = final_gate.sd_ob_invalidation_proximity01;
-    out_intent.sd_ob_invalidation_max01        = final_gate.sd_ob_invalidation_max01;
-
-    out_intent.liquidity_vacuum01              = final_gate.liquidity_vacuum01;
-    out_intent.liquidity_vacuum_max01          = final_gate.liquidity_vacuum_max01;
-    out_intent.liquidity_hunt01                = final_gate.liquidity_hunt01;
-    out_intent.liquidity_hunt_max01            = final_gate.liquidity_hunt_max01;
-
-    out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
-    out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
-    out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
+    _FillIntentInstitutionalPolicy(out_intent, final_gate);
+//    out_intent.alpha_score                     = final_gate.alpha_score;
+//    out_intent.execution_score                 = final_gate.execution_score;
+//    out_intent.risk_score                      = final_gate.risk_score;
+//    out_intent.state_quality01                 = final_gate.state_quality01;
+//    out_intent.observability_confidence01      = final_gate.observability_confidence01;
+//    out_intent.venue_coverage01                = final_gate.venue_coverage01;
+//    out_intent.cross_venue_dislocation01       = final_gate.cross_venue_dislocation01;
+//
+//    out_intent.vpin01                          = final_gate.vpin01;
+//    out_intent.vpin_limit01                    = final_gate.vpin_limit01;
+//    out_intent.resiliency01                    = final_gate.resiliency01;
+//    out_intent.resiliency_min01                = final_gate.resiliency_min01;
+//
+//    out_intent.impact_beta01                   = final_gate.impact_beta01;
+//    out_intent.impact_beta_max01               = final_gate.impact_beta_max01;
+//    out_intent.impact_lambda01                 = final_gate.impact_lambda01;
+//    out_intent.impact_lambda_max01             = final_gate.impact_lambda_max01;
+//
+//    out_intent.darkpool01                      = final_gate.darkpool01;
+//    out_intent.darkpool_min01                  = final_gate.darkpool_min01;
+//    out_intent.darkpool_contradiction01        = final_gate.darkpool_contradiction01;
+//    out_intent.darkpool_contradiction_max01    = final_gate.darkpool_contradiction_max01;
+//
+//    out_intent.sd_ob_invalidation_proximity01  = final_gate.sd_ob_invalidation_proximity01;
+//    out_intent.sd_ob_invalidation_max01        = final_gate.sd_ob_invalidation_max01;
+//
+//    out_intent.liquidity_vacuum01              = final_gate.liquidity_vacuum01;
+//    out_intent.liquidity_vacuum_max01          = final_gate.liquidity_vacuum_max01;
+//    out_intent.liquidity_hunt01                = final_gate.liquidity_hunt01;
+//    out_intent.liquidity_hunt_max01            = final_gate.liquidity_hunt_max01;
+//
+//    out_intent.institutional_gate_pass         = final_gate.institutional_gate_pass;
+//    out_intent.institutional_delay_recommended = final_gate.institutional_delay_recommended;
+//    out_intent.institutional_derisk_recommended= final_gate.institutional_derisk_recommended;
 
     out_intent.ss        = SS;
     out_intent.bd        = BD;

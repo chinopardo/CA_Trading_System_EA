@@ -78,6 +78,15 @@
 //#define CONFLUENCE_FUSION_OWNER_IS_CONFLUENCE
 //#define BUILD_REQUIRE_TYPES_SNAPSHOT_MIRROR_ONLY
 //#define TYPES_SNAPSHOT_IS_MIRROR_ONLY
+//
+// Institutional transport / fallback discipline
+//#define BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+//#define INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+//#define BUILD_ENABLE_PROXY_MICRO_FALLBACK
+//#define BUILD_ALLOW_STRUCTURE_ONLY_MODE
+//#define BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+//#define BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+//#define BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
 
 // -------------------------------------------------------------------
 // 1B) Strict production institutional bundle
@@ -133,6 +142,34 @@
 
    #ifndef TYPES_SNAPSHOT_IS_MIRROR_ONLY
       #define TYPES_SNAPSHOT_IS_MIRROR_ONLY
+   #endif
+
+   #ifndef BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+      #define BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+   #endif
+
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #define INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+   #endif
+
+   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+      #define BUILD_ENABLE_PROXY_MICRO_FALLBACK
+   #endif
+
+   #ifndef BUILD_ALLOW_STRUCTURE_ONLY_MODE
+      #define BUILD_ALLOW_STRUCTURE_ONLY_MODE
+   #endif
+
+   #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+      #define BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+   #endif
+
+   #ifndef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+      #define BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+   #endif
+
+   #ifndef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+      #define BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
    #endif
 
    #ifndef ROUTER_SCAN_OWNER_IS_MSH
@@ -231,6 +268,51 @@
    #endif
 #endif
 
+#ifdef BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+   #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #error "INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT requires CONFLUENCE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "BUILD_ENABLE_PROXY_MICRO_FALLBACK requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef BUILD_ALLOW_STRUCTURE_ONLY_MODE
+   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+      #error "BUILD_ALLOW_STRUCTURE_ONLY_MODE requires BUILD_ENABLE_PROXY_MICRO_FALLBACK"
+   #endif
+#endif
+
+#ifdef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "BUILD_ENABLE_RISK_OBSERVABILITY_SIZING requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
+#ifdef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+   #ifndef BUILD_REQUIRE_STATE_HEADS
+      #error "BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS requires BUILD_REQUIRE_STATE_HEADS"
+   #endif
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+#endif
+
 #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
    #ifndef BUILD_STRICT_CANONICAL_OFX_ONLY
       #error "Strict production institutional bundle requires BUILD_STRICT_CANONICAL_OFX_ONLY"
@@ -274,6 +356,34 @@
 
    #ifndef ROUTER_SCAN_OWNER_IS_MSH
       #error "Strict production institutional bundle requires ROUTER_SCAN_OWNER_IS_MSH"
+   #endif
+   
+   #ifndef BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+      #error "Strict production institutional bundle requires BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT"
+   #endif
+
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #error "Strict production institutional bundle requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
+   #endif
+
+   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+      #error "Strict production institutional bundle requires BUILD_ENABLE_PROXY_MICRO_FALLBACK"
+   #endif
+
+   #ifndef BUILD_ALLOW_STRUCTURE_ONLY_MODE
+      #error "Strict production institutional bundle requires BUILD_ALLOW_STRUCTURE_ONLY_MODE"
+   #endif
+
+   #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+      #error "Strict production institutional bundle requires BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE"
+   #endif
+
+   #ifndef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+      #error "Strict production institutional bundle requires BUILD_ENABLE_RISK_OBSERVABILITY_SIZING"
+   #endif
+
+   #ifndef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+      #error "Strict production institutional bundle requires BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS"
    #endif
 #endif
 
@@ -374,6 +484,48 @@ inline void BuildFlags_PrintSummary()
 #endif
    Print(BUILD_TAG, " Types snapshot policy: ", snapshot_policy);
 
+   string inst_bundle_transport = "OFF";
+#ifdef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+   inst_bundle_transport = "ON";
+#endif
+#ifdef BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+   if(inst_bundle_transport == "ON")
+      inst_bundle_transport = "ON_REQUIRED";
+   else
+      inst_bundle_transport = "REQUIRED";
+#endif
+   Print(BUILD_TAG, " Institutional bundle transport: ", inst_bundle_transport);
+
+   string proxy_fallback = "OFF";
+#ifdef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+   proxy_fallback = "ON";
+#endif
+   Print(BUILD_TAG, " Proxy micro fallback: ", proxy_fallback);
+
+   string structure_only = "OFF";
+#ifdef BUILD_ALLOW_STRUCTURE_ONLY_MODE
+   structure_only = "ON";
+#endif
+   Print(BUILD_TAG, " Structure-only mode: ", structure_only);
+
+   string router_observability = "OFF";
+#ifdef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+   router_observability = "ON";
+#endif
+   Print(BUILD_TAG, " Router observability compare: ", router_observability);
+
+   string risk_observability = "OFF";
+#ifdef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+   risk_observability = "ON";
+#endif
+   Print(BUILD_TAG, " Risk observability sizing: ", risk_observability);
+
+   string exec_from_heads = "OFF";
+#ifdef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+   exec_from_heads = "ON";
+#endif
+   Print(BUILD_TAG, " Execution posture from heads: ", exec_from_heads);
+
    Print(BUILD_TAG, " Log level INFO=", (string)BUILD_LOG_LEVEL_INFO,
                  " DEBUG=", (string)BUILD_LOG_LEVEL_DEBUG);
 }
@@ -397,6 +549,14 @@ inline void BuildFlags_PrintSummary()
 //     here only, not ad hoc in downstream files.
 //   - Downstream modules should consume BUILD_* and *_IS_* ownership flags,
 //     not re-declare policy locally.
+//   - Institutional transport / fallback policy should also be declared here only:
+//       BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+//       INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+//       BUILD_ENABLE_PROXY_MICRO_FALLBACK
+//       BUILD_ALLOW_STRUCTURE_ONLY_MODE
+//       BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+//       BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+//       BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
 //   - BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL is now the default
 //     live-trading posture unless BUILD_PROFILE_TESTER or
 //     BUILD_PROFILE_PRODUCTION_CLASSIC is explicitly selected.

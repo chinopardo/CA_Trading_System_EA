@@ -960,6 +960,18 @@ static string       g_ms_last_symbol  = "";
 static bool         g_ms_last_ok      = false;
 static bool         g_ms_gate_pass    = true;
 
+struct EAInstTransportStamp
+{
+   double observability01;
+   double truth_tier01;
+   double venue_scope01;
+   bool   direct_micro_available;
+   bool   proxy_micro_available;
+   int    inst_flow_bundle_freshness_code;
+};
+
+static EAInstTransportStamp g_inst_transport;
+
 void MSH_DirtyClear()
 {
    g_msh_dirty_n = 0;
@@ -3032,6 +3044,99 @@ void RefreshICTContext(EAState &st)
    StateUpdateICTContext(st, g_cfg);
 }
 
+void Inst_ResetTransportStamp()
+{
+   g_inst_transport.observability01               = 0.45;
+   g_inst_transport.truth_tier01                  = 0.45;
+   g_inst_transport.venue_scope01                 = 0.45;
+   g_inst_transport.direct_micro_available        = false;
+   g_inst_transport.proxy_micro_available         = false;
+   g_inst_transport.inst_flow_bundle_freshness_code = 0;
+}
+
+bool Inst_IsLikelyOTCSymbol(const string sym)
+{
+   string u = sym;
+   StringToUpper(u);
+
+   if(StringLen(u) == 6)
+      return true;
+
+   if(StringFind(u, "XAU", 0) >= 0)
+      return true;
+
+   if(StringFind(u, "XAG", 0) >= 0)
+      return true;
+
+   return false;
+}
+
+int Inst_ResolveFreshnessCode(const datetime now_srv)
+{
+   if(g_ms_last_refresh > 0)
+   {
+      long age_sec = (long)(now_srv - g_ms_last_refresh);
+
+      if(age_sec <= 1)
+         return 3;
+
+      if(age_sec <= 5)
+         return 2;
+
+      if(age_sec <= 30)
+         return 1;
+   }
+
+   if(g_msh_dirty_n > 0)
+      return 1;
+
+   return 0;
+}
+
+void Inst_BuildTransportStamp(const string sym)
+{
+   Inst_ResetTransportStamp();
+
+   if(sym == "")
+      return;
+
+   const bool otc = Inst_IsLikelyOTCSymbol(sym);
+   const bool direct_ok = g_ms_last_ok;
+   const bool proxy_ok  = (g_ms_last_refresh > 0 || g_msh_dirty_n > 0);
+
+   g_inst_transport.direct_micro_available = direct_ok;
+   g_inst_transport.proxy_micro_available  = proxy_ok;
+   g_inst_transport.inst_flow_bundle_freshness_code = Inst_ResolveFreshnessCode(TimeUtils::NowServer());
+
+   if(otc)
+      g_inst_transport.venue_scope01 = 0.45;
+   else
+      g_inst_transport.venue_scope01 = 0.85;
+
+   if(direct_ok)
+   {
+      g_inst_transport.observability01 = 1.00;
+      g_inst_transport.truth_tier01    = (otc ? 0.70 : 1.00);
+      return;
+   }
+
+   if(proxy_ok)
+   {
+      g_inst_transport.observability01 = 0.70;
+      g_inst_transport.truth_tier01    = (otc ? 0.55 : 0.70);
+      return;
+   }
+
+   g_inst_transport.observability01 = 0.45;
+   g_inst_transport.truth_tier01    = (otc ? 0.45 : 0.55);
+}
+
+void Inst_CommitTransportStampToState(EAState &st)
+{
+   // State.mqh in this branch does not expose the transport-stamp mirror fields yet.
+   // Keep g_inst_transport as the canonical local cache until EAState is extended.
+}
+
 string CanonicalRouterSymbol()
 {
    return (g_symCount > 0 ? g_symbols[0] : _Symbol);
@@ -3201,12 +3306,6 @@ bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh)
 //--------------------------------------------------------------------
 void PublishMicrostructureSnapshot(const string sym)
 {
-   if(!g_ms_last_ok)
-      return;
-
-   if(sym == "")
-      return;
-
    // Thin EA bridge only.
    // 1) MarketData owns scanner/microstructure production
    // 2) MarketScannerHub owns scan cadence
@@ -3215,6 +3314,15 @@ void PublishMicrostructureSnapshot(const string sym)
    //
    // Keep this as the canonical publish hook, but do NOT recompute
    // State / ICT / scanner math here.
+
+   Inst_BuildTransportStamp(sym);
+   Inst_CommitTransportStampToState(g_state);
+
+   if(sym == "")
+      return;
+
+   if(!g_ms_last_ok)
+      return;
 }
 
 void RefreshRuntimeContextLight()
@@ -3229,6 +3337,9 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
       RefreshMicrostructureSnapshot(sym, force_micro_refresh);
 
    RefreshRuntimeContextLight();
+
+   // Publish canonical runtime transport only.
+   // Do NOT add confluence scoring, strategy math, or direct order-routing logic here.
    PublishMicrostructureSnapshot(sym);
 }
 
@@ -3514,6 +3625,8 @@ int OnInit()
 
    // 2. Initialize State (pair with router config)
    StateInit(g_state, g_cfg);
+   Inst_ResetTransportStamp();
+   Inst_CommitTransportStampToState(g_state);
 
    MarketData::EnsureWarmup_ADX(_Symbol, g_cfg.tf_entry, g_cfg.adx_period, 1);
    ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)Policies::CfgCorrTF(S);
