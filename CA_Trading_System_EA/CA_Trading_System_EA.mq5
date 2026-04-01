@@ -2512,13 +2512,16 @@ void MaybeEvaluate()
        return;
     }
 
+   // Ensure canonical micro/state context is current BEFORE the global gate.
+   RefreshMicrostructureSnapshot(_Symbol, false);
+   StateOnTickUpdate(g_state);
+   RefreshICTContext(g_state);
+   PublishMicrostructureSnapshot(_Symbol);
+
    int gate_reason = 0;
    if(!RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
       return;
-   
-   // Ensure State + ICT context are current before router evaluation
-   StateOnTickUpdate(g_state);
-   RefreshICTContext(g_state);
+
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
    RouterEvaluateAll(g_router, g_cfg, ictCtx);
@@ -3093,6 +3096,105 @@ int Inst_ResolveFreshnessCode(const datetime now_srv)
    return 0;
 }
 
+double Inst_Clamp01(const double x)
+{
+   if(x < 0.0) return 0.0;
+   if(x > 1.0) return 1.0;
+   return x;
+}
+
+int Inst_DiagOrdinalFrom01(const double v01, const int max_value)
+{
+   if(max_value <= 0)
+      return 0;
+
+   int out = (int)MathRound(Inst_Clamp01(v01) * (double)max_value);
+
+   if(out < 0) out = 0;
+   if(out > max_value) out = max_value;
+
+   return out;
+}
+
+int Inst_ResolveFlowMode()
+{
+   if(g_inst_transport.direct_micro_available)
+      return STATE_INST_FLOW_MODE_DIRECT;
+
+   if(g_inst_transport.proxy_micro_available)
+      return STATE_INST_FLOW_MODE_PROXY;
+
+   return STATE_INST_FLOW_MODE_STRUCTURE_ONLY;
+}
+
+string Inst_FlowModeToStr(const int mode)
+{
+   if(mode == STATE_INST_FLOW_MODE_DIRECT)         return "DIRECT";
+   if(mode == STATE_INST_FLOW_MODE_PROXY)          return "PROXY";
+   if(mode == STATE_INST_FLOW_MODE_STRUCTURE_ONLY) return "STRUCTURE_ONLY";
+   return "UNKNOWN";
+}
+
+double Inst_CenteredStrengthAbs01(const double x01)
+{
+   return Inst_Clamp01(MathAbs((Inst_Clamp01(x01) - 0.5) * 2.0));
+}
+
+bool Inst_ReadCanonicalMicroGateMetrics(const string sym,
+                                        double &ofi_abs01,
+                                        double &obi_abs01,
+                                        double &vpin01,
+                                        double &resil01,
+                                        bool &direct_ok,
+                                        bool &proxy_ok,
+                                        int &flow_mode,
+                                        datetime &flow_ts,
+                                        string &detail)
+{
+   detail    = "";
+   ofi_abs01 = 0.0;
+   obi_abs01 = 0.0;
+   vpin01    = 0.0;
+   resil01   = 1.0;
+   direct_ok = false;
+   proxy_ok  = false;
+   flow_mode = STATE_INST_FLOW_MODE_STRUCTURE_ONLY;
+   flow_ts   = (datetime)0;
+
+   if(sym == "")
+      return true;
+
+   if(!StateInstitutionalStateFresh(g_state))
+   {
+      detail = "canonical institutional state unavailable";
+      return false;
+   }
+
+   ofi_abs01 = Inst_CenteredStrengthAbs01(StateInstitutionalOFI01(g_state));
+   obi_abs01 = Inst_CenteredStrengthAbs01(StateInstitutionalOBI01(g_state));
+   vpin01    = Inst_Clamp01(StateInstitutionalVPIN01(g_state));
+   resil01   = Inst_Clamp01(StateInstitutionalResiliency01(g_state));
+
+   direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
+   proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
+   flow_mode = StateInstitutionalFlowMode(g_state);
+   flow_ts   = StateInstitutionalFlowBundleTime(g_state);
+
+   if(!direct_ok && !proxy_ok)
+   {
+      detail = "canonical micro route unavailable";
+      return false;
+   }
+
+   if(flow_ts <= 0)
+   {
+      detail = "canonical micro bundle time unavailable";
+      return false;
+   }
+
+   return true;
+}
+
 void Inst_BuildTransportStamp(const string sym)
 {
    Inst_ResetTransportStamp();
@@ -3133,8 +3235,27 @@ void Inst_BuildTransportStamp(const string sym)
 
 void Inst_CommitTransportStampToState(EAState &st)
 {
-   // State.mqh in this branch does not expose the transport-stamp mirror fields yet.
-   // Keep g_inst_transport as the canonical local cache until EAState is extended.
+   double observability01 = Inst_Clamp01(g_inst_transport.observability01);
+   int truth_tier = Inst_DiagOrdinalFrom01(g_inst_transport.truth_tier01, STATE_DIAG_TRUTHTIER_MAX);
+   int venue_scope = Inst_DiagOrdinalFrom01(g_inst_transport.venue_scope01, STATE_DIAG_VENUESCOPE_MAX);
+
+   // Preserve richer canonical values when State already has a fresh transport.
+   if(StateInstitutionalStateFresh(st))
+   {
+      observability01 = StateInstitutionalObservability01(st);
+      truth_tier      = st.inst_state_truthTier;
+      venue_scope     = st.inst_state_venueScope;
+   }
+
+   StateSetInstitutionalTransportStamp(st,
+                                       observability01,
+                                       truth_tier,
+                                       venue_scope,
+                                       g_inst_transport.direct_micro_available,
+                                       g_inst_transport.proxy_micro_available,
+                                       Inst_ResolveFlowMode(),
+                                       g_ms_last_refresh,
+                                       g_inst_transport.inst_flow_bundle_freshness_code);
 }
 
 string CanonicalRouterSymbol()
@@ -3152,52 +3273,78 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
    if(sym == "")
       return true;
 
-   if(!g_ms_last_ok)
+   double ofi_abs01   = 0.0;
+   double obi_abs01   = 0.0;
+   double vpin01      = 0.0;
+   double resil01     = 1.0;
+   bool   direct_ok   = false;
+   bool   proxy_ok    = false;
+   int    flow_mode   = STATE_INST_FLOW_MODE_STRUCTURE_ONLY;
+   datetime flow_ts   = 0;
+   string state_detail = "";
+
+   if(!Inst_ReadCanonicalMicroGateMetrics(sym,
+                                          ofi_abs01,
+                                          obi_abs01,
+                                          vpin01,
+                                          resil01,
+                                          direct_ok,
+                                          proxy_ok,
+                                          flow_mode,
+                                          flow_ts,
+                                          state_detail))
    {
       if(!InpMS_BlockIfUnavailable)
          return true;
 
-      detail = "micro snapshot unavailable";
+      detail = state_detail;
       return false;
    }
 
-   if(g_ms_last_symbol != sym)
-   {
-      if(!InpMS_BlockIfUnavailable)
-         return true;
-
-      detail = StringFormat("micro snapshot symbol mismatch have=%s want=%s",
-                            g_ms_last_symbol, sym);
-      return false;
-   }
-
-   if(g_ms_last_refresh == 0)
-   {
-      if(!InpMS_BlockIfUnavailable)
-         return true;
-
-      detail = "micro snapshot never refreshed";
-      return false;
-   }
-
-   long age_ms = (long)(now_srv - g_ms_last_refresh) * 1000;
+   long age_ms = (long)(now_srv - flow_ts) * 1000;
    if(age_ms < 0)
       age_ms = 0;
 
    if((int)age_ms > InpMS_MaxSnapshotAgeMs)
    {
-      detail = StringFormat("micro snapshot stale age_ms=%d max_ms=%d",
-                            (int)age_ms, InpMS_MaxSnapshotAgeMs);
+      detail = StringFormat("canonical micro stale age_ms=%d max_ms=%d mode=%s",
+                            (int)age_ms,
+                            InpMS_MaxSnapshotAgeMs,
+                            Inst_FlowModeToStr(flow_mode));
       return false;
    }
 
-   if(!g_ms_gate_pass)
+   bool fail = false;
+
+   // Always enforce toxicity / resiliency
+   if(vpin01 > InpMS_MaxVPIN)
+      fail = true;
+
+   if(resil01 < InpMS_MinResiliency)
+      fail = true;
+
+   // Only enforce OFI / OBI floors when direct micro is genuinely available.
+   // FX / OTC proxy paths must not be hard-blocked by structurally neutral
+   // raw OFI / OBI values.
+   if(direct_ok)
    {
-      detail = StringFormat("micro gate fail ofi=%.3f obi=%.3f vpin=%.3f resil=%.3f",
-                            g_ms_last.ofi_norm,
-                            g_ms_last.obi_norm,
-                            g_ms_last.vpin,
-                            g_ms_last.resiliency);
+      if(ofi_abs01 < InpMS_MinOFIAbs)
+         fail = true;
+
+      if(obi_abs01 < InpMS_MinOBIAbs)
+         fail = true;
+   }
+
+   if(fail)
+   {
+      detail = StringFormat("canonical micro fail mode=%s ofi=%.3f obi=%.3f vpin=%.3f resil=%.3f direct=%d proxy=%d",
+                            Inst_FlowModeToStr(flow_mode),
+                            ofi_abs01,
+                            obi_abs01,
+                            vpin01,
+                            resil01,
+                            (direct_ok ? 1 : 0),
+                            (proxy_ok ? 1 : 0));
       return false;
    }
 
@@ -3288,14 +3435,20 @@ bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh)
       return false;
    }
 
-   g_ms_gate_pass = true;
-   if(InpMS_EnableRuntimeGate)
-   {
-      if(MathAbs(g_ms_last.ofi_norm) < InpMS_MinOFIAbs)      g_ms_gate_pass = false;
-      if(MathAbs(g_ms_last.obi_norm) < InpMS_MinOBIAbs)      g_ms_gate_pass = false;
-      if(g_ms_last.vpin > InpMS_MaxVPIN)                     g_ms_gate_pass = false;
-      if(g_ms_last.resiliency < InpMS_MinResiliency)         g_ms_gate_pass = false;
-   }
+   // IMPORTANT:
+   // g_ms_last remains a lightweight EA-side raw cache only.
+   // The live runtime veto is computed from canonical State/ICT transport
+   // inside MicrostructureGateOK(), not from this raw cache.
+   g_ms_gate_pass = g_ms_last_ok;
+   
+   //g_ms_gate_pass = true;
+   //if(InpMS_EnableRuntimeGate)
+   //{
+   //   if(MathAbs(g_ms_last.ofi_norm) < InpMS_MinOFIAbs)      g_ms_gate_pass = false;
+   //   if(MathAbs(g_ms_last.obi_norm) < InpMS_MinOBIAbs)      g_ms_gate_pass = false;
+   //   if(g_ms_last.vpin > InpMS_MaxVPIN)                     g_ms_gate_pass = false;
+   //   if(g_ms_last.resiliency < InpMS_MinResiliency)         g_ms_gate_pass = false;
+   //}
 
    return true;
 }
