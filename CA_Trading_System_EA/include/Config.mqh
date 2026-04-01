@@ -2407,7 +2407,7 @@ namespace Config
       if(cfg.scan_obi_enable) return true;
       if(cfg.scan_of_enable)  return true;
    #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
-      if(cfg.scan_inst_state_enable) return true;
+      if(CfgInstitutionalStateProducerEnabled(cfg)) return true;
    #endif
       return false;
    }
@@ -2418,6 +2418,20 @@ namespace Config
       return cfg.ms_exec_schedule_mode;
    #else
       return CFG_INST_EXEC_SCHEDULE_PASSIVE;
+   #endif
+   }
+
+   inline bool CfgInstitutionalStateProducerEnabled(const Settings &cfg)
+   {
+      return (cfg.scan_inst_state_enable ? true : false);
+   }
+
+   inline bool CfgInstitutionalStrictTransportExpected()
+   {
+   #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+      return true;
+   #else
+      return false;
    #endif
    }
 #endif
@@ -5909,6 +5923,21 @@ namespace Config
 
   inline void NormalizeInstitutionalStateFamily(Settings &cfg)
   {
+     cfg.scan_inst_state_enable = (cfg.scan_inst_state_enable ? true : false);
+
+     cfg.scan_inst_jump_proxy_enable = (cfg.scan_inst_jump_proxy_enable ? true : false);
+     cfg.scan_inst_market_profile_enable = (cfg.scan_inst_market_profile_enable ? true : false);
+
+     cfg.scan_inst_venue_coverage_penalty_enable =
+        (cfg.scan_inst_venue_coverage_penalty_enable ? true : false);
+     cfg.scan_inst_observability_penalty_enable =
+        (cfg.scan_inst_observability_penalty_enable ? true : false);
+     cfg.scan_inst_xvenue_dislocation_penalty_enable =
+        (cfg.scan_inst_xvenue_dislocation_penalty_enable ? true : false);
+
+     cfg.scan_inst_exec_sqrt_impact_enable =
+        (cfg.scan_inst_exec_sqrt_impact_enable ? true : false);
+     
      if(cfg.scan_inst_twap_lookback < 2)
         cfg.scan_inst_twap_lookback = 60;
 
@@ -5991,8 +6020,8 @@ namespace Config
      if(cfg.scan_inst_risk_threshold < 0.0)      cfg.scan_inst_risk_threshold = 0.0;
      if(cfg.scan_inst_risk_threshold > 1.0)      cfg.scan_inst_risk_threshold = 1.0;
 
-     // If the family is OFF, keep tuning intact but inert.
-     if(!cfg.scan_inst_state_enable)
+     // If the master transport family is OFF, keep tuning intact but inert.
+     if(!CfgInstitutionalStateProducerEnabled(cfg))
         return;
 
      // Ownership clamps:
@@ -6800,26 +6829,25 @@ namespace Config
      // - requested scan_of_delta_enable  => current codebase field scan_of_enable
      // - requested scan_profile_enable   => current codebase field scan_vp_enable
 
-#ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
-     if(!cfg.scan_inst_state_enable)
-        warns += "strict institutional build is running with scan_inst_state_enable=false; this disables the canonical institutional transport even though strict profile defaults seed it ON.\n";
-#endif
+     if(CfgInstitutionalStrictTransportExpected() &&
+        !CfgInstitutionalStateProducerEnabled(cfg))
+        warns += "STRICT institutional guardrail: scan_inst_state_enable=false disables the canonical institutional transport / Confluence mirror / State promotion chain. RouterGateOK_Global can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn for strict institutional runs unless you intentionally want the whole institutional transport family OFF.\n";
 
-     if(cfg.scan_inst_state_enable &&
+     if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
         (cfg.scan_inst_weight_microprice > 0.0 ||
          cfg.scan_inst_weight_resiliency > 0.0 ||
          cfg.scan_inst_weight_depth_fade > 0.0))
         warns += "institutional-state OBI-owned contributors are weighted while scan_obi_enable=false; NormalizeInstitutionalStateFamily() zeros microprice / resiliency / depth-fade contributor weights.\n";
 
-     if(cfg.scan_inst_state_enable &&
+     if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_of_enable &&
         (cfg.scan_inst_weight_cvd > 0.0 ||
          cfg.scan_inst_weight_toxicity > 0.0 ||
          cfg.scan_inst_weight_impact > 0.0))
         warns += "institutional-state delta/flow-owned contributors are weighted while scan_of_enable=false; NormalizeInstitutionalStateFamily() zeros CVD / toxicity / impact contributor weights.\n";
 
-     if(cfg.scan_inst_state_enable &&
+     if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_vp_enable &&
         (cfg.scan_inst_weight_profile_acceptance > 0.0 ||
          cfg.scan_inst_weight_market_profile > 0.0 ||
@@ -7075,7 +7103,7 @@ namespace Config
          if(cfg.scan_obi_enable) has_owner = true;
          if(cfg.scan_of_enable)  has_owner = true;
    #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
-         if(cfg.scan_inst_state_enable) has_owner = true;
+         if(CfgInstitutionalStateProducerEnabled(cfg)) has_owner = true;
    #endif
 
          if(!has_owner)

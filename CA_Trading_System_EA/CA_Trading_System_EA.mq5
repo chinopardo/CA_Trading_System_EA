@@ -132,6 +132,14 @@ bool   MicrostructureGateOK(const string sym, const datetime now_srv, string &de
 
 void RefreshICTContext(EAState &st);
 
+datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym);
+bool EnsureCanonicalInstitutionalStateReady(const string sym,
+                                            const datetime required_bar_time,
+                                            string &diag_out);
+void LogCanonicalInstitutionalGateDiag(const string sym,
+                                       const datetime required_bar_time,
+                                       const string origin_tag);
+
 // ------------------------------------------------------------------
 // Provide ONE global, guarded helper used by strategies.
 // Strategy headers that also define this will be skipped by the guard.
@@ -2512,10 +2520,15 @@ void MaybeEvaluate()
        return;
     }
 
-   // Ensure canonical micro/state context is current BEFORE the global gate.
    RefreshMicrostructureSnapshot(_Symbol, false);
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
+
+   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(_Symbol);
+   string inst_diag = "";
+   EnsureCanonicalInstitutionalStateReady(_Symbol, required_bar_time, inst_diag);
+   LogCanonicalInstitutionalGateDiag(_Symbol, required_bar_time, "Tick");
+
    PublishMicrostructureSnapshot(_Symbol);
 
    int gate_reason = 0;
@@ -3047,6 +3060,139 @@ void RefreshICTContext(EAState &st)
    StateUpdateICTContext(st, g_cfg);
 }
 
+datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym)
+{
+   string use_sym = sym;
+   if(use_sym == "")
+      use_sym = CanonicalRouterSymbol();
+
+   const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+   if(use_sym == "" || tf == PERIOD_CURRENT)
+      return (datetime)0;
+
+   return iTime(use_sym, tf, 0);
+}
+
+string InstDiagTimeStr(const datetime t)
+{
+   if(t <= 0)
+      return "-";
+
+   return TimeToString(t, TIME_DATE | TIME_MINUTES);
+}
+
+bool EnsureCanonicalInstitutionalStateReady(const string sym,
+                                            const datetime required_bar_time,
+                                            string &diag_out)
+{
+   diag_out = "";
+
+   bool state_fresh = StateInstitutionalStateFresh(g_state);
+   datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+
+   if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
+      state_fresh = false;
+
+   if(!state_fresh)
+   {
+      // Ask State to perform one more canonical sync/promotion pass.
+      // Do NOT rebuild microstructure, confluence, or scanner math here.
+      RefreshICTContext(g_state);
+   }
+
+   state_fresh = StateInstitutionalStateFresh(g_state);
+   head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+
+   if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
+   {
+      diag_out = StringFormat("canonical state head bar mismatch need=%s head=%s",
+                              InstDiagTimeStr(required_bar_time),
+                              InstDiagTimeStr(head_bar_time));
+      return false;
+   }
+
+   if(state_fresh)
+      return true;
+
+   const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
+   const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
+   const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
+
+   if(required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
+   {
+      diag_out = StringFormat("canonical state unavailable need=%s head=%s flow=%s direct=%d proxy=%d",
+                              InstDiagTimeStr(required_bar_time),
+                              InstDiagTimeStr(head_bar_time),
+                              InstDiagTimeStr(flow_ts),
+                              (direct_ok ? 1 : 0),
+                              (proxy_ok ? 1 : 0));
+      return false;
+   }
+
+   if(flow_ts <= 0)
+   {
+      diag_out = StringFormat("canonical state unavailable flow=- direct=%d proxy=%d head=%s",
+                              (direct_ok ? 1 : 0),
+                              (proxy_ok ? 1 : 0),
+                              InstDiagTimeStr(head_bar_time));
+      return false;
+   }
+
+   if(!direct_ok && !proxy_ok)
+   {
+      diag_out = StringFormat("canonical state unavailable route=none flow=%s head=%s",
+                              InstDiagTimeStr(flow_ts),
+                              InstDiagTimeStr(head_bar_time));
+      return false;
+   }
+
+   diag_out = StringFormat("canonical state unavailable after State refresh flow=%s direct=%d proxy=%d head=%s req=%s",
+                           InstDiagTimeStr(flow_ts),
+                           (direct_ok ? 1 : 0),
+                           (proxy_ok ? 1 : 0),
+                           InstDiagTimeStr(head_bar_time),
+                           InstDiagTimeStr(required_bar_time));
+   return false;
+}
+
+void LogCanonicalInstitutionalGateDiag(const string sym,
+                                       const datetime required_bar_time,
+                                       const string origin_tag)
+{
+   if(!InpDebug)
+      return;
+
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+   const datetime throttle_key = (required_bar_time > 0 ? required_bar_time : TimeCurrent());
+
+   static string last_sym = "";
+   static string last_origin = "";
+   static datetime last_key = 0;
+
+   if(use_sym == last_sym && origin_tag == last_origin && throttle_key == last_key)
+      return;
+
+   last_sym = use_sym;
+   last_origin = origin_tag;
+   last_key = throttle_key;
+
+   const bool state_fresh = StateInstitutionalStateFresh(g_state);
+   const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
+   const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
+   const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
+   const datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+
+   PrintFormat("[InstGateDiag][%s] sym=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s",
+               origin_tag,
+               use_sym,
+               (state_fresh ? 1 : 0),
+               InstDiagTimeStr(flow_ts),
+               (direct_ok ? 1 : 0),
+               (proxy_ok ? 1 : 0),
+               InstDiagTimeStr(head_bar_time),
+               InstDiagTimeStr(required_bar_time));
+}
+
 void Inst_ResetTransportStamp()
 {
    g_inst_transport.observability01               = 0.45;
@@ -3491,6 +3637,30 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
 
    RefreshRuntimeContextLight();
 
+   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+   string inst_diag = "";
+   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(sym, required_bar_time, inst_diag);
+
+   if(InpDebug && !inst_ready && inst_diag != "")
+   {
+      const string log_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+      const datetime throttle_key = (required_bar_time > 0 ? required_bar_time : TimeCurrent());
+
+      static string last_sym = "";
+      static datetime last_key = 0;
+
+      if(log_sym != last_sym || throttle_key != last_key)
+      {
+         last_sym = log_sym;
+         last_key = throttle_key;
+
+         PrintFormat("[InstReady] sym=%s ready=0 req=%s detail=%s",
+                     log_sym,
+                     InstDiagTimeStr(required_bar_time),
+                     inst_diag);
+      }
+   }
+
    // Publish canonical runtime transport only.
    // Do NOT add confluence scoring, strategy math, or direct order-routing logic here.
    PublishMicrostructureSnapshot(sym);
@@ -3513,6 +3683,9 @@ bool RunCachedRouterPass(const string router_sym,
                    StringFormat("%s blocked: WarmupGateOK=false", origin_tag));
       return false;
    }
+
+   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+   LogCanonicalInstitutionalGateDiag(router_sym, required_bar_time, origin_tag);
 
    int gate_reason = 0;
    if(!RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))

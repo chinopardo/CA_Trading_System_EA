@@ -87,6 +87,12 @@
 //#define BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
 //#define BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
 //#define BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+// Optional fallback policy note:
+//  - BUILD_ENABLE_PROXY_MICRO_FALLBACK is OPTIONAL.
+//  - BUILD_ALLOW_STRUCTURE_ONLY_MODE is OPTIONAL and only valid when
+//    BUILD_ENABLE_PROXY_MICRO_FALLBACK is enabled.
+//  - These two flags must be enabled here only (manual opt-in) or in
+//    MetaEditor project settings, not auto-declared in Router/Risk/strategies.
 
 // -------------------------------------------------------------------
 // 1B) Strict production institutional bundle
@@ -152,13 +158,11 @@
       #define INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
    #endif
 
-   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
-      #define BUILD_ENABLE_PROXY_MICRO_FALLBACK
-   #endif
-
-   #ifndef BUILD_ALLOW_STRUCTURE_ONLY_MODE
-      #define BUILD_ALLOW_STRUCTURE_ONLY_MODE
-   #endif
+   // Optional fallback policy is NOT auto-enabled by the strict institutional bundle.
+   // If you want proxy-mode fallback, enable BUILD_ENABLE_PROXY_MICRO_FALLBACK
+   // manually in section 1A above or in MetaEditor project settings.
+   // If you also want structure-only mode, enable BUILD_ALLOW_STRUCTURE_ONLY_MODE
+   // explicitly as a second opt-in.
 
    #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
       #define BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
@@ -284,6 +288,15 @@
    #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
       #error "BUILD_ENABLE_PROXY_MICRO_FALLBACK requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
    #endif
+   #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+      #error "BUILD_ENABLE_PROXY_MICRO_FALLBACK requires BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE"
+   #endif
+   #ifndef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+      #error "BUILD_ENABLE_PROXY_MICRO_FALLBACK requires BUILD_ENABLE_RISK_OBSERVABILITY_SIZING"
+   #endif
+   #ifndef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+      #error "BUILD_ENABLE_PROXY_MICRO_FALLBACK requires BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS"
+   #endif
 #endif
 
 #ifdef BUILD_ALLOW_STRUCTURE_ONLY_MODE
@@ -366,13 +379,9 @@
       #error "Strict production institutional bundle requires INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT"
    #endif
 
-   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
-      #error "Strict production institutional bundle requires BUILD_ENABLE_PROXY_MICRO_FALLBACK"
-   #endif
-
-   #ifndef BUILD_ALLOW_STRUCTURE_ONLY_MODE
-      #error "Strict production institutional bundle requires BUILD_ALLOW_STRUCTURE_ONLY_MODE"
-   #endif
+   // Optional fallback policy is not part of the mandatory strict institutional core.
+   // If desired, enable BUILD_ENABLE_PROXY_MICRO_FALLBACK and optionally
+   // BUILD_ALLOW_STRUCTURE_ONLY_MODE manually in section 1A or project settings.
 
    #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
       #error "Strict production institutional bundle requires BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE"
@@ -507,7 +516,8 @@ inline void BuildFlags_PrintSummary()
    structure_only = "ON";
 #endif
    Print(BUILD_TAG, " Structure-only mode: ", structure_only);
-
+   Print(BUILD_TAG, " Fallback policy source: BUILD_ENABLE_PROXY_MICRO_FALLBACK / BUILD_ALLOW_STRUCTURE_ONLY_MODE are manual opt-in only");
+   
    string router_observability = "OFF";
 #ifdef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
    router_observability = "ON";
@@ -549,14 +559,17 @@ inline void BuildFlags_PrintSummary()
 //     here only, not ad hoc in downstream files.
 //   - Downstream modules should consume BUILD_* and *_IS_* ownership flags,
 //     not re-declare policy locally.
-//   - Institutional transport / fallback policy should also be declared here only:
+//   - Institutional transport / fallback policy must be declared here only:
 //       BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
 //       INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
-//       BUILD_ENABLE_PROXY_MICRO_FALLBACK
-//       BUILD_ALLOW_STRUCTURE_ONLY_MODE
 //       BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
 //       BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
 //       BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+//   - Optional fallback flags are manual opt-in here only:
+//       BUILD_ENABLE_PROXY_MICRO_FALLBACK
+//       BUILD_ALLOW_STRUCTURE_ONLY_MODE
+//   - Do not auto-enable fallback policy in Router.mqh, RiskEngine.mqh,
+//     strategies, or EA orchestration code.
 //   - BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL is now the default
 //     live-trading posture unless BUILD_PROFILE_TESTER or
 //     BUILD_PROFILE_PRODUCTION_CLASSIC is explicitly selected.
