@@ -4244,7 +4244,10 @@ void OnTimer()
    // 3) EA refreshes confluence/state/runtime context from cached scanner outputs
    // 4) RouterEvaluateAll() then consumes StrategyRegistry -> Router -> Policies/Risk -> Execution on cached data only
    MSH::HubTimerTick(S);
-   RefreshRuntimeContextFromHub(router_sym, (g_msh_dirty_n > 0));
+   // Always refresh the microstructure snapshot.  Without this, the canonical
+   // institutional state never becomes "fresh" in the tester, causing the
+   // microstructure gate to veto all trades.
+   RefreshRuntimeContextFromHub(router_sym, true);
    
    // Direct timer calls stay disabled here:
    // MarketScannerHub owns MarketData refresh + AutoC/Scan timer cadence.
