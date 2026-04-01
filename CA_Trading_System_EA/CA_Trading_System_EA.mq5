@@ -906,6 +906,8 @@ input int              InpMS_RefreshMinMs      = 250;    // local throttle for E
 
 input int              InpMS_MaxSnapshotAgeMs   = 1250;   // block if last published micro snapshot is stale
 input bool             InpMS_BlockIfUnavailable = true;   // block entries when no fresh micro snapshot exists
+input bool             InpMS_TesterAllowUnavailable = true;   // tester/optimization: degrade instead of hard-veto when canonical micro is unavailable
+input bool             InpMS_TesterLogUnavailable   = true;   // tester/optimization: print one throttled fallback diagnostic
 
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
 // Keep them here now so the EA owns the policy knobs, but do NOT consume them
@@ -3087,7 +3089,7 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
 {
    diag_out = "";
 
-   bool state_fresh = StateInstitutionalStateFresh(g_state);
+   bool state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time);
    datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
 
    if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
@@ -3098,16 +3100,32 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
       // Ask State to perform one more canonical sync/promotion pass.
       // Do NOT rebuild microstructure, confluence, or scanner math here.
       RefreshICTContext(g_state);
+
+      if(!StateInstitutionalStateFresh(g_state, required_bar_time))
+      {
+         string promote_why = "";
+         StateTryPromoteCanonicalInstitutionalState(g_state,
+                                                    g_cfg,
+                                                    required_bar_time,
+                                                    promote_why);
+
+         if(promote_why != "")
+            diag_out = "promotion=" + promote_why;
+      }
    }
 
-   state_fresh = StateInstitutionalStateFresh(g_state);
+   state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time);
    head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
 
    if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
    {
-      diag_out = StringFormat("canonical state head bar mismatch need=%s head=%s",
+      const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+      const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+
+      diag_out = StringFormat("canonical state head bar mismatch need=%s head=%s reason=%s",
                               InstDiagTimeStr(required_bar_time),
-                              InstDiagTimeStr(head_bar_time));
+                              InstDiagTimeStr(head_bar_time),
+                              fresh_why);
       return false;
    }
 
@@ -3118,40 +3136,38 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
 
+   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+
    if(required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
    {
-      diag_out = StringFormat("canonical state unavailable need=%s head=%s flow=%s direct=%d proxy=%d",
+      diag_out = StringFormat("canonical state unavailable need=%s head=%s flow=%s direct=%d proxy=%d reason=%s",
                               InstDiagTimeStr(required_bar_time),
                               InstDiagTimeStr(head_bar_time),
                               InstDiagTimeStr(flow_ts),
                               (direct_ok ? 1 : 0),
-                              (proxy_ok ? 1 : 0));
+                              (proxy_ok ? 1 : 0),
+                              fresh_why);
       return false;
    }
 
    if(flow_ts <= 0)
    {
-      diag_out = StringFormat("canonical state unavailable flow=- direct=%d proxy=%d head=%s",
+      diag_out = StringFormat("canonical state unavailable flow=- direct=%d proxy=%d head=%s reason=%s",
                               (direct_ok ? 1 : 0),
                               (proxy_ok ? 1 : 0),
-                              InstDiagTimeStr(head_bar_time));
+                              InstDiagTimeStr(head_bar_time),
+                              fresh_why);
       return false;
    }
 
-   if(!direct_ok && !proxy_ok)
-   {
-      diag_out = StringFormat("canonical state unavailable route=none flow=%s head=%s",
-                              InstDiagTimeStr(flow_ts),
-                              InstDiagTimeStr(head_bar_time));
-      return false;
-   }
-
-   diag_out = StringFormat("canonical state unavailable after State refresh flow=%s direct=%d proxy=%d head=%s req=%s",
+   diag_out = StringFormat("canonical state unavailable flow=%s direct=%d proxy=%d head=%s req=%s reason=%s",
                            InstDiagTimeStr(flow_ts),
                            (direct_ok ? 1 : 0),
                            (proxy_ok ? 1 : 0),
                            InstDiagTimeStr(head_bar_time),
-                           InstDiagTimeStr(required_bar_time));
+                           InstDiagTimeStr(required_bar_time),
+                           fresh_why);
    return false;
 }
 
@@ -3409,6 +3425,12 @@ string CanonicalRouterSymbol()
    return (g_symCount > 0 ? g_symbols[0] : _Symbol);
 }
 
+bool IsTesterRuntime()
+{
+   return ((MQLInfoInteger(MQL_TESTER) != 0) ||
+           (MQLInfoInteger(MQL_OPTIMIZATION) != 0));
+}
+
 bool MicrostructureGateOK(const string sym, const datetime now_srv, string &detail)
 {
    detail = "";
@@ -3442,6 +3464,33 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
    {
       if(!InpMS_BlockIfUnavailable)
          return true;
+
+      if(IsTesterRuntime() && InpMS_TesterAllowUnavailable)
+      {
+         detail = "tester_fallback: " + state_detail;
+
+         if(InpMS_TesterLogUnavailable)
+         {
+            datetime throttle_key = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+            if(throttle_key <= 0)
+               throttle_key = now_srv;
+
+            static string   last_sym = "";
+            static datetime last_key = 0;
+
+            if(last_sym != sym || last_key != throttle_key)
+            {
+               last_sym = sym;
+               last_key = throttle_key;
+
+               PrintFormat("[MSGate][TESTER_FALLBACK] sym=%s detail=%s",
+                           sym,
+                           detail);
+            }
+         }
+
+         return true;
+      }
 
       detail = state_detail;
       return false;
@@ -3614,6 +3663,9 @@ void PublishMicrostructureSnapshot(const string sym)
    // Keep this as the canonical publish hook, but do NOT recompute
    // State / ICT / scanner math here.
 
+   // Transport stamp only.
+   // No canonical institutional state promotion here.
+   // No scanner/confluence recomputation here.
    Inst_BuildTransportStamp(sym);
    Inst_CommitTransportStampToState(g_state);
 

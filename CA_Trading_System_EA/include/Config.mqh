@@ -2434,6 +2434,36 @@ namespace Config
       return false;
    #endif
    }
+
+   inline bool CfgInstitutionalTesterTransportExpected(const Settings &cfg)
+   {
+   #ifdef BUILD_PROFILE_TESTER
+      #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+         if(cfg.ms_enable)
+            return true;
+      #endif
+   
+      if(cfg.scan_inst_exec_sqrt_impact_enable)
+         return true;
+   
+      if((cfg.scan_inst_weight_microprice +
+          cfg.scan_inst_weight_resiliency +
+          cfg.scan_inst_weight_depth_fade +
+          cfg.scan_inst_weight_cvd +
+          cfg.scan_inst_weight_toxicity +
+          cfg.scan_inst_weight_impact +
+          cfg.scan_inst_weight_profile_acceptance +
+          cfg.scan_inst_weight_market_profile +
+          cfg.scan_inst_weight_benchmark +
+          cfg.scan_inst_weight_jump +
+          cfg.scan_inst_weight_sweep) > 1e-12)
+         return true;
+   
+      return false;
+   #else
+      return false;
+   #endif
+   }
 #endif
 
    inline bool CfgEnablePackStrats(const Settings &cfg)
@@ -4792,11 +4822,15 @@ namespace Config
 #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
       // --- Institutional-state transport family (scanner/backend only; canonical transport/fusion)
       // Strict institutional production defaults this ON. Non-strict profiles keep the legacy-safe OFF default.
-#ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+   #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
       cfg.scan_inst_state_enable                 = true;
-#else
+   #else
+    #ifdef BUILD_PROFILE_TESTER
+      cfg.scan_inst_state_enable                 = true;
+    #else
       cfg.scan_inst_state_enable                 = false;
-#endif
+     #endif
+   #endif
 
       cfg.scan_inst_twap_lookback                = 60;
       cfg.scan_inst_twap_session_mode            = 0;    // 0=broker-day, 1=session-anchor, 2=rolling
@@ -5925,6 +5959,15 @@ namespace Config
   {
      cfg.scan_inst_state_enable = (cfg.scan_inst_state_enable ? true : false);
 
+     #ifdef BUILD_PROFILE_TESTER
+     // Explicit tester institutional preset:
+     // if the tester build is exercising canonical institutional transport /
+     // microstructure routing, keep the producer family ON so the transport
+     // chain is normalized instead of remaining silently inert.
+     if(CfgInstitutionalTesterTransportExpected(cfg))
+        cfg.scan_inst_state_enable = true;
+     #endif
+
      cfg.scan_inst_jump_proxy_enable = (cfg.scan_inst_jump_proxy_enable ? true : false);
      cfg.scan_inst_market_profile_enable = (cfg.scan_inst_market_profile_enable ? true : false);
 
@@ -6832,6 +6875,11 @@ namespace Config
      if(CfgInstitutionalStrictTransportExpected() &&
         !CfgInstitutionalStateProducerEnabled(cfg))
         warns += "STRICT institutional guardrail: scan_inst_state_enable=false disables the canonical institutional transport / Confluence mirror / State promotion chain. RouterGateOK_Global can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn for strict institutional runs unless you intentionally want the whole institutional transport family OFF.\n";
+
+     if(!CfgInstitutionalStrictTransportExpected() &&
+        CfgInstitutionalTesterTransportExpected(cfg) &&
+        !CfgInstitutionalStateProducerEnabled(cfg))
+        warns += "TESTER institutional warning: BUILD_PROFILE_TESTER is active and scan_inst_state_enable=false. This is not a strict-build bug, but institutional router / canonical micro runs can still be suppressed at MicrostructureGateOK unless the EA-side tester fallback is enabled. Re-enable scInstOn for institutional tester runs, or keep the tester fallback ON when you intentionally want degraded unavailable-transport behavior.\n";
 
      if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
