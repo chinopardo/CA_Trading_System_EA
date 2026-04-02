@@ -130,9 +130,11 @@ void PublishMicrostructureSnapshot(const string sym);
 string CanonicalRouterSymbol();
 bool   MicrostructureGateOK(const string sym, const datetime now_srv, string &detail);
 
+void ApplyTesterOnlyFeatureOverrides(Settings &cfg);
 void RefreshICTContext(EAState &st);
 
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym);
+datetime ResolveCanonicalInstitutionalClosedBarAnchorTime(const string sym);
 bool EnsureCanonicalInstitutionalStateReady(const string sym,
                                             const datetime required_bar_time,
                                             string &diag_out);
@@ -363,6 +365,10 @@ input int              InpMaxLossesDay          = 6; // Max Daily Losses
 input int              InpMaxTradesDay          = 20; // Max Daily Trades
 input int              InpMaxSpreadPoints       = 300; // Max Spread Points
 input int              InpSlippagePoints        = 500; // Max Slippage Points
+
+input double           InpPolicy_LiqMinRatio        = 1.50; // Policy: live ATR/spread floor
+input double           InpPolicy_LiqMinRatioTester  = 0.0;  // Policy: tester floor; 0.0 = auto-adapt from live floor
+input bool             InpPolicy_LiqInvalidHardFail = false; // Policy: hard-fail calm/liquidity when ATR or spread is invalid
 
 // Loop controls / heartbeat
 input bool             InpOnlyNewBar            = true; // Loop controls / heartbeat: Only New Bar - Per-symbol last-bar gate
@@ -912,6 +918,7 @@ input int              InpMS_MaxSnapshotAgeMs   = 1250;   // block if last publi
 input bool             InpMS_BlockIfUnavailable = true;   // block entries when no fresh micro snapshot exists
 input bool             InpMS_TesterAllowUnavailable = true;   // tester/optimization: degrade instead of hard-veto when canonical micro is unavailable
 input bool             InpMS_TesterLogUnavailable   = true;   // tester/optimization: print one throttled fallback diagnostic
+input bool             InpMS_LiveAllowDegradedInstFallback = false; // live: optional degraded fallback when canonical micro is unavailable (default OFF)
 
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
 // Keep them here now so the EA owns the policy knobs, but do NOT consume them
@@ -926,6 +933,7 @@ input double           InpMS_MinDarkPoolConf01  = 0.20;   // reserved
 enum TesterScoreMode { TESTER_SCORE_MIX=0, TESTER_SCORE_SHARPE=1, TESTER_SCORE_EXPECT=2 }; // Tester / Optimization: Score
 input TesterScoreMode InpTesterScore  = TESTER_SCORE_MIX; // Tester / Optimization: Score Mode
 input bool            InpTesterSnapshot = true; // Tester / Optimization: Snapshot
+input bool            InpTester_DisableNewsAndCorrelation = true; // Tester / Optimization: disable news/correlation runtime overrides
 input string          InpTesterNote     = ""; // Tester / Optimization: Note
 input string          InpTestCase      = "none";  // see TesterCases::ScenarioList()
 input string          InpTesterPreset  = "";
@@ -1139,6 +1147,94 @@ bool _IsKnownGateReason(const int c)
   }
 }
 
+bool _IsMicrostructurePolicyReason(const int reason)
+{
+   switch(reason)
+   {
+      case Policies::GATE_INSTITUTIONAL:
+      case Policies::GATE_MICRO_VPIN:
+      case Policies::GATE_MICRO_TOXICITY:
+      case Policies::GATE_MICRO_SPREAD_STRESS:
+      case Policies::GATE_MICRO_RESILIENCY:
+      case Policies::GATE_MICRO_OBSERVABILITY:
+      case Policies::GATE_MICRO_VENUE:
+      case Policies::GATE_MICRO_IMPACT:
+      case Policies::GATE_MICRO_DARKPOOL:
+      case Policies::GATE_MICRO_TRUTH:
+      case Policies::GATE_MICRO_QUOTE_INSTABILITY:
+      case Policies::GATE_MICRO_THIN_LIQUIDITY:
+      case Policies::GATE_SM_INVALIDATION:
+      case Policies::GATE_LIQUIDITY_TRAP:
+         return true;
+   }
+   return false;
+}
+
+string _PolicyReasonStr(const int pol_reason)
+{
+   if(pol_reason == 0 || pol_reason == Policies::GATE_OK)
+      return "OK";
+   return Policies::GateReasonToString(pol_reason);
+}
+
+string _GatePrecedenceTag(const string origin,
+                          const int gate_reason,
+                          const int pol_reason)
+{
+   if(_IsMicrostructurePolicyReason(pol_reason))
+      return "MICROSTRUCTURE";
+
+   if(gate_reason == GATE_SESSION)
+      return "SESSION";
+
+   if(gate_reason == GATE_TIMEWINDOW)
+      return "TIMEWINDOW";
+
+   if(gate_reason == GATE_EXEC_LOCK)
+      return "EXECUTION";
+
+   if(gate_reason == GATE_PRICE_ARM || gate_reason == GATE_PRICE_STOP)
+      return "PRICE";
+
+   if(gate_reason == GATE_TRADE_DISABLED)
+      return "TRADE_ENV";
+
+   if(gate_reason == GATE_INHIBIT)
+      return "INHIBIT";
+
+   if(gate_reason == GATE_STRATMODE_PATH_BUG)
+      return "ROUTER";
+
+   if(gate_reason == GATE_POLICIES)
+      return "POLICIES";
+
+   if(StringFind(origin, "trade_env") >= 0)
+      return "TRADE_ENV";
+
+   return _GateReasonStr(gate_reason);
+}
+
+string _MergeGateBlockedDetail(const string base_detail,
+                               const int pol_reason,
+                               const string pol_detail,
+                               const string micro_detail)
+{
+   string out = base_detail;
+
+   if(pol_reason != 0 && pol_reason != Policies::GATE_OK)
+      out += StringFormat(" | pol_reason=%d(%s)",
+                          pol_reason,
+                          _PolicyReasonStr(pol_reason));
+
+   if(StringLen(pol_detail) > 0)
+      out += StringFormat(" | pol_detail=%s", pol_detail);
+
+   if(StringLen(micro_detail) > 0)
+      out += StringFormat(" | micro_detail=%s", micro_detail);
+
+   return out;
+}
+
 string _TraceDirStr(const Direction d)
 {
    return (d==DIR_BUY ? "BUY" : (d==DIR_SELL ? "SELL" : "NA"));
@@ -1228,7 +1324,7 @@ bool WarmupGateOK()
    }
 
    // Tester/optimization soft latch only (do NOT weaken live behavior)
-   const bool in_tester = (MQLInfoInteger(MQL_TESTER) != 0) || (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   const bool in_tester = IsTesterRuntime();
    if(in_tester)
    {
       const uint elapsed = GetTickCount() - t0_ms;
@@ -2039,11 +2135,15 @@ string _DirStr(const Direction d)
    return (d==DIR_BUY ? "BUY" : (d==DIR_SELL ? "SELL" : "NA"));
   }
 
-void _LogGateBlocked(const string origin,
-                     const string sym,
-                     const int reason,
-                     const string detail)
-  {
+void _LogGateBlockedEx(const string origin,
+                       const string sym,
+                       const int reason,
+                       const string detail,
+                       const string precedence_override,
+                       const int pol_reason,
+                       const string pol_detail,
+                       const string micro_detail)
+{
    if(!InpDebug)
       return;
 
@@ -2053,9 +2153,29 @@ void _LogGateBlocked(const string origin,
       return; // one line max per second-tick
    last_emit = now;
 
-   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=gate sym=%s reason=%d(%s) detail=%s",
-                           origin, sym, reason, _GateReasonStr(reason), detail));
-  }
+   string precedence = precedence_override;
+   if(StringLen(precedence) <= 0)
+      precedence = _GatePrecedenceTag(origin, reason, pol_reason);
+
+   const string full_detail =
+      _MergeGateBlockedDetail(detail, pol_reason, pol_detail, micro_detail);
+
+   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=gate precedence=%s sym=%s reason=%d(%s) detail=%s",
+                           origin,
+                           precedence,
+                           sym,
+                           reason,
+                           _GateReasonStr(reason),
+                           full_detail));
+}
+
+void _LogGateBlocked(const string origin,
+                     const string sym,
+                     const int reason,
+                     const string detail)
+{
+   _LogGateBlockedEx(origin, sym, reason, detail, "", 0, "", "");
+}
 
 void _LogRiskReject(const string origin,
                     const string sym,
@@ -2532,7 +2652,21 @@ void MaybeEvaluate()
 
    const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(_Symbol);
    string inst_diag = "";
-   EnsureCanonicalInstitutionalStateReady(_Symbol, required_bar_time, inst_diag);
+   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(_Symbol, required_bar_time, inst_diag);
+
+   if(InpDebug && !inst_ready && inst_diag != "")
+   {
+      static datetime last_tick_inst_key = 0;
+      if(last_tick_inst_key != required_bar_time)
+      {
+         last_tick_inst_key = required_bar_time;
+         PrintFormat("[InstReady][Tick] sym=%s ready=0 req=%s detail=%s",
+                     _Symbol,
+                     InstDiagTimeStr(required_bar_time),
+                     inst_diag);
+      }
+   }
+
    LogCanonicalInstitutionalGateDiag(_Symbol, required_bar_time, "Tick");
 
    PublishMicrostructureSnapshot(_Symbol);
@@ -2551,6 +2685,51 @@ void MaybeEvaluate()
 // Copy ICT / router inputs into the runtime Settings struct (g_cfg).
 // This is separate from MirrorInputsToSettings(S) used for S.
 //--------------------------------------------------------------------
+void ApplyLiquidityPolicyInputs(Settings &cfg)
+{
+   #ifdef CFG_HAS_LIQ_MIN_RATIO
+      double live_floor = InpPolicy_LiqMinRatio;
+      if(live_floor <= 0.0)
+         live_floor = 1.50;
+      if(live_floor < 0.50)
+         live_floor = 0.50;
+      if(live_floor > 10.0)
+         live_floor = 10.0;
+      cfg.liq_min_ratio = live_floor;
+   #endif
+
+   #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+      double tester_floor = InpPolicy_LiqMinRatioTester;
+
+      if(tester_floor < 0.0)
+         tester_floor = 0.0;
+
+      if(tester_floor > 0.0)
+      {
+         if(tester_floor < 0.50)
+            tester_floor = 0.50;
+         if(tester_floor > 10.0)
+            tester_floor = 10.0;
+      }
+
+      if(g_is_tester)
+      {
+         if(tester_floor <= 0.0)
+            tester_floor = MathMax(0.50, MathMin(10.0, cfg.liq_min_ratio * 0.90));
+
+         cfg.liq_min_ratio_tester = tester_floor;
+      }
+      else
+      {
+         cfg.liq_min_ratio_tester = 0.0;
+      }
+   #endif
+
+   #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+      cfg.liq_hard_fail_on_invalid_metrics = InpPolicy_LiqInvalidHardFail;
+   #endif
+}
+
 void BuildSettingsFromInputs(Settings &cfg)
 {
    // 0) Start from finalized runtime S (after profile/overrides/normalize)
@@ -2707,6 +2886,14 @@ void BuildSettingsFromInputs(Settings &cfg)
    #endif
    #ifdef CFG_HAS_FVG_MODE
       cfg.fvg_mode = 0;
+   #endif
+
+   // --- Canonical degraded institutional fallback policy ---
+   #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      cfg.allow_tester_degraded_inst_fallback = InpMS_TesterAllowUnavailable;
+   #endif
+   #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+      cfg.allow_live_degraded_inst_fallback   = InpMS_LiveAllowDegradedInstFallback;
    #endif
 
    // --- Session / mode flags (Smart Money runtime gates) ---
@@ -2869,6 +3056,7 @@ void FinalizeRuntimeSettings()
 
    // 4) Apply remaining input overlays last (uses refactored overlay helper)
    BuildSettingsFromInputs(cfg);
+   ApplyLiquidityPolicyInputs(cfg);
 
    // Re-assert strat_mode => enable_* toggle coherence after overlays (no full Normalize).
    Config::EnforceStrategyModeToggles(cfg);
@@ -2922,8 +3110,14 @@ void FinalizeRuntimeSettings()
    {
       TesterPresets::ApplyPresetByName(S, InpTesterPreset);
       TesterCases::ApplyTestCase(S, InpTestCase);
+      ApplyLiquidityPolicyInputs(S);
       g_cfg = S; // keep both identical after tester overlay
    }
+
+   // Final tester-only runtime overrides must run AFTER tester presets/cases
+   // and BEFORE registry/router sync so downstream gates see the final state.
+   ApplyTesterOnlyFeatureOverrides(S);
+   g_cfg = S;
 
    #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
       if(Config::CfgInstitutionalTransportRuntimeIntent(S) &&
@@ -3104,6 +3298,31 @@ void SyncStateInstitutionalBarFreshnessPolicy()
                                            CanonicalInstitutionalAllowedLagBars());
 }
 
+datetime ResolveCanonicalInstitutionalClosedBarAnchorTime(const string sym)
+{
+   string use_sym = sym;
+   if(use_sym == "")
+      use_sym = CanonicalRouterSymbol();
+
+   const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+   if(use_sym == "" || tf == PERIOD_CURRENT)
+      return (datetime)0;
+
+   const datetime bar1 = iTime(use_sym, tf, 1);
+   if(bar1 > 0)
+      return bar1;
+
+   const datetime bar0 = iTime(use_sym, tf, 0);
+   if(bar0 <= 0)
+      return (datetime)0;
+
+   const int tf_sec = PeriodSeconds(tf);
+   if(tf_sec <= 0)
+      return (datetime)0;
+
+   return (datetime)(bar0 - tf_sec);
+}
+
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym)
 {
    string use_sym = sym;
@@ -3114,7 +3333,22 @@ datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym)
    if(use_sym == "" || tf == PERIOD_CURRENT)
       return (datetime)0;
 
-   return iTime(use_sym, tf, CanonicalInstitutionalRequiredBarShift());
+   const int required_shift = CanonicalInstitutionalRequiredBarShift();
+   const datetime required_bar_time = iTime(use_sym, tf, required_shift);
+   const datetime closed_bar_time   = ResolveCanonicalInstitutionalClosedBarAnchorTime(use_sym);
+
+   if(required_shift > 0)
+   {
+      if(closed_bar_time > 0)
+         return closed_bar_time;
+
+      return required_bar_time;
+   }
+
+   if(required_bar_time > 0)
+      return required_bar_time;
+
+   return closed_bar_time;
 }
 
 string InstDiagTimeStr(const datetime t)
@@ -3130,35 +3364,72 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
                                             string &diag_out)
 {
    diag_out = "";
-   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
-   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
-   
-   bool state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time) &&
+
+   datetime effective_required_bar_time = required_bar_time;
+   if(effective_required_bar_time <= 0)
+      effective_required_bar_time = ResolveCanonicalInstitutionalClosedBarAnchorTime(sym);
+
+   int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
+   string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+
+   bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time) &&
                       StateInstitutionalFreshnessDiagAccepted(fresh_code);
    datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
 
    if(!state_fresh)
    {
-      // Ask State to perform one more canonical sync/promotion pass.
-      // Do NOT rebuild microstructure, confluence, or scanner math here.
       RefreshICTContext(g_state);
 
-      if(!StateInstitutionalStateFresh(g_state, required_bar_time))
+      if(!StateInstitutionalStateFresh(g_state, effective_required_bar_time) ||
+         !StateInstitutionalFreshnessDiagAccepted(StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time)))
       {
          string promote_why = "";
          StateTryPromoteCanonicalInstitutionalState(g_state,
                                                     g_cfg,
-                                                    required_bar_time,
+                                                    effective_required_bar_time,
                                                     promote_why);
 
          if(promote_why != "")
             diag_out = "promotion=" + promote_why;
       }
+
+      fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
+      fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+      state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time) &&
+                    StateInstitutionalFreshnessDiagAccepted(fresh_code);
+      head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
    }
 
-   state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time) &&
-                 StateInstitutionalFreshnessDiagAccepted(fresh_code);
-   head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+   if(!state_fresh && g_is_tester)
+   {
+      const datetime closed_bar_time = ResolveCanonicalInstitutionalClosedBarAnchorTime(sym);
+
+      if(closed_bar_time > 0 &&
+         effective_required_bar_time > 0 &&
+         closed_bar_time != effective_required_bar_time)
+      {
+         string lag_promote_why = "";
+         StateTryPromoteCanonicalInstitutionalState(g_state,
+                                                    g_cfg,
+                                                    closed_bar_time,
+                                                    lag_promote_why);
+
+         const int lag_code = StateInstitutionalFreshnessDiagCode(g_state, closed_bar_time);
+         if(StateInstitutionalStateFresh(g_state, closed_bar_time) &&
+            StateInstitutionalFreshnessDiagAccepted(lag_code))
+         {
+            diag_out = StringFormat("tester_closed_bar_fallback req=%s fallback=%s reason=%s",
+                                    InstDiagTimeStr(required_bar_time),
+                                    InstDiagTimeStr(closed_bar_time),
+                                    StateInstitutionalPromotionDiagReason(lag_code));
+
+            if(lag_promote_why != "")
+               diag_out += " | promotion=" + lag_promote_why;
+
+            return true;
+         }
+      }
+   }
 
    if(state_fresh)
       return true;
@@ -3182,7 +3453,7 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
                            (direct_ok ? 1 : 0),
                            (proxy_ok ? 1 : 0),
                            InstDiagTimeStr(head_bar_time),
-                           InstDiagTimeStr(required_bar_time),
+                           InstDiagTimeStr(effective_required_bar_time),
                            fresh_why);
    return false;
 }
@@ -3205,15 +3476,17 @@ void LogCanonicalInstitutionalGateDiag(const string sym,
       return;
 
    last_sym = use_sym;
+   const datetime effective_required_bar_time = (required_bar_time > 0
+                                                 ? required_bar_time : ResolveCanonicalInstitutionalClosedBarAnchorTime(use_sym));
    last_origin = origin_tag;
    last_key = throttle_key;
 
-   const bool state_fresh = StateInstitutionalStateFresh(g_state);
+   const bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time);
    const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
    const datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
-   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
    const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
 
    PrintFormat("[InstGateDiag][%s] sym=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s code=%d reason=%s",
@@ -3224,7 +3497,7 @@ void LogCanonicalInstitutionalGateDiag(const string sym,
                (direct_ok ? 1 : 0),
                (proxy_ok ? 1 : 0),
                InstDiagTimeStr(head_bar_time),
-               InstDiagTimeStr(required_bar_time),
+               InstDiagTimeStr(effective_required_bar_time),
                fresh_code,
                fresh_why);
 }
@@ -3364,7 +3637,11 @@ bool Inst_ReadCanonicalMicroGateMetrics(const string sym,
 
    if(!direct_ok && !proxy_ok)
    {
-      detail = "canonical micro route unavailable";
+      if(StateInstitutionalDegradedTransportUsable(g_state))
+         detail = "degraded canonical transport active";
+      else
+         detail = "canonical micro route unavailable";
+
       return false;
    }
 
@@ -3448,7 +3725,51 @@ string CanonicalRouterSymbol()
 bool IsTesterRuntime()
 {
    return ((MQLInfoInteger(MQL_TESTER) != 0) ||
-           (MQLInfoInteger(MQL_OPTIMIZATION) != 0));
+           (MQLInfoInteger(MQL_OPTIMIZATION) != 0) ||
+           (MQLInfoInteger(MQL_VISUAL_MODE) != 0));
+}
+
+void ApplyTesterOnlyFeatureOverrides(Settings &cfg)
+{
+   if(!IsTesterRuntime() || !InpTester_DisableNewsAndCorrelation)
+      return;
+
+   // Tester/optimization/visual mode often has incomplete cross-symbol and calendar/news context.
+   // Disable only runtime blocker/gate flags here; do not mutate general scoring weights.
+   cfg.cf_correlation       = false;
+   cfg.extra_correlation    = false;
+   cfg.corr_softveto_enable = false;
+
+   cfg.news_on              = false;
+   cfg.cf_news_ok           = false;
+   cfg.extra_news           = false;
+   cfg.block_pre_m          = 0;
+   cfg.block_post_m         = 0;
+   cfg.news_impact_mask     = 0;
+   cfg.cal_lookback_mins    = 0;
+   cfg.cal_hard_skip        = 0.0;
+   cfg.cal_soft_knee        = 0.0;
+   cfg.cal_min_scale        = 1.0;
+
+   #ifdef CFG_HAS_NEWS_FILTER_ENABLED
+      cfg.newsFilterEnabled = false;
+   #endif
+
+   #ifdef CFG_HAS_NEWS_BACKEND
+      cfg.news_backend_mode = 0;
+   #endif
+
+   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+      cfg.news_mvp_no_block = false;
+   #endif
+
+   #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
+      cfg.news_failover_to_csv = false;
+   #endif
+
+   #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
+      cfg.news_neutral_on_no_data = false;
+   #endif
 }
 
 bool MicrostructureGateOK(const string sym, const datetime now_srv, string &detail)
@@ -3485,7 +3806,15 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
       if(!InpMS_BlockIfUnavailable)
          return true;
 
-      if(IsTesterRuntime() && InpMS_TesterAllowUnavailable)
+      bool tester_allow_degraded = false;
+
+      #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+         tester_allow_degraded = S.allow_tester_degraded_inst_fallback;
+      #else
+         tester_allow_degraded = InpMS_TesterAllowUnavailable;
+      #endif
+
+      if(IsTesterRuntime() && tester_allow_degraded)
       {
          detail = "tester_fallback: " + state_detail;
 
@@ -3709,14 +4038,14 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
 
    RefreshRuntimeContextLight();
 
-   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+   const datetime requested_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
    string inst_diag = "";
-   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(sym, required_bar_time, inst_diag);
+   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(sym, requested_bar_time, inst_diag);
 
    if(InpDebug && !inst_ready && inst_diag != "")
    {
       const string log_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
-      const datetime throttle_key = (required_bar_time > 0 ? required_bar_time : TimeCurrent());
+      const datetime throttle_key = (requested_bar_time > 0 ? requested_bar_time : TimeCurrent());
 
       static string last_sym = "";
       static datetime last_key = 0;
@@ -3728,7 +4057,7 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
 
          PrintFormat("[InstReady] sym=%s ready=0 req=%s detail=%s",
                      log_sym,
-                     InstDiagTimeStr(required_bar_time),
+                     InstDiagTimeStr(requested_bar_time),
                      inst_diag);
       }
    }
@@ -3817,7 +4146,7 @@ int OnInit()
    g_show_breakdown = true;
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
-   g_is_tester = (MQLInfoInteger(MQL_TESTER) != 0 || MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   g_is_tester = IsTesterRuntime();
 
    Sanity::SetDebug(InpDebug);
    LogX::SetMinLevel(InpDebug ? LogX::LVL_DEBUG : LogX::LVL_INFO);
@@ -3827,6 +4156,39 @@ int OnInit()
       LogX::InitAll();
    FinalizeRuntimeSettings();
    Config::LogSettingsWithHash(S, "CFG");
+
+   string news_filter_state = (S.news_on ? "ON" : "OFF");
+
+   #ifdef CFG_HAS_NEWS_FILTER_ENABLED
+      news_filter_state = (S.newsFilterEnabled ? "ON" : "OFF");
+   #endif
+
+   if(g_is_tester && InpTester_DisableNewsAndCorrelation)
+   {
+      Print(StringFormat("[TESTER_OVERRIDE] correlation=%s news_filter=%s",
+                         (S.cf_correlation ? "ON" : "OFF"),
+                         news_filter_state));
+   }
+
+   string cfg_effective_msg = StringFormat(
+      "[CFG_EFFECTIVE] cf_correlation=%s extra_correlation=%s corr_softveto_enable=%s news_on=%s cf_news_ok=%s extra_news=%s block_pre_m=%d block_post_m=%d news_impact_mask=%d",
+      (S.cf_correlation ? "true" : "false"),
+      (S.extra_correlation ? "true" : "false"),
+      (S.corr_softveto_enable ? "true" : "false"),
+      (S.news_on ? "true" : "false"),
+      (S.cf_news_ok ? "true" : "false"),
+      (S.extra_news ? "true" : "false"),
+      S.block_pre_m,
+      S.block_post_m,
+      S.news_impact_mask
+   );
+
+   #ifdef CFG_HAS_NEWS_FILTER_ENABLED
+      cfg_effective_msg += StringFormat(" newsFilterEnabled=%s",
+                                        (S.newsFilterEnabled ? "true" : "false"));
+   #endif
+
+   LogX::Info(cfg_effective_msg);
 
    // Backend-only live runtime: legacy registry path is tester-only.
    if(!g_is_tester)
@@ -4301,7 +4663,7 @@ void OnDeinit(const int reason)
    TesterX::SnapshotParams(S, "on_deinit");
 
    // Optional: summary log in tester contexts
-   if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
+   if(IsTesterRuntime())
       TesterX::PrintSummary();
       
    return;
@@ -4765,14 +5127,33 @@ bool GateViaPolicies(const Settings &cfg, const string sym)
       return false;
    }
 
-   int pol_reason = 0;
-   if(!Policies::Check(cfg, pol_reason))
+   Policies::PolicyResult pol_eval;
+   if(!Policies::EvaluateFull(cfg, sym, pol_eval))
    {
+      const int pol_reason = pol_eval.primary_reason;
+      const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
+
+      Policies::PolicyVetoLog(pol_eval);
+
       UI_SetGate(GATE_POLICIES);
-      _LogGateBlocked("policies_gate", sym, GATE_POLICIES,
-                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
-      TraceNoTrade(sym, TS_GATE, GATE_POLICIES,
-                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+
+      _LogGateBlockedEx("policies_gate",
+                        sym,
+                        GATE_POLICIES,
+                        "Policies::EvaluateFull failed",
+                        "",
+                        pol_reason,
+                        pol_detail,
+                        "");
+
+      TraceNoTrade(sym,
+                   TS_GATE,
+                   GATE_POLICIES,
+                   _MergeGateBlockedDetail("Policies::EvaluateFull failed",
+                                           pol_reason,
+                                           pol_detail,
+                                           ""));
+
       return false;
    }
    return true;
@@ -4783,7 +5164,7 @@ bool TradeEnvGateOK(const string sym, int &gate_reason_out)
 {
    gate_reason_out = 0;
 
-   const bool in_tester = (MQLInfoInteger(MQL_TESTER) != 0) || (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   const bool in_tester = IsTesterRuntime();
 
    const bool acc_ok  = (AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) != 0);
    const bool mql_ok  = (MQLInfoInteger(MQL_TRADE_ALLOWED) != 0);
@@ -4849,32 +5230,65 @@ bool RouterGateOK_Global(const string log_sym,
    if(!TradeEnvGateOK(log_sym, gate_reason_out))
       return false;
 
+   string ms_detail = "";
+   const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_detail);
+   if(ms_ok)
    {
-      string ms_detail = "";
-      if(!MicrostructureGateOK(log_sym, now_srv, ms_detail))
-      {
-         gate_reason_out = GATE_POLICIES;
-         UI_SetGate(gate_reason_out);
-
-         _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
-                         StringFormat("Microstructure gate: %s", ms_detail));
-         TraceNoTrade(log_sym, TS_GATE, gate_reason_out,
-                      StringFormat("Microstructure gate blocked: %s", ms_detail));
-         return false;
-      }
+      if(StringLen(ms_detail) <= 0)
+         ms_detail = "pass";
    }
-
-   // 1) Global policy/risk guard (DD, cooldown, etc.)
-   int pol_reason = 0;
-   if(!Policies::Check(cfg, pol_reason))
+   else
    {
       gate_reason_out = GATE_POLICIES;
       UI_SetGate(gate_reason_out);
 
-      _LogGateBlocked("router_gate_global", log_sym, gate_reason_out,
-                      StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
-      TraceNoTrade(log_sym, TS_GATE, gate_reason_out,
-                   StringFormat("Policies::Check failed (pol_reason=%d)", pol_reason));
+      _LogGateBlockedEx("router_gate_global",
+                        log_sym,
+                        gate_reason_out,
+                        "Microstructure gate blocked",
+                        "MICROSTRUCTURE",
+                        0,
+                        "",
+                        ms_detail);
+
+      TraceNoTrade(log_sym,
+                   TS_GATE,
+                   gate_reason_out,
+                   _MergeGateBlockedDetail("Microstructure gate blocked",
+                                           0,
+                                           "",
+                                           ms_detail));
+      return false;
+   }
+
+   // 1) Global policy/risk guard (DD, cooldown, etc.)
+   Policies::PolicyResult pol_eval;
+   if(!Policies::EvaluateFull(cfg, log_sym, pol_eval))
+   {
+      const int pol_reason = pol_eval.primary_reason;
+      const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
+
+      Policies::PolicyVetoLog(pol_eval);
+
+      gate_reason_out = GATE_POLICIES;
+      UI_SetGate(gate_reason_out);
+
+      _LogGateBlockedEx("router_gate_global",
+                        log_sym,
+                        gate_reason_out,
+                        "Policies::EvaluateFull failed",
+                        "",
+                        pol_reason,
+                        pol_detail,
+                        ms_detail);
+
+      TraceNoTrade(log_sym,
+                   TS_GATE,
+                   gate_reason_out,
+                   _MergeGateBlockedDetail("Policies::EvaluateFull failed",
+                                           pol_reason,
+                                           pol_detail,
+                                           ms_detail));
       return false;
    }
 
@@ -4934,36 +5348,66 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    if(!TradeEnvGateOK(sym, gate_reason_out))
       return false;
 
+   string ms_detail = "";
+   const bool ms_ok = MicrostructureGateOK(sym, now_srv, ms_detail);
+   if(ms_ok)
    {
-      string ms_detail = "";
-      if(!MicrostructureGateOK(sym, now_srv, ms_detail))
-      {
-         gate_reason_out = GATE_POLICIES;
-         UI_SetGate(gate_reason_out);
+      if(StringLen(ms_detail) <= 0)
+         ms_detail = "pass";
+   }
+   else
+   {
+      gate_reason_out = GATE_POLICIES;
+      UI_SetGate(gate_reason_out);
 
-         _LogGateBlocked("router_gate", sym, gate_reason_out,
-                         StringFormat("Microstructure gate: %s", ms_detail));
-         TraceNoTrade(sym, TS_GATE, gate_reason_out,
-                      StringFormat("Microstructure gate blocked: %s", ms_detail));
-         return false;
-      }
+      _LogGateBlockedEx("router_gate",
+                        sym,
+                        gate_reason_out,
+                        "Microstructure gate blocked",
+                        "MICROSTRUCTURE",
+                        0,
+                        "",
+                        ms_detail);
+
+      TraceNoTrade(sym,
+                   TS_GATE,
+                   gate_reason_out,
+                   _MergeGateBlockedDetail("Microstructure gate blocked",
+                                           0,
+                                           "",
+                                           ms_detail));
+      return false;
    }
 
    // 1) Policy / risk guard (DD, spread, cooldown, etc.)
-   int pol_reason = 0;
-   if(!Policies::Check(cfg, pol_reason))
+   Policies::PolicyResult pol_eval;
+   if(!Policies::EvaluateFull(cfg, sym, pol_eval))
    {
+      const int pol_reason = pol_eval.primary_reason;
       const int mapped = (_IsKnownGateReason(pol_reason) ? pol_reason : GATE_POLICIES);
+      const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
+
+      Policies::PolicyVetoLog(pol_eval);
+
       gate_reason_out = mapped;
       UI_SetGate(gate_reason_out);
-      
-      _LogGateBlocked("router_gate", sym, gate_reason_out,
-                      StringFormat("Policies::Check failed (pol_reason=%d/%s)",
-                                   pol_reason, _GateReasonStr(pol_reason)));
-      
-      TraceNoTrade(sym, TS_GATE, gate_reason_out,
-                   StringFormat("Policies::Check failed (pol_reason=%d/%s)",
-                                pol_reason, _GateReasonStr(pol_reason)));
+
+      _LogGateBlockedEx("router_gate",
+                        sym,
+                        gate_reason_out,
+                        "Policies::EvaluateFull failed",
+                        "",
+                        pol_reason,
+                        pol_detail,
+                        ms_detail);
+
+      TraceNoTrade(sym,
+                   TS_GATE,
+                   gate_reason_out,
+                   _MergeGateBlockedDetail("Policies::EvaluateFull failed",
+                                           pol_reason,
+                                           pol_detail,
+                                           ms_detail));
 
       return false;
    }

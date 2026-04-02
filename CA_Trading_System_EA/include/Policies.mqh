@@ -960,6 +960,7 @@ namespace Policies
     // Liquidity
     double liq_ratio;
     double liq_floor;
+    string liq_floor_source;
 
     // Institutional / microstructure hard gate
     bool   institutional_state_loaded;
@@ -1124,6 +1125,7 @@ namespace Policies
     r.confluence_veto_mask          = 0;
     r.route_reason                  = "";
     r.veto_reason                   = "none";
+    r.liq_floor_source             = "default";
   }
 
   inline void _PolicyVeto(PolicyResult &r, const int gate_reason, const ulong mask_bit)
@@ -1374,7 +1376,16 @@ namespace Policies
        return false;
      #endif
    }
-   
+
+   inline bool CfgNewsPolicyEnabled(const Settings &cfg)
+   {
+     // Centralized runtime switch for all policy-side news handling.
+     // Tester-mode suppression must be applied upstream by
+     // ApplyTesterOnlyFeatureOverrides(cfg), which sets cfg.news_on=false.
+     // Policies stays config-driven here and does not add runtime tester checks.
+     return CfgNewsOn(cfg);
+   }
+
    inline int CfgNewsImpactMask(const Settings &cfg)
    {
      const int m = cfg.news_impact_mask;
@@ -1489,11 +1500,62 @@ namespace Policies
   inline double CfgLiqMinRatio(const Settings &cfg)
   {
     #ifdef CFG_HAS_LIQ_MIN_RATIO
-      return (cfg.liq_min_ratio>0.0? cfg.liq_min_ratio : 1.50);
+      if(cfg.liq_min_ratio > 0.0)
+        return Clamp(cfg.liq_min_ratio, 0.50, 10.0);
+    #endif
+    return 1.50;
+  }
+
+  inline double CfgLiqMinRatioTester(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+      if(cfg.liq_min_ratio_tester > 0.0)
+        return Clamp(cfg.liq_min_ratio_tester, 0.50, 10.0);
+    #endif
+    return 0.0;
+  }
+
+  inline bool CfgLiqInvalidHardFail(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+      return (bool)cfg.liq_hard_fail_on_invalid_metrics;
     #else
-      return 1.50;
+      return false;
     #endif
   }
+
+  inline bool CfgLiqFloorAdapted(const Settings &cfg)
+  {
+    const bool in_tester =
+       (MQLInfoInteger(MQL_TESTER) != 0) ||
+       (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+
+    if(!in_tester)
+      return false;
+
+    const double tester_floor = CfgLiqMinRatioTester(cfg);
+    if(tester_floor <= 0.0)
+      return false;
+
+    return (MathAbs(tester_floor - CfgLiqMinRatio(cfg)) > 0.000001);
+  }
+
+  inline double CfgLiqMinRatioEffective(const Settings &cfg)
+  {
+    const bool in_tester =
+       (MQLInfoInteger(MQL_TESTER) != 0) ||
+       (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+
+    if(in_tester)
+    {
+      const double tester_floor = CfgLiqMinRatioTester(cfg);
+      if(tester_floor > 0.0)
+        return tester_floor;
+    }
+
+    return CfgLiqMinRatio(cfg);
+  }
+
   inline bool CfgRegimeGateOn(const Settings &cfg)
   {
     #ifdef CFG_HAS_REGIME_GATE_ON
@@ -2358,6 +2420,46 @@ namespace Policies
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_session) return s_over[k].session_filter; return CfgSessionFilter(cfg); }
   inline double EffLiqMinRatio(const Settings &cfg, const string sym, const double default_floor)
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_liq) return s_over[k].liq_min_ratio; return (default_floor>0.0? default_floor : CfgLiqMinRatio(cfg)); }
+
+  inline bool _HasExplicitConfiguredLiqFloor(const Settings &cfg)
+  {
+    #ifdef CFG_HAS_LIQ_MIN_RATIO
+      if(cfg.liq_min_ratio > 0.0)
+        return true;
+    #endif
+
+    #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+      const bool in_tester =
+         (MQLInfoInteger(MQL_TESTER) != 0) ||
+         (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+
+      if(in_tester && cfg.liq_min_ratio_tester > 0.0)
+        return true;
+    #endif
+
+    return false;
+  }
+
+  inline string EffLiqMinRatioSource(const Settings &cfg,
+                                     const string sym,
+                                     const double default_floor)
+  {
+    const int k = _FindOverIdx(sym);
+    if(k >= 0 && s_over[k].has_liq)
+      return "override";
+
+    const double cfg_floor = CfgLiqMinRatioEffective(cfg);
+    const double active_floor = (default_floor > 0.0 ? default_floor : cfg_floor);
+
+    if(MathAbs(active_floor - cfg_floor) > 0.000001)
+      return "session-adjusted";
+
+    if(_HasExplicitConfiguredLiqFloor(cfg))
+      return "config";
+
+    return "default";
+  }
+
   inline int EffNewsImpactMask(const Settings &cfg, const string sym)
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_news_mask) return s_over[k].news_mask; return CfgNewsImpactMask(cfg); }
   inline int EffNewsPreMins(const Settings &cfg)
@@ -3346,7 +3448,17 @@ namespace Policies
     const int shortP = CfgATRShort(cfg);
 
     const double atr_s = AtrPts(sym, tf, cfg, shortP, 1);
-    if(atr_s<=0.0) return true;
+    if(atr_s<=0.0)
+    {
+      if(CfgLiqInvalidHardFail(cfg))
+      {
+        reason = GATE_CALM;
+        _GateDetail(cfg, reason, sym,
+                    StringFormat("invalid_atr atr_s=%.1f hard_fail=1", atr_s));
+        return false;
+      }
+      return true;
+    }
 
     const double minAtrPips = CfgCalmMinATRPips(cfg);
     if(minAtrPips>0.0)
@@ -3366,7 +3478,20 @@ namespace Policies
     if(minRatio>0.0)
     {
       const double spr = MarketData::SpreadPoints(sym);
-      if(spr>0.0 && atr_s/spr < minRatio)
+      if(spr<=0.0)
+      {
+        if(CfgLiqInvalidHardFail(cfg))
+        {
+          reason = GATE_CALM;
+          _GateDetail(cfg, reason, sym,
+                      StringFormat("invalid_spread atr_s=%.1f spr=%.1f hard_fail=1",
+                                   atr_s, spr));
+          return false;
+        }
+        return true;
+      }
+
+      if(atr_s/spr < minRatio)
       {
         reason=GATE_CALM;
         _GateDetail(cfg, reason, sym,
@@ -3620,8 +3745,8 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.atr_short_pts, r.spread_pts, r.calm_atr_to_spread, r.calm_min_ratio) + pool_tag;
    
        case GATE_LIQUIDITY:
-         return StringFormat("Liquidity ratio=%.3f floor=%.3f atrS=%.1f spread=%.1f",
-                             r.liq_ratio, r.liq_floor, r.atr_short_pts, r.spread_pts) + pool_tag;
+         return StringFormat("Liquidity ratio=%.3f floor=%.3f source=%s atrS=%.1f spread=%.1f",
+                             r.liq_ratio, r.liq_floor, r.liq_floor_source, r.atr_short_pts, r.spread_pts) + pool_tag;
    
        case GATE_REGIME:
          return StringFormat("Regime tq=%.3f sg=%.3f minTQ=%.3f minSG=%.3f",
@@ -3722,6 +3847,30 @@ inline void NotifyTradeResult(const double r_multiple)
      }
    }
 
+  inline string PolicyVetoKV(const PolicyResult &r)
+  {
+     const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
+
+     return StringFormat("sym=%s reason=%s reason_code=%d veto_mask=%s route=\"%s\" veto=\"%s\" liq_ratio=%.3f liq_floor=%.3f liq_floor_source=%s spread_pts=%.1f news_mins_left=%d cd_trade_left_sec=%d cd_loss_left_sec=%d alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                         sym,
+                         GateReasonToString(r.primary_reason),
+                         r.primary_reason,
+                         (string)r.veto_mask,
+                         r.route_reason,
+                         r.veto_reason,
+                         r.liq_ratio,
+                         r.liq_floor,
+                         r.liq_floor_source,
+                         r.spread_pts,
+                         r.news_mins_left,
+                         r.cd_trade_left_sec,
+                         r.cd_loss_left_sec,
+                         r.alpha_score,
+                         r.execution_score,
+                         r.risk_score,
+                         r.state_quality01);
+  }
+
   inline void PolicyVetoLog(const PolicyResult &r)
    {
      const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
@@ -3730,6 +3879,8 @@ inline void NotifyTradeResult(const double r_multiple)
    
      if(_ShouldVetoLogOncePerSec(sym, r.primary_reason, r.veto_mask) == false)
        return;
+
+     Print("[Policy][VETO_KV] ", PolicyVetoKV(r));
 
     // Gate-specific “exact values” prints
     switch(r.primary_reason)
@@ -3855,6 +4006,7 @@ inline void NotifyTradeResult(const double r_multiple)
         Print("[Policy][VETO] reason=LIQUIDITY sym=", sym,
               " ratio=", DoubleToString(r.liq_ratio,3),
               " floor=", DoubleToString(r.liq_floor,3),
+              " floor_source=", r.liq_floor_source,
               " atr_s=", DoubleToString(r.atr_short_pts,1),
               " spread=", DoubleToString(r.spread_pts,1),
               " mask=", (string)r.veto_mask);
@@ -4071,13 +4223,52 @@ inline void NotifyTradeResult(const double r_multiple)
   // ----------------------------------------------------------------------------
   // Unified evaluators (Fast + Audit)
   // ----------------------------------------------------------------------------
+  inline void _LogLiqFloorMode(const Settings &cfg,
+                               const double strict_floor,
+                               const double active_floor)
+  {
+    if(!CfgDebugGates(cfg))
+      return;
+
+    static datetime s_last_ts      = 0;
+    static double   s_last_strict  = -1.0;
+    static double   s_last_active  = -1.0;
+
+    const datetime now = TimeCurrent();
+
+    if(MathAbs(strict_floor - s_last_strict) < 0.000001 &&
+       MathAbs(active_floor - s_last_active) < 0.000001 &&
+       (now - s_last_ts) < 60)
+      return;
+
+    s_last_ts     = now;
+    s_last_strict = strict_floor;
+    s_last_active = active_floor;
+
+    if(CfgLiqFloorAdapted(cfg))
+      Print("[Policy][LIQ] floor_source=tester_adapted strict=",
+            DoubleToString(strict_floor,3),
+            " active=",
+            DoubleToString(active_floor,3));
+    else
+      Print("[Policy][LIQ] floor_source=policy_strict strict=",
+            DoubleToString(strict_floor,3),
+            " active=",
+            DoubleToString(active_floor,3));
+  }
+
   inline void _ApplyRuntimeKnobsFromCfg(const Settings &cfg)
   {
     SetMoDMultiplier       (CfgModSpreadMult(cfg));
     SetSpreadATRAdapt      (CfgATRShort(cfg), CfgATRLong(cfg),
                             CfgSpreadAdaptFloor(cfg), CfgSpreadAdaptCeil(cfg));
     SetVolBreakerLimit     (CfgVolBreakerLimit(cfg));
-    SetLiquidityParams     (CfgLiqMinRatio(cfg));
+
+    const double liq_floor_strict = CfgLiqMinRatio(cfg);
+    const double liq_floor_active = CfgLiqMinRatioEffective(cfg);
+    SetLiquidityParams(liq_floor_active);
+    _LogLiqFloorMode(cfg, liq_floor_strict, liq_floor_active);
+
     SetLossCooldownParams  (CfgLossCooldownN(cfg), CfgLossCooldownMin(cfg));
     SetTradeCooldownSeconds(CfgTradeCooldownSec(cfg));
   }
@@ -4160,7 +4351,8 @@ inline void NotifyTradeResult(const double r_multiple)
     r.spread_pts = MarketData::SpreadPoints(sym);
 
     const double floorR = EffLiqMinRatio(cfg, sym, s_liq_min_ratio);
-    r.liq_floor  = floorR;
+    r.liq_floor        = floorR;
+    r.liq_floor_source = EffLiqMinRatioSource(cfg, sym, s_liq_min_ratio);
 
     if(r.spread_pts > 0.0)
       r.liq_ratio = (r.atr_short_pts / r.spread_pts);
@@ -4295,9 +4487,9 @@ inline void NotifyTradeResult(const double r_multiple)
 
       if(cfg.london_liquidity_policy)
       {
-        const double base = CfgLiqMinRatio(cfg);
+        const double base = CfgLiqMinRatioEffective(cfg);
         const double mult = (in_lon ? 0.95 : 1.05);
-        SetLiquidityParams(base * mult);
+        SetLiquidityParams(Clamp(base * mult, 0.50, 10.0));
       }
     }
     #endif
@@ -4413,19 +4605,24 @@ inline void NotifyTradeResult(const double r_multiple)
     // D) News veto
     out.news_blocked     = false;
     out.news_mins_left   = 0;
-    out.news_impact_mask = EffNewsImpactMask(cfg, sym);
-    out.news_pre_mins    = CfgNewsBlockPreMins(cfg);
-    out.news_post_mins   = CfgNewsBlockPostMins(cfg);
+    out.news_impact_mask = 0;
+    out.news_pre_mins    = 0;
+    out.news_post_mins   = 0;
 
+    if(CfgNewsPolicyEnabled(cfg))
     {
-      int mins_left=0;
+      out.news_impact_mask = EffNewsImpactMask(cfg, sym);
+      out.news_pre_mins    = CfgNewsBlockPreMins(cfg);
+      out.news_post_mins   = CfgNewsBlockPostMins(cfg);
+
+      int mins_left = 0;
       const datetime now_srv = TimeUtils::NowServer();
       if(NewsBlockedNow(cfg, sym, now_srv, mins_left))
       {
         out.news_blocked   = true;
         out.news_mins_left = mins_left;
         if(s_bigloss_reset_enable && mins_left > 0)
-         ArmSizingResetForMins(mins_left);
+          ArmSizingResetForMins(mins_left);
         _PolicyVeto(out, GATE_NEWS, CA_POLMASK_NEWS);
         if(!audit) return false;
       }
@@ -4716,7 +4913,18 @@ inline void NotifyTradeResult(const double r_multiple)
 
     const double atr_s = AtrPts(sym, tf, cfg, shortP, 1);
     const double spr   = MarketData::SpreadPoints(sym);
-    if(atr_s<=0.0 || spr<=0.0) return true; // can't compute safely → don't block
+
+    if(atr_s<=0.0 || spr<=0.0)
+    {
+      if(CfgLiqInvalidHardFail(cfg))
+      {
+        _GateDetail(cfg, GATE_LIQUIDITY, sym,
+                    StringFormat("invalid_metrics atr_s=%.1f spr=%.1f hard_fail=1",
+                                 atr_s, spr));
+        return false;
+      }
+      return true; // preserve legacy safe no-block on missing data
+    }
 
     const double floorR = EffLiqMinRatio(cfg, sym, s_liq_min_ratio);
     ratio_out = atr_s / spr;
@@ -4737,14 +4945,14 @@ inline void NotifyTradeResult(const double r_multiple)
   // ----------------------------------------------------------------------------
    inline bool NewsBlockedNow(const Settings &cfg, const string sym, const datetime now_srv, int &mins_left)
    {
-     mins_left = -1;
-     if(!CfgNewsOn(cfg)) return false;
-   
+     mins_left = 0;
+     if(!CfgNewsPolicyEnabled(cfg)) return false;
+
      #ifdef NEWSFILTER_AVAILABLE
        const int impact_mask = EffNewsImpactMask(cfg, sym);
        const int pre_m       = EffNewsPreMins(cfg);
        const int post_m      = EffNewsPostMins(cfg);
-   
+
        return News::IsBlocked(now_srv, sym, impact_mask, pre_m, post_m, mins_left);
      #else
        mins_left = 0;
@@ -4765,7 +4973,7 @@ inline void NotifyTradeResult(const double r_multiple)
                                 StratScore &ss, ConfluenceBreakdown &bd, bool &skip_out)
    {
      skip_out=false;
-     if(!CfgNewsOn(cfg)) return;
+     if(!CfgNewsPolicyEnabled(cfg)) return;
      #ifdef NEWSFILTER_AVAILABLE
        double risk_mult=1.0; bool skip=false;
        News::SurpriseRiskAdjust(TimeCurrent(), sym,
@@ -6124,7 +6332,7 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     // 2) News blocks
-    if(CfgNewsOn(cfg))
+    if(CfgNewsPolicyEnabled(cfg))
     {
       int mins_left = 0;
       if(NewsBlockedNow(cfg, now_srv, mins_left))

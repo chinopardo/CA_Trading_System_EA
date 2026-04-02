@@ -337,6 +337,13 @@ struct Settings;
   #define CFG_HAS_MS_TESTER_PATH_ENABLE 1
 #endif
 
+#ifndef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+  #define CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK 1
+#endif
+#ifndef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+  #define CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK 1
+#endif
+
 #ifndef CFG_HAS_MS_VPIN_GATE_ON
   #define CFG_HAS_MS_VPIN_GATE_ON 1
 #endif
@@ -566,6 +573,18 @@ struct Settings;
 
 #ifndef CFG_HAS_STRUCT_VETO
   #define CFG_HAS_STRUCT_VETO 1
+#endif
+
+#ifndef CFG_HAS_LIQ_MIN_RATIO
+  #define CFG_HAS_LIQ_MIN_RATIO 1
+#endif
+
+#ifndef CFG_HAS_LIQ_MIN_RATIO_TESTER
+  #define CFG_HAS_LIQ_MIN_RATIO_TESTER 1
+#endif
+
+#ifndef CFG_HAS_LIQ_INVALID_HARDFAIL
+  #define CFG_HAS_LIQ_INVALID_HARDFAIL 1
 #endif
 
 // Optional SDOB quality gates (used once StructureSDOB selection/filter is wired)
@@ -4952,6 +4971,13 @@ namespace Config
       cfg.ms_live_path_enable          = true;
       cfg.ms_tester_path_enable        = true;
 
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      cfg.allow_tester_degraded_inst_fallback = true;
+#endif
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+      cfg.allow_live_degraded_inst_fallback   = false;
+#endif
+
       // Hard-veto toggles
       cfg.ms_vpin_gate_on              = true;
       cfg.ms_resiliency_gate_on        = true;
@@ -6129,6 +6155,15 @@ namespace Config
       cfg.ms_live_path_enable   = (cfg.ms_live_path_enable   ? true : false);
       cfg.ms_tester_path_enable = (cfg.ms_tester_path_enable ? true : false);
 
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      cfg.allow_tester_degraded_inst_fallback =
+         (cfg.allow_tester_degraded_inst_fallback ? true : false);
+#endif
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+      cfg.allow_live_degraded_inst_fallback =
+         (cfg.allow_live_degraded_inst_fallback ? true : false);
+#endif
+
       cfg.ms_vpin_gate_on               = (cfg.ms_vpin_gate_on ? true : false);
       cfg.ms_resiliency_gate_on         = (cfg.ms_resiliency_gate_on ? true : false);
       cfg.ms_impact_gate_on             = (cfg.ms_impact_gate_on ? true : false);
@@ -6919,7 +6954,17 @@ namespace Config
      if(CfgInstitutionalTransportRuntimeIntent(cfg) &&
         !CfgInstitutionalStateProducerEnabled(cfg))
         warns += "Institutional transport warning: runtime intent requires canonical institutional transport, but scan_inst_state_enable=false. This disables the canonical transport / Confluence mirror / State promotion chain and can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn unless you intentionally want degraded unavailable-transport behavior.\n";
-        
+
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+     if(cfg.allow_tester_degraded_inst_fallback)
+        warns += "allow_tester_degraded_inst_fallback=true; tester/optimization may continue through reduced/mock degraded institutional routing when canonical transport is unavailable.\n";
+#endif
+
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+     if(cfg.allow_live_degraded_inst_fallback)
+        warns += "allow_live_degraded_inst_fallback=true; live runtime may continue with degraded institutional transport when canonical transport is unavailable. Keep this OFF unless that behavior is explicitly intended.\n";
+#endif
+
      if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
         (cfg.scan_inst_weight_microprice > 0.0 ||
@@ -8157,7 +8202,20 @@ namespace Config
     if(cfg.max_losses_day<0) cfg.max_losses_day=0;
     if(cfg.max_trades_day<0) cfg.max_trades_day=0;
     if(cfg.max_spread_points<0) cfg.max_spread_points=0;
-    
+
+    #ifdef CFG_HAS_LIQ_MIN_RATIO
+      if(cfg.liq_min_ratio <= 0.0)
+        cfg.liq_min_ratio = 1.50;
+      cfg.liq_min_ratio = MathMin(10.0, MathMax(0.50, cfg.liq_min_ratio));
+    #endif
+
+    #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+      if(cfg.liq_min_ratio_tester < 0.0)
+        cfg.liq_min_ratio_tester = 0.0;
+      else if(cfg.liq_min_ratio_tester > 0.0)
+        cfg.liq_min_ratio_tester = MathMin(10.0, MathMax(0.50, cfg.liq_min_ratio_tester));
+    #endif
+
     // AutoVol cache (MarketData 5.6) clamps
     if(cfg.auto_vol_cache_hours < 1) cfg.auto_vol_cache_hours = 1;
    
@@ -10639,7 +10697,19 @@ namespace Config
        cfg.slippage_points = 300;   // default
      else if(cfg.slippage_points < 100)
        cfg.slippage_points = 100;
-   
+
+     #ifdef CFG_HAS_LIQ_MIN_RATIO
+       cfg.liq_min_ratio = 1.50;
+     #endif
+
+     #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+       cfg.liq_min_ratio_tester = 1.35;
+     #endif
+
+     #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+       cfg.liq_hard_fail_on_invalid_metrics = false;
+     #endif
+
      // Loop/timing
      cfg.only_new_bar      = only_new_bar;
      cfg.timer_ms          = timer_ms;
@@ -11386,6 +11456,18 @@ namespace Config
     #endif
     s+=",spr="+IntegerToString(c.max_spread_points);
     s+=",slip="+IntegerToString(c.slippage_points);
+
+    #ifdef CFG_HAS_LIQ_MIN_RATIO
+      s+=",liqMinR="+DoubleToString(c.liq_min_ratio,3);
+    #endif
+
+    #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+      s+=",liqMinRT="+DoubleToString(c.liq_min_ratio_tester,3);
+    #endif
+
+    #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+      s+=",liqInvHF="+BoolStr(c.liq_hard_fail_on_invalid_metrics);
+    #endif
 
     s+=",newbar="+BoolStr(c.only_new_bar);
     s+=",timer="+IntegerToString(c.timer_ms);
@@ -12374,6 +12456,13 @@ namespace Config
       s+=",msOn="+BoolStr(c.ms_enable);
       s+=",msLvOn="+BoolStr(c.ms_live_path_enable);
       s+=",msTsOn="+BoolStr(c.ms_tester_path_enable);
+
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      s+=",msTsDgFb="+BoolStr(c.allow_tester_degraded_inst_fallback);
+#endif
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+      s+=",msLvDgFb="+BoolStr(c.allow_live_degraded_inst_fallback);
+#endif
 
       s+=",msVpOn="+BoolStr(c.ms_vpin_gate_on);
       s+=",msReOn="+BoolStr(c.ms_resiliency_gate_on);
@@ -13873,6 +13962,18 @@ namespace Config
       else if(k=="spr") cfg.max_spread_points=ToInt(v);
       else if(k=="slip") cfg.slippage_points=ToInt(v);
 
+      #ifdef CFG_HAS_LIQ_MIN_RATIO
+        else if(k=="liqMinR") cfg.liq_min_ratio = ToDouble(v);
+      #endif
+
+      #ifdef CFG_HAS_LIQ_MIN_RATIO_TESTER
+        else if(k=="liqMinRT") cfg.liq_min_ratio_tester = ToDouble(v);
+      #endif
+
+      #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+        else if(k=="liqInvHF") cfg.liq_hard_fail_on_invalid_metrics = ToBool(v);
+      #endif
+
       else if(k=="newbar") cfg.only_new_bar=ToBool(v);
       else if(k=="timer") cfg.timer_ms=ToInt(v);
       else if(k=="srvOff") cfg.server_offset_min=ToInt(v);
@@ -14631,6 +14732,13 @@ namespace Config
         else if(k=="msOn")    cfg.ms_enable = ToBool(v);
         else if(k=="msLvOn")  cfg.ms_live_path_enable = ToBool(v);
         else if(k=="msTsOn")  cfg.ms_tester_path_enable = ToBool(v);
+
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+        else if(k=="msTsDgFb") cfg.allow_tester_degraded_inst_fallback = ToBool(v);
+#endif
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+        else if(k=="msLvDgFb") cfg.allow_live_degraded_inst_fallback = ToBool(v);
+#endif
 
         else if(k=="msVpOn")  cfg.ms_vpin_gate_on = ToBool(v);
         else if(k=="msReOn")  cfg.ms_resiliency_gate_on = ToBool(v);
@@ -16269,6 +16377,13 @@ struct Settings
     bool   ms_live_path_enable;          // allow canonical microstructure controls on live forward path
     bool   ms_tester_path_enable;        // allow canonical microstructure controls on tester / replay path
 
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+    bool   allow_tester_degraded_inst_fallback; // tester/optimization only: allow reduced/mock degraded routing when canonical transport is unavailable
+#endif
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+    bool   allow_live_degraded_inst_fallback;   // optional live degraded transport fallback (kept OFF by default)
+#endif
+
     // Hard-gate toggles
     bool   ms_vpin_gate_on;              // enable top-level VPIN / toxicity veto
     bool   ms_resiliency_gate_on;        // enable top-level resiliency veto
@@ -17289,6 +17404,11 @@ struct Settings
   bool              calm_mode;
   double            calm_min_atr_pips;
   double            calm_min_atr_to_spread;
+
+  double            liq_min_ratio;                    // live / strict ATR:spread floor
+  double            liq_min_ratio_tester;             // tester/optimization override; 0.0 = auto-adapt from liq_min_ratio
+  bool              liq_hard_fail_on_invalid_metrics; // true = hard-veto calm/liquidity gates when ATR or spread is invalid
+
   #ifdef CFG_HAS_WEEKLY_OPEN_RAMP
     bool weekly_open_spread_ramp; // ON = relax spread cap in first hour of Monday open
   #endif
