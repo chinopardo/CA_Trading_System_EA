@@ -128,7 +128,7 @@ void UI_Screenshot(const string tag);
 bool RefreshMicrostructureSnapshot(const string sym, const bool force_refresh=false);
 void PublishMicrostructureSnapshot(const string sym);
 string CanonicalRouterSymbol();
-bool   MicrostructureGateOK(const string sym, const datetime now_srv, string &detail);
+bool   MicrostructureGateOK(const string sym, const datetime now_srv, const datetime required_bar_time, string &detail);
 
 void ApplyTesterOnlyFeatureOverrides(Settings &cfg);
 void RefreshICTContext(EAState &st);
@@ -916,7 +916,7 @@ input int              InpMS_RefreshMinMs      = 250;    // local throttle for E
 
 input int              InpMS_MaxSnapshotAgeMs   = 1250;   // block if last published micro snapshot is stale
 input bool             InpMS_BlockIfUnavailable = true;   // block entries when no fresh micro snapshot exists
-input bool             InpMS_TesterAllowUnavailable = true;   // tester/optimization: degrade instead of hard-veto when canonical micro is unavailable
+input bool             InpMS_TesterAllowUnavailable = true;   // canonical tester degraded institutional fallback when canonical micro transport is unavailable
 input bool             InpMS_TesterLogUnavailable   = true;   // tester/optimization: print one throttled fallback diagnostic
 input bool             InpMS_LiveAllowDegradedInstFallback = false; // live: optional degraded fallback when canonical micro is unavailable (default OFF)
 
@@ -3120,14 +3120,37 @@ void FinalizeRuntimeSettings()
    g_cfg = S;
 
    #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
-      if(Config::CfgInstitutionalTransportRuntimeIntent(S) &&
-         !Config::CfgInstitutionalStateProducerEnabled(S))
-      {
-         S.scan_inst_state_enable = true;
-         g_cfg.scan_inst_state_enable = true;
+   if(Config::CfgInstitutionalTransportRuntimeIntent(S) &&
+      !Config::CfgInstitutionalStateProducerEnabled(S))
+   {
+      S.scan_inst_state_enable = true;
+      g_cfg.scan_inst_state_enable = true;
 
-         LogX::Warn("[RuntimeConsistency] auto-corrected scan_inst_state_enable=true because runtime intent requires canonical institutional transport.");
-      }
+      LogX::Warn("[RuntimeConsistency] auto-corrected scan_inst_state_enable=true because runtime intent requires canonical institutional transport.");
+   }
+
+   {
+      bool tester_fb_allow = false;
+      bool live_fb_allow   = false;
+
+   #ifdef CFG_HAS_MICROSTRUCTURE_SETTINGS
+      tester_fb_allow = Config::CfgAllowTesterDegradedInstFallback(S);
+   #endif
+
+   #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+      live_fb_allow = (S.allow_live_degraded_inst_fallback ? true : false);
+   #endif
+
+      const bool effective_fb_allow = (g_is_tester ? tester_fb_allow : live_fb_allow);
+
+      LogX::Info(StringFormat("[InstFallback] tester_input=%s tester_cfg=%s live_input=%s live_cfg=%s effective=%s tester=%s",
+                              (InpMS_TesterAllowUnavailable ? "true" : "false"),
+                              (tester_fb_allow ? "true" : "false"),
+                              (InpMS_LiveAllowDegradedInstFallback ? "true" : "false"),
+                              (live_fb_allow ? "true" : "false"),
+                              (effective_fb_allow ? "true" : "false"),
+                              (g_is_tester ? "true" : "false")));
+   }
    #endif
 
    // 11) Boot registry from finalized snapshot (MOVE 2471–2475)
@@ -3367,7 +3390,7 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
 
    datetime effective_required_bar_time = required_bar_time;
    if(effective_required_bar_time <= 0)
-      effective_required_bar_time = ResolveCanonicalInstitutionalClosedBarAnchorTime(sym);
+      effective_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
 
    int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
    string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
@@ -3375,6 +3398,9 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
    bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time) &&
                       StateInstitutionalFreshnessDiagAccepted(fresh_code);
    datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+
+   bool bar_misaligned_hard = false;
+   datetime bar_misaligned_closed_bar_time = (datetime)0;
 
    if(!state_fresh)
    {
@@ -3408,6 +3434,9 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
          effective_required_bar_time > 0 &&
          closed_bar_time != effective_required_bar_time)
       {
+         bar_misaligned_hard = true;
+         bar_misaligned_closed_bar_time = closed_bar_time;
+
          string lag_promote_why = "";
          StateTryPromoteCanonicalInstitutionalState(g_state,
                                                     g_cfg,
@@ -3438,23 +3467,64 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
 
-   if(flow_ts <= 0)
+   if(!state_fresh &&
+      g_is_tester &&
+      StateInstitutionalDegradedTransportUsable(g_state) &&
+      flow_ts > 0)
    {
-      diag_out = StringFormat("canonical state unavailable flow=- direct=%d proxy=%d head=%s reason=%s",
+      diag_out = StringFormat("degraded_tester_usable flow=%s direct=%d proxy=%d head=%s req=%s reason=%s",
+                              InstDiagTimeStr(flow_ts),
                               (direct_ok ? 1 : 0),
                               (proxy_ok ? 1 : 0),
                               InstDiagTimeStr(head_bar_time),
+                              InstDiagTimeStr(effective_required_bar_time),
                               fresh_why);
+      return true;
+   }
+
+   const string fail_tag = (bar_misaligned_hard ? "bar_misaligned_hard" : "state_invalid_canonical");
+
+   if(flow_ts <= 0)
+   {
+      if(bar_misaligned_hard)
+         diag_out = StringFormat("%s flow=- direct=%d proxy=%d head=%s req=%s closed=%s reason=%s",
+                                 fail_tag,
+                                 (direct_ok ? 1 : 0),
+                                 (proxy_ok ? 1 : 0),
+                                 InstDiagTimeStr(head_bar_time),
+                                 InstDiagTimeStr(effective_required_bar_time),
+                                 InstDiagTimeStr(bar_misaligned_closed_bar_time),
+                                 fresh_why);
+      else
+         diag_out = StringFormat("%s flow=- direct=%d proxy=%d head=%s req=%s reason=%s",
+                                 fail_tag,
+                                 (direct_ok ? 1 : 0),
+                                 (proxy_ok ? 1 : 0),
+                                 InstDiagTimeStr(head_bar_time),
+                                 InstDiagTimeStr(effective_required_bar_time),
+                                 fresh_why);
       return false;
    }
 
-   diag_out = StringFormat("canonical state unavailable flow=%s direct=%d proxy=%d head=%s req=%s reason=%s",
-                           InstDiagTimeStr(flow_ts),
-                           (direct_ok ? 1 : 0),
-                           (proxy_ok ? 1 : 0),
-                           InstDiagTimeStr(head_bar_time),
-                           InstDiagTimeStr(effective_required_bar_time),
-                           fresh_why);
+   if(bar_misaligned_hard)
+      diag_out = StringFormat("%s flow=%s direct=%d proxy=%d head=%s req=%s closed=%s reason=%s",
+                              fail_tag,
+                              InstDiagTimeStr(flow_ts),
+                              (direct_ok ? 1 : 0),
+                              (proxy_ok ? 1 : 0),
+                              InstDiagTimeStr(head_bar_time),
+                              InstDiagTimeStr(effective_required_bar_time),
+                              InstDiagTimeStr(bar_misaligned_closed_bar_time),
+                              fresh_why);
+   else
+      diag_out = StringFormat("%s flow=%s direct=%d proxy=%d head=%s req=%s reason=%s",
+                              fail_tag,
+                              InstDiagTimeStr(flow_ts),
+                              (direct_ok ? 1 : 0),
+                              (proxy_ok ? 1 : 0),
+                              InstDiagTimeStr(head_bar_time),
+                              InstDiagTimeStr(effective_required_bar_time),
+                              fresh_why);
    return false;
 }
 
@@ -3466,32 +3536,36 @@ void LogCanonicalInstitutionalGateDiag(const string sym,
       return;
 
    const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
-   const datetime throttle_key = (required_bar_time > 0 ? required_bar_time : TimeCurrent());
-
+   const datetime effective_required_bar_time = (required_bar_time > 0
+                                                 ? required_bar_time
+                                                 : ResolveCanonicalInstitutionalRequiredBarTime(use_sym));
+   const datetime throttle_key = (effective_required_bar_time > 0 ? effective_required_bar_time : TimeCurrent());
+   
    static string last_sym = "";
    static string last_origin = "";
    static datetime last_key = 0;
-
+   
    if(use_sym == last_sym && origin_tag == last_origin && throttle_key == last_key)
       return;
-
+   
    last_sym = use_sym;
-   const datetime effective_required_bar_time = (required_bar_time > 0
-                                                 ? required_bar_time : ResolveCanonicalInstitutionalClosedBarAnchorTime(use_sym));
    last_origin = origin_tag;
    last_key = throttle_key;
-
-   const bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time);
+   
    const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
    const datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
    const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
    const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
-
-   PrintFormat("[InstGateDiag][%s] sym=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s code=%d reason=%s",
+   const bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time) &&
+                            StateInstitutionalFreshnessDiagAccepted(fresh_code);
+   const string anchor_mode = (CanonicalInstitutionalRequiredBarShift() > 0 ? "closed_bar" : "open_bar");
+   
+   PrintFormat("[InstGateDiag][%s] sym=%s anchor=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s code=%d reason=%s",
                origin_tag,
                use_sym,
+               anchor_mode,
                (state_fresh ? 1 : 0),
                InstDiagTimeStr(flow_ts),
                (direct_ok ? 1 : 0),
@@ -3596,6 +3670,7 @@ double Inst_CenteredStrengthAbs01(const double x01)
 }
 
 bool Inst_ReadCanonicalMicroGateMetrics(const string sym,
+                                        const datetime required_bar_time,
                                         double &ofi_abs01,
                                         double &obi_abs01,
                                         double &vpin01,
@@ -3618,10 +3693,22 @@ bool Inst_ReadCanonicalMicroGateMetrics(const string sym,
 
    if(sym == "")
       return true;
-
-   if(!StateInstitutionalStateFresh(g_state))
+   
+   const datetime effective_required_bar_time = (required_bar_time > 0
+                                                 ? required_bar_time
+                                                 : ResolveCanonicalInstitutionalRequiredBarTime(sym));
+   const datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, effective_required_bar_time);
+   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+   
+   const bool state_fresh = StateInstitutionalStateFresh(g_state, effective_required_bar_time) &&
+                            StateInstitutionalFreshnessDiagAccepted(fresh_code);
+   if(!state_fresh)
    {
-      detail = "canonical institutional state unavailable";
+      detail = StringFormat("canonical institutional state unavailable req=%s head=%s reason=%s",
+                            InstDiagTimeStr(effective_required_bar_time),
+                            InstDiagTimeStr(head_bar_time),
+                            fresh_why);
       return false;
    }
 
@@ -3638,16 +3725,28 @@ bool Inst_ReadCanonicalMicroGateMetrics(const string sym,
    if(!direct_ok && !proxy_ok)
    {
       if(StateInstitutionalDegradedTransportUsable(g_state))
-         detail = "degraded canonical transport active";
+         detail = StringFormat("degraded canonical transport active req=%s head=%s flow=%s reason=%s",
+                               InstDiagTimeStr(effective_required_bar_time),
+                               InstDiagTimeStr(head_bar_time),
+                               InstDiagTimeStr(flow_ts),
+                               fresh_why);
       else
-         detail = "canonical micro route unavailable";
-
+         detail = StringFormat("canonical micro route unavailable req=%s head=%s flow=%s reason=%s",
+                               InstDiagTimeStr(effective_required_bar_time),
+                               InstDiagTimeStr(head_bar_time),
+                               InstDiagTimeStr(flow_ts),
+                               fresh_why);
+   
       return false;
    }
-
+   
    if(flow_ts <= 0)
    {
-      detail = "canonical micro bundle time unavailable";
+      detail = StringFormat("canonical micro bundle time unavailable req=%s head=%s flow=%s reason=%s",
+                            InstDiagTimeStr(effective_required_bar_time),
+                            InstDiagTimeStr(head_bar_time),
+                            InstDiagTimeStr(flow_ts),
+                            fresh_why);
       return false;
    }
 
@@ -3772,7 +3871,7 @@ void ApplyTesterOnlyFeatureOverrides(Settings &cfg)
    #endif
 }
 
-bool MicrostructureGateOK(const string sym, const datetime now_srv, string &detail)
+bool MicrostructureGateOK(const string sym, const datetime now_srv, const datetime required_bar_time, string &detail)
 {
    detail = "";
 
@@ -3781,6 +3880,10 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
 
    if(sym == "")
       return true;
+
+   const datetime effective_required_bar_time = (required_bar_time > 0
+                                                 ? required_bar_time
+                                                 : ResolveCanonicalInstitutionalRequiredBarTime(sym));
 
    double ofi_abs01   = 0.0;
    double obi_abs01   = 0.0;
@@ -3793,6 +3896,7 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
    string state_detail = "";
 
    if(!Inst_ReadCanonicalMicroGateMetrics(sym,
+                                          effective_required_bar_time,
                                           ofi_abs01,
                                           obi_abs01,
                                           vpin01,
@@ -3820,7 +3924,7 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
 
          if(InpMS_TesterLogUnavailable)
          {
-            datetime throttle_key = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+            datetime throttle_key = effective_required_bar_time;
             if(throttle_key <= 0)
                throttle_key = now_srv;
 
@@ -3845,16 +3949,22 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
       return false;
    }
 
-   long age_ms = (long)(now_srv - flow_ts) * 1000;
+   datetime freshness_anchor_time = effective_required_bar_time;
+   if(freshness_anchor_time <= 0)
+      freshness_anchor_time = now_srv;
+   
+   long age_ms = (long)(freshness_anchor_time - flow_ts) * 1000;
    if(age_ms < 0)
       age_ms = 0;
-
+   
    if((int)age_ms > InpMS_MaxSnapshotAgeMs)
    {
-      detail = StringFormat("canonical micro stale age_ms=%d max_ms=%d mode=%s",
+      detail = StringFormat("canonical micro stale age_ms=%d max_ms=%d mode=%s req=%s flow=%s",
                             (int)age_ms,
                             InpMS_MaxSnapshotAgeMs,
-                            Inst_FlowModeToStr(flow_mode));
+                            Inst_FlowModeToStr(flow_mode),
+                            InstDiagTimeStr(freshness_anchor_time),
+                            InstDiagTimeStr(flow_ts));
       return false;
    }
 
@@ -3881,14 +3991,16 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, string &deta
 
    if(fail)
    {
-      detail = StringFormat("canonical micro fail mode=%s ofi=%.3f obi=%.3f vpin=%.3f resil=%.3f direct=%d proxy=%d",
+      detail = StringFormat("canonical micro fail mode=%s ofi=%.3f obi=%.3f vpin=%.3f resil=%.3f direct=%d proxy=%d req=%s flow=%s",
                             Inst_FlowModeToStr(flow_mode),
                             ofi_abs01,
                             obi_abs01,
                             vpin01,
                             resil01,
                             (direct_ok ? 1 : 0),
-                            (proxy_ok ? 1 : 0));
+                            (proxy_ok ? 1 : 0),
+                            InstDiagTimeStr(freshness_anchor_time),
+                            InstDiagTimeStr(flow_ts));
       return false;
    }
 
@@ -5231,7 +5343,8 @@ bool RouterGateOK_Global(const string log_sym,
       return false;
 
    string ms_detail = "";
-   const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_detail);
+   const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(log_sym);
+   const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_required_bar_time, ms_detail);
    if(ms_ok)
    {
       if(StringLen(ms_detail) <= 0)
@@ -5349,7 +5462,8 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
       return false;
 
    string ms_detail = "";
-   const bool ms_ok = MicrostructureGateOK(sym, now_srv, ms_detail);
+   const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+   const bool ms_ok = MicrostructureGateOK(sym, now_srv, ms_required_bar_time, ms_detail);
    if(ms_ok)
    {
       if(StringLen(ms_detail) <= 0)

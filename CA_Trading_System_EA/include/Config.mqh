@@ -2445,6 +2445,38 @@ namespace Config
       return (cfg.scan_inst_state_enable ? true : false);
    }
 
+   inline bool CfgAllowTesterDegradedInstFallback(const Settings &cfg)
+   {
+   #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      return (cfg.allow_tester_degraded_inst_fallback ? true : false);
+   #else
+      #ifdef CFG_HAS_ALLOW_TESTER_INST_FALLBACK
+         return (cfg.allow_tester_inst_fallback ? true : false);
+      #else
+         #ifdef CFG_HAS_ALLOW_DEGRADED_INST_FALLBACK
+            return (cfg.allow_degraded_inst_fallback ? true : false);
+         #else
+            return false;
+         #endif
+      #endif
+   #endif
+   }
+
+   inline void SyncTesterDegradedInstFallbackAlias(Settings &cfg)
+   {
+      const bool resolved = CfgAllowTesterDegradedInstFallback(cfg);
+
+   #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      cfg.allow_tester_degraded_inst_fallback = resolved;
+   #endif
+   #ifdef CFG_HAS_ALLOW_TESTER_INST_FALLBACK
+      cfg.allow_tester_inst_fallback = resolved;
+   #endif
+   #ifdef CFG_HAS_ALLOW_DEGRADED_INST_FALLBACK
+      cfg.allow_degraded_inst_fallback = resolved;
+   #endif
+   }
+
    inline bool CfgInstitutionalStrictTransportExpected()
    {
    #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
@@ -6155,10 +6187,7 @@ namespace Config
       cfg.ms_live_path_enable   = (cfg.ms_live_path_enable   ? true : false);
       cfg.ms_tester_path_enable = (cfg.ms_tester_path_enable ? true : false);
 
-#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
-      cfg.allow_tester_degraded_inst_fallback =
-         (cfg.allow_tester_degraded_inst_fallback ? true : false);
-#endif
+      SyncTesterDegradedInstFallbackAlias(cfg);
 #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
       cfg.allow_live_degraded_inst_fallback =
          (cfg.allow_live_degraded_inst_fallback ? true : false);
@@ -6956,7 +6985,7 @@ namespace Config
         warns += "Institutional transport warning: runtime intent requires canonical institutional transport, but scan_inst_state_enable=false. This disables the canonical transport / Confluence mirror / State promotion chain and can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn unless you intentionally want degraded unavailable-transport behavior.\n";
 
 #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
-     if(cfg.allow_tester_degraded_inst_fallback)
+     if(CfgAllowTesterDegradedInstFallback(cfg))
         warns += "allow_tester_degraded_inst_fallback=true; tester/optimization may continue through reduced/mock degraded institutional routing when canonical transport is unavailable.\n";
 #endif
 
@@ -12458,7 +12487,7 @@ namespace Config
       s+=",msTsOn="+BoolStr(c.ms_tester_path_enable);
 
 #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
-      s+=",msTsDgFb="+BoolStr(c.allow_tester_degraded_inst_fallback);
+      s+=",msTsDgFb="+BoolStr(CfgAllowTesterDegradedInstFallback(c));
 #endif
 #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
       s+=",msLvDgFb="+BoolStr(c.allow_live_degraded_inst_fallback);
@@ -14734,7 +14763,11 @@ namespace Config
         else if(k=="msTsOn")  cfg.ms_tester_path_enable = ToBool(v);
 
 #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
-        else if(k=="msTsDgFb") cfg.allow_tester_degraded_inst_fallback = ToBool(v);
+        else if(k=="msTsDgFb" ||
+                k=="allow_tester_degraded_inst_fallback" ||
+                k=="allow_tester_inst_fallback" ||
+                k=="allow_degraded_inst_fallback")
+           cfg.allow_tester_degraded_inst_fallback = ToBool(v);
 #endif
 #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
         else if(k=="msLvDgFb") cfg.allow_live_degraded_inst_fallback = ToBool(v);
