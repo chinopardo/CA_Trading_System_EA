@@ -2464,6 +2464,56 @@ namespace Config
       return false;
    #endif
    }
+
+   inline bool CfgInstitutionalTransportRuntimeIntent(const Settings &cfg)
+   {
+      if(CfgInstitutionalStrictTransportExpected())
+         return true;
+
+   #ifdef CFG_HAS_MICROSTRUCTURE
+      if(cfg.ms_enable)
+      {
+         const bool is_tester = (MQLInfoInteger(MQL_TESTER) != 0);
+
+         if(is_tester)
+         {
+            #ifdef CFG_HAS_MS_TESTER_PATH_ENABLE
+               if(cfg.ms_tester_path_enable)
+                  return true;
+            #else
+               return true;
+            #endif
+         }
+         else
+         {
+            #ifdef CFG_HAS_MS_LIVE_PATH_ENABLE
+               if(cfg.ms_live_path_enable)
+                  return true;
+            #else
+               return true;
+            #endif
+         }
+      }
+   #endif
+
+      if(cfg.scan_inst_exec_sqrt_impact_enable)
+         return true;
+
+      if((cfg.scan_inst_weight_microprice +
+          cfg.scan_inst_weight_resiliency +
+          cfg.scan_inst_weight_depth_fade +
+          cfg.scan_inst_weight_cvd +
+          cfg.scan_inst_weight_toxicity +
+          cfg.scan_inst_weight_impact +
+          cfg.scan_inst_weight_profile_acceptance +
+          cfg.scan_inst_weight_market_profile +
+          cfg.scan_inst_weight_benchmark +
+          cfg.scan_inst_weight_jump +
+          cfg.scan_inst_weight_sweep) > 1e-12)
+         return true;
+
+      return false;
+   }
 #endif
 
    inline bool CfgEnablePackStrats(const Settings &cfg)
@@ -5959,14 +6009,8 @@ namespace Config
   {
      cfg.scan_inst_state_enable = (cfg.scan_inst_state_enable ? true : false);
 
-     #ifdef BUILD_PROFILE_TESTER
-     // Explicit tester institutional preset:
-     // if the tester build is exercising canonical institutional transport /
-     // microstructure routing, keep the producer family ON so the transport
-     // chain is normalized instead of remaining silently inert.
-     if(CfgInstitutionalTesterTransportExpected(cfg))
+     if(CfgInstitutionalTransportRuntimeIntent(cfg))
         cfg.scan_inst_state_enable = true;
-     #endif
 
      cfg.scan_inst_jump_proxy_enable = (cfg.scan_inst_jump_proxy_enable ? true : false);
      cfg.scan_inst_market_profile_enable = (cfg.scan_inst_market_profile_enable ? true : false);
@@ -6872,15 +6916,10 @@ namespace Config
      // - requested scan_of_delta_enable  => current codebase field scan_of_enable
      // - requested scan_profile_enable   => current codebase field scan_vp_enable
 
-     if(CfgInstitutionalStrictTransportExpected() &&
+     if(CfgInstitutionalTransportRuntimeIntent(cfg) &&
         !CfgInstitutionalStateProducerEnabled(cfg))
-        warns += "STRICT institutional guardrail: scan_inst_state_enable=false disables the canonical institutional transport / Confluence mirror / State promotion chain. RouterGateOK_Global can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn for strict institutional runs unless you intentionally want the whole institutional transport family OFF.\n";
-
-     if(!CfgInstitutionalStrictTransportExpected() &&
-        CfgInstitutionalTesterTransportExpected(cfg) &&
-        !CfgInstitutionalStateProducerEnabled(cfg))
-        warns += "TESTER institutional warning: BUILD_PROFILE_TESTER is active and scan_inst_state_enable=false. This is not a strict-build bug, but institutional router / canonical micro runs can still be suppressed at MicrostructureGateOK unless the EA-side tester fallback is enabled. Re-enable scInstOn for institutional tester runs, or keep the tester fallback ON when you intentionally want degraded unavailable-transport behavior.\n";
-
+        warns += "Institutional transport warning: runtime intent requires canonical institutional transport, but scan_inst_state_enable=false. This disables the canonical transport / Confluence mirror / State promotion chain and can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn unless you intentionally want degraded unavailable-transport behavior.\n";
+        
      if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
         (cfg.scan_inst_weight_microprice > 0.0 ||

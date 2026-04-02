@@ -2921,6 +2921,17 @@ void FinalizeRuntimeSettings()
       g_cfg = S; // keep both identical after tester overlay
    }
 
+   #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+      if(Config::CfgInstitutionalTransportRuntimeIntent(S) &&
+         !Config::CfgInstitutionalStateProducerEnabled(S))
+      {
+         S.scan_inst_state_enable = true;
+         g_cfg.scan_inst_state_enable = true;
+
+         LogX::Warn("[RuntimeConsistency] auto-corrected scan_inst_state_enable=true because runtime intent requires canonical institutional transport.");
+      }
+   #endif
+
    // 11) Boot registry from finalized snapshot (MOVE 2471–2475)
    if(InpProfileApply)
       BootRegistry_WithProfile(S, ps);
