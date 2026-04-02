@@ -883,6 +883,10 @@ input bool             InpWarmupGate            = true;    // Gate trading until
 input int              InpWarmupSoftLatchMs     = 5000;    // Tester: latch open after N ms
 input int              InpWarmupSoftLatchTicks  = 250;     // Tester: latch open after N ticks
 
+// Institutional state bar freshness policy
+input bool             InpInstStateStrictBarAlign = true;   // live: strict current/open-bar contract
+input bool             InpInstStateAllowOneBarLag = false;  // live override: allow one closed-bar lag
+
 // Execution failure visibility (Journal)
 input bool             InpExecFailJournal       = true;    // Print execution failures to Journal
 input int              InpExecFailThrottleSec   = 60;      // Throttle journal spam (seconds)
@@ -3073,6 +3077,33 @@ void RefreshICTContext(EAState &st)
    StateUpdateICTContext(st, g_cfg);
 }
 
+bool UseCanonicalInstitutionalStrictOpenBarAlignment()
+{
+   if(g_is_tester)
+      return false;
+
+   return InpInstStateStrictBarAlign;
+}
+
+int CanonicalInstitutionalRequiredBarShift()
+{
+   return (UseCanonicalInstitutionalStrictOpenBarAlignment() ? 0 : 1);
+}
+
+int CanonicalInstitutionalAllowedLagBars()
+{
+   if(g_is_tester)
+      return 1;
+
+   return (InpInstStateAllowOneBarLag ? 1 : 0);
+}
+
+void SyncStateInstitutionalBarFreshnessPolicy()
+{
+   StateSetInstitutionalBarFreshnessPolicy(UseCanonicalInstitutionalStrictOpenBarAlignment(),
+                                           CanonicalInstitutionalAllowedLagBars());
+}
+
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym)
 {
    string use_sym = sym;
@@ -3083,7 +3114,7 @@ datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym)
    if(use_sym == "" || tf == PERIOD_CURRENT)
       return (datetime)0;
 
-   return iTime(use_sym, tf, 0);
+   return iTime(use_sym, tf, CanonicalInstitutionalRequiredBarShift());
 }
 
 string InstDiagTimeStr(const datetime t)
@@ -3099,12 +3130,12 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
                                             string &diag_out)
 {
    diag_out = "";
-
-   bool state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time);
+   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
+   
+   bool state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time) &&
+                      StateInstitutionalFreshnessDiagAccepted(fresh_code);
    datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
-
-   if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
-      state_fresh = false;
 
    if(!state_fresh)
    {
@@ -3125,20 +3156,9 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
       }
    }
 
-   state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time);
+   state_fresh = StateInstitutionalStateFresh(g_state, required_bar_time) &&
+                 StateInstitutionalFreshnessDiagAccepted(fresh_code);
    head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
-
-   if(state_fresh && required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
-   {
-      const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
-      const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
-
-      diag_out = StringFormat("canonical state head bar mismatch need=%s head=%s reason=%s",
-                              InstDiagTimeStr(required_bar_time),
-                              InstDiagTimeStr(head_bar_time),
-                              fresh_why);
-      return false;
-   }
 
    if(state_fresh)
       return true;
@@ -3146,21 +3166,6 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
    const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
-
-   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
-   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
-
-   if(required_bar_time > 0 && head_bar_time > 0 && head_bar_time != required_bar_time)
-   {
-      diag_out = StringFormat("canonical state unavailable need=%s head=%s flow=%s direct=%d proxy=%d reason=%s",
-                              InstDiagTimeStr(required_bar_time),
-                              InstDiagTimeStr(head_bar_time),
-                              InstDiagTimeStr(flow_ts),
-                              (direct_ok ? 1 : 0),
-                              (proxy_ok ? 1 : 0),
-                              fresh_why);
-      return false;
-   }
 
    if(flow_ts <= 0)
    {
@@ -3208,8 +3213,10 @@ void LogCanonicalInstitutionalGateDiag(const string sym,
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
    const datetime head_bar_time = StateInstitutionalHeadSnapshotBarTime(g_state);
+   const int fresh_code = StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+   const string fresh_why = StateInstitutionalPromotionDiagReason(fresh_code);
 
-   PrintFormat("[InstGateDiag][%s] sym=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s",
+   PrintFormat("[InstGateDiag][%s] sym=%s fresh=%d flow=%s direct=%d proxy=%d head=%s req=%s code=%d reason=%s",
                origin_tag,
                use_sym,
                (state_fresh ? 1 : 0),
@@ -3217,7 +3224,9 @@ void LogCanonicalInstitutionalGateDiag(const string sym,
                (direct_ok ? 1 : 0),
                (proxy_ok ? 1 : 0),
                InstDiagTimeStr(head_bar_time),
-               InstDiagTimeStr(required_bar_time));
+               InstDiagTimeStr(required_bar_time),
+               fresh_code,
+               fresh_why);
 }
 
 void Inst_ResetTransportStamp()
@@ -4013,6 +4022,11 @@ int OnInit()
    //g_cfg.tf_d1 = S.tf_d1;
 
    // 2. Initialize State (pair with router config)
+   SyncStateInstitutionalBarFreshnessPolicy();
+   LogX::Info(StringFormat("[InstState] bar freshness policy strict_open_bar_alignment=%d allowed_lag_bars=%d tester=%d",
+                           (UseCanonicalInstitutionalStrictOpenBarAlignment() ? 1 : 0),
+                           CanonicalInstitutionalAllowedLagBars(),
+                           (g_is_tester ? 1 : 0)));
    StateInit(g_state, g_cfg);
    Inst_ResetTransportStamp();
    Inst_CommitTransportStampToState(g_state);
