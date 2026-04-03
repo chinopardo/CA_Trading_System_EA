@@ -133,6 +133,7 @@ bool   MicrostructureGateOK(const string sym, const datetime now_srv, const date
 void ApplyTesterOnlyFeatureOverrides(Settings &cfg);
 void RefreshICTContext(EAState &st);
 
+bool RuntimeMainChecklistSoftFallbackEnabled();
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym);
 datetime ResolveCanonicalInstitutionalClosedBarAnchorTime(const string sym);
 bool EnsureCanonicalInstitutionalStateReady(const string sym,
@@ -518,6 +519,7 @@ input int    InpConf_MinCount       = 1;       // Confluence Gate: Min Count
 input double InpConf_MinScore       = 0.35;    // Confluence Gate: Min Score
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
 input bool   InpMain_RequireChecklist = true;  // Main: require checklist (disable to prevent trade starvation)
+input int    InpMain_ChecklistSoftFallbackMode = 0; // Main: checklist soft fallback policy (0=auto tester ON/live OFF, 1=force OFF, 2=force ON)
 input bool   InpMain_RequireClassicalConfirm = false; // Main: require classical confirmation layer (optional hard requirement)
 
 // --- Liquidity Pools (Lux-style, LuxAlgo Liquidity Pools) ---
@@ -949,6 +951,17 @@ static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 static bool g_use_registry = false; // legacy registry routing enabled (tester only)
+
+// ---- Router threshold resolution telemetry/state ----
+static bool   g_router_resolve_logged    = false;
+static double g_router_last_manual_min   = -1.0;
+static double g_router_last_profile_min  = -1.0;
+static double g_router_last_resolved_min = -1.0;
+static int    g_router_last_manual_cap   = -1;
+static int    g_router_last_profile_cap  = -1;
+static int    g_router_last_resolved_cap = -1;
+static bool   g_router_last_hints_on     = false;
+static int    g_router_last_profile_type = -1;
 
 // ---- Runtime drift alarm (S must match g_cfg; S is read-only after finalize in backend-only mode) ----
 static bool     g_drift_armed          = false;   // set true after finalize/approved commit
@@ -1400,66 +1413,215 @@ void HintTradeDisabledOnce(const Exec::Outcome &ex)
 }
 
 // ================== Helpers ==================
-void ApplyRouterConfig()  // manual-input version
-  {
-   RouterConfig rc = StratReg::GetGlobalRouterConfig();
+double EA_RouterManualMinScore()
+{
+   if(InpRouterMinScore > 0.0)
+      return InpRouterMinScore;
+   return Const::SCORE_ELIGIBILITY_MIN;
+}
 
-   if(InpRouterMode==1)
+int EA_RouterManualMaxStrats()
+{
+   if(InpRouterMaxStrats > 0)
+      return InpRouterMaxStrats;
+   return 12;
+}
+
+double EA_RouterProfileMinScore(const Config::ProfileSpec &ps)
+{
+   if(ps.min_score > 0.0)
+      return ps.min_score;
+   return EA_RouterManualMinScore();
+}
+
+int EA_RouterProfileMaxStrats(const Config::ProfileSpec &ps)
+{
+   if(ps.max_strats > 0)
+      return ps.max_strats;
+   return EA_RouterManualMaxStrats();
+}
+
+double EA_RouterResolvedMinScore()
+{
+   RouterConfig rc = StratReg::GetGlobalRouterConfig();
+   if(rc.min_score > 0.0)
+      return rc.min_score;
+   return EA_RouterManualMinScore();
+}
+
+int EA_RouterResolvedMaxStrats()
+{
+   RouterConfig rc = StratReg::GetGlobalRouterConfig();
+   if(rc.max_strats > 0)
+      return rc.max_strats;
+   return EA_RouterManualMaxStrats();
+}
+
+void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
+{
+   if(InpRouterMode == 1)
       rc.select_mode = SEL_WEIGHTED;
    else
-      if(InpRouterMode==2)
-         rc.select_mode = SEL_AB;
-      else
-         rc.select_mode = SEL_MAX;
+   if(InpRouterMode == 2)
+      rc.select_mode = SEL_AB;
+   else
+      rc.select_mode = SEL_MAX;
 
-   if(InpAB_Bucket==1)
+   if(InpAB_Bucket == 1)
       rc.ab_bucket = (int)AB_A;
    else
-      if(InpAB_Bucket==2)
-         rc.ab_bucket = (int)AB_B;
-      else
-         rc.ab_bucket = (int)AB_OFF;
+   if(InpAB_Bucket == 2)
+      rc.ab_bucket = (int)AB_B;
+   else
+      rc.ab_bucket = (int)AB_OFF;
+}
 
-   rc.min_score  = (InpRouterMinScore>0.0? InpRouterMinScore : Const::SCORE_ELIGIBILITY_MIN);
-   rc.max_strats = (InpRouterMaxStrats>0 ? InpRouterMaxStrats : 12);
+void EA_LogRouterThresholdResolution(const string origin_tag,
+                                     const double manual_min,
+                                     const double profile_min,
+                                     const double resolved_min,
+                                     const int manual_cap,
+                                     const int profile_cap,
+                                     const int resolved_cap)
+{
+   const bool hints_on = InpProfileUseRouterHints;
+   const int profile_type = (int)InpProfileType;
+
+   const bool changed =
+      (!g_router_resolve_logged ||
+       g_router_last_profile_type != profile_type ||
+       g_router_last_hints_on != hints_on ||
+       MathAbs(g_router_last_manual_min - manual_min) > 0.000001 ||
+       MathAbs(g_router_last_profile_min - profile_min) > 0.000001 ||
+       MathAbs(g_router_last_resolved_min - resolved_min) > 0.000001 ||
+       g_router_last_manual_cap != manual_cap ||
+       g_router_last_profile_cap != profile_cap ||
+       g_router_last_resolved_cap != resolved_cap);
+
+   if(!changed)
+      return;
+
+   if(!g_router_resolve_logged)
+   {
+      LogX::Info(StringFormat(
+         "[RouterStartup] profile=%s hints=%s manual_min=%.2f resolved_min=%.2f manual_max_strats=%d resolved_max_strats=%d",
+         Config::ProfileName((TradingProfile)InpProfileType),
+         (hints_on ? "ON" : "OFF"),
+         manual_min,
+         resolved_min,
+         manual_cap,
+         resolved_cap));
+   }
+
+   LogX::Info(StringFormat(
+      "[RouterResolve][%s] profile=%s hints=%s manual_min=%.2f profile_min=%.2f resolved_min=%.2f manual_max_strats=%d profile_max_strats=%d resolved_max_strats=%d",
+      origin_tag,
+      Config::ProfileName((TradingProfile)InpProfileType),
+      (hints_on ? "ON" : "OFF"),
+      manual_min,
+      profile_min,
+      resolved_min,
+      manual_cap,
+      profile_cap,
+      resolved_cap));
+
+   if((resolved_min - manual_min) >= 0.20)
+   {
+      LogX::Warn(StringFormat(
+         "[RouterResolve] resolved min_score %.2f is %.2f stricter than manual %.2f (profile=%s hints=%s)",
+         resolved_min,
+         (resolved_min - manual_min),
+         manual_min,
+         Config::ProfileName((TradingProfile)InpProfileType),
+         (hints_on ? "ON" : "OFF")));
+   }
+
+   g_router_resolve_logged    = true;
+   g_router_last_manual_min   = manual_min;
+   g_router_last_profile_min  = profile_min;
+   g_router_last_resolved_min = resolved_min;
+   g_router_last_manual_cap   = manual_cap;
+   g_router_last_profile_cap  = profile_cap;
+   g_router_last_resolved_cap = resolved_cap;
+   g_router_last_hints_on     = hints_on;
+   g_router_last_profile_type = profile_type;
+}
+
+void ApplyRouterConfig()  // manual-input version
+{
+   RouterConfig rc = StratReg::GetGlobalRouterConfig();
+
+   EA_ApplyRouterModeAndBucket(rc);
+
+   const double manual_min = EA_RouterManualMinScore();
+   const int    manual_cap = EA_RouterManualMaxStrats();
+
+   rc.min_score  = manual_min;
+   rc.max_strats = manual_cap;
 
    StratReg::SetGlobalRouterConfig(rc);
-   LogX::Info(StringFormat("Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d",
-                           InpRouterMode, InpAB_Bucket, rc.min_score, rc.max_strats));
-  }
+
+   EA_LogRouterThresholdResolution("manual",
+                                   manual_min,
+                                   manual_min,
+                                   rc.min_score,
+                                   manual_cap,
+                                   manual_cap,
+                                   rc.max_strats);
+
+   LogX::Info(StringFormat(
+      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [manual authoritative]",
+      InpRouterMode, InpAB_Bucket, rc.min_score, rc.max_strats));
+}
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint version
-  {
+{
    RouterConfig rc = StratReg::GetGlobalRouterConfig();
 
-   if(InpRouterMode==1)
-      rc.select_mode = SEL_WEIGHTED;
-   else
-      if(InpRouterMode==2)
-         rc.select_mode = SEL_AB;
-      else
-         rc.select_mode = SEL_MAX;
+   EA_ApplyRouterModeAndBucket(rc);
 
-   if(InpAB_Bucket==1)
-      rc.ab_bucket = (int)AB_A;
-   else
-      if(InpAB_Bucket==2)
-         rc.ab_bucket = (int)AB_B;
-      else
-         rc.ab_bucket = (int)AB_OFF;
+   const double manual_min  = EA_RouterManualMinScore();
+   const int    manual_cap  = EA_RouterManualMaxStrats();
+   const double profile_min = EA_RouterProfileMinScore(ps);
+   const int    profile_cap = EA_RouterProfileMaxStrats(ps);
 
-   rc.min_score  = (InpProfileUseRouterHints ? ps.min_score  : (InpRouterMinScore>0.0? InpRouterMinScore : Const::SCORE_ELIGIBILITY_MIN));
-   rc.max_strats = (InpProfileUseRouterHints ? ps.max_strats : (InpRouterMaxStrats>0 ? InpRouterMaxStrats : 12));
+   if(InpProfileUseRouterHints)
+   {
+      rc.min_score  = profile_min;
+      rc.max_strats = profile_cap;
+   }
+   else
+   {
+      rc.min_score  = manual_min;
+      rc.max_strats = manual_cap;
+   }
 
    StratReg::SetGlobalRouterConfig(rc);
-   LogX::Info(StringFormat("Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [via %s hints=%s]",
-                           InpRouterMode, InpAB_Bucket, rc.min_score, rc.max_strats,
-                           Config::ProfileName((TradingProfile)InpProfileType),
-                           (InpProfileUseRouterHints?"ON":"OFF")));
-  }
+
+   EA_LogRouterThresholdResolution("profile",
+                                   manual_min,
+                                   profile_min,
+                                   rc.min_score,
+                                   manual_cap,
+                                   profile_cap,
+                                   rc.max_strats);
+
+   LogX::Info(StringFormat(
+      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [profile=%s hints=%s manual_min=%.2f profile_min=%.2f manual_cap=%d profile_cap=%d]",
+      InpRouterMode,
+      InpAB_Bucket,
+      rc.min_score,
+      rc.max_strats,
+      Config::ProfileName((TradingProfile)InpProfileType),
+      (InpProfileUseRouterHints ? "ON" : "OFF"),
+      manual_min,
+      profile_min,
+      manual_cap,
+      profile_cap));
+}
 
 // ------------------------------------------------------------------
 // Forward declarations (defined later in this file)
@@ -1593,6 +1755,22 @@ void EvaluateOneSymbol(const string sym)
 
    UI_Render(S);
   }
+
+bool RuntimeMainChecklistSoftFallbackEnabled()
+{
+   const bool in_tester = (MQLInfoInteger(MQL_TESTER) != 0);
+
+   if(InpMain_ChecklistSoftFallbackMode == 1)
+      return false;
+
+   if(InpMain_ChecklistSoftFallbackMode == 2)
+      return true;
+
+   // Auto mode:
+   // tester  => enabled
+   // live    => disabled
+   return in_tester;
+}
 
 // ================================== Inputs → Settings mirror ==================================
 // Keep this single source of truth so Router/Policies/ProcessSymbol all see the same flags.
@@ -2261,11 +2439,13 @@ void _LogThresholdsOnce(const Settings &cfg)
       return;
    done=true;
 
-   RouterConfig rc = StratReg::GetGlobalRouterConfig();
+   const double resolved_min = EA_RouterResolvedMinScore();
+   const int    resolved_cap = EA_RouterResolvedMaxStrats();
+   
    LogX::Info(StringFormat(
                  "[Thresholds] router_min=%.2f max_strats=%d vwap_z_edge=%.2f vwap_z_avoidtrend=%.2f vwap_sigma=%.2f patt_lookback=%d",
-                 (rc.min_score>0.0?rc.min_score:Const::SCORE_ELIGIBILITY_MIN),
-                 (rc.max_strats>0?rc.max_strats:12),
+                 resolved_min,
+                 resolved_cap,
                  cfg.vwap_z_edge, cfg.vwap_z_avoidtrend, cfg.vwap_sigma, cfg.pattern_lookback));
                  
    #ifdef CFG_HAS_NEWS_BACKEND
@@ -2297,9 +2477,8 @@ bool RouteRegistryAll(const Settings &cfg, StratReg::RoutedPick &pick, string &t
    ZeroMemory(pick);
    top_str = "";
 
-   RouterConfig rc = StratReg::GetGlobalRouterConfig();
-   const double min_sc   = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
-   const int    cap_top  = (rc.max_strats>0 ? rc.max_strats : 12);
+   const double min_sc  = EA_RouterResolvedMinScore();
+   const int    cap_top = EA_RouterResolvedMaxStrats();
 
    int ids[];
    ArrayResize(ids, 12);
@@ -2442,7 +2621,7 @@ bool RouteManualRegimePick(const Settings &cfg, StratReg::RoutedPick &pick)
 
    StratScore sb, ss;
    ConfluenceBreakdown bb, bs;
-   const double min_sc = (InpRouterMinScore>0.0 ? InpRouterMinScore : Const::SCORE_ELIGIBILITY_MIN);
+   const double min_sc = EA_RouterResolvedMinScore();
 
    bool okB=false, okS=false;
    if(cfg.trade_selector!=TRADE_SELL_ONLY)
@@ -3156,9 +3335,17 @@ void FinalizeRuntimeSettings()
       BootRegistry_WithProfile(S, ps);
    else
       BootRegistry_NoProfile(S);
-
+   
    // 12) Sync router + routing mode flag from finalized snapshot
    StratReg::SyncRouterFromSettings(S);
+   
+   // Re-assert canonical router threshold resolution after registry/settings sync.
+   // This keeps the resolved min_score/max_strats as the single source of truth.
+   if(InpProfileApply)
+      ApplyRouterConfig_Profile(ps);
+   else
+      ApplyRouterConfig();
+   
    UpdateRegistryRoutingFlag();
    DriftAlarm_SetApproved("FinalizeRuntimeSettings");
 }
@@ -3178,6 +3365,18 @@ void UI_CommitSettings(const string reason, const bool resync_router=false)
    if(resync_router)
    {
       StratReg::SyncRouterFromSettings(S);
+   
+      if(InpProfileApply)
+      {
+         Config::ProfileSpec ps;
+         Config::BuildProfileSpec((TradingProfile)InpProfileType, ps);
+         ApplyRouterConfig_Profile(ps);
+      }
+      else
+      {
+         ApplyRouterConfig();
+      }
+   
       UpdateRegistryRoutingFlag();
    }
 
@@ -4505,6 +4704,12 @@ int OnInit()
                         (int)S.direction_bias_mode,
                         (InpMain_RequireChecklist ? "true" : "false"),
                         (InpMain_RequireClassicalConfirm ? "true" : "false")));
+
+   LogX::Info(StringFormat("[MainChecklistPolicy] require=%s soft_mode=%d soft_active=%s tester=%d",
+                           (InpMain_RequireChecklist ? "true" : "false"),
+                           InpMain_ChecklistSoftFallbackMode,
+                           (RuntimeMainChecklistSoftFallbackEnabled() ? "true" : "false"),
+                           (g_is_tester ? 1 : 0)));
    //g_cfg.tf_entry = S.tf_entry;
    //g_cfg.tf_h1 = S.tf_h1;
    //g_cfg.tf_h4 = S.tf_h4;
@@ -4933,9 +5138,7 @@ void OnTimer()
    
    ZeroMemory(pick_out);
 
-   RouterConfig rc = StratReg::GetGlobalRouterConfig();
-   const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
-   
+   const double min_sc = EA_RouterResolvedMinScore();   
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
    bool okRoute = false;
    
@@ -5680,8 +5883,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
      }
 
    // Drop ineligible / under-threshold picks (prevents the RET_UNSPEC spam)
-   RouterConfig rc = StratReg::GetGlobalRouterConfig();
-   const double min_sc = (rc.min_score>0.0 ? rc.min_score : Const::SCORE_ELIGIBILITY_MIN);
+   const double min_sc = EA_RouterResolvedMinScore();
    if(!pick.ss.eligible || pick.ss.score < min_sc)
      {
       TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_PICK_DROP,
