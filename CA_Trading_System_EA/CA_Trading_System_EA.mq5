@@ -104,16 +104,16 @@ string RuntimeSettingsHashHex(const Settings &cfg);
 void   DriftAlarm_SetApproved(const string reason);
 void   DriftAlarm_Check(const string where);
 
-// Backend-safe telemetry publisher (no chart UI dependency)
-void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
-                                const double       classicalScore,
-                                const double       ictScore,
-                                const string      &armedName);
+void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx);
 
-inline void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
-{
-   PushICTTelemetryToReviewUI(ictCtx, 0.0, 0.0, "-");
-}
+void DecisionTelemetry_MarkPassiveSkip(const string why);
+void DecisionTelemetry_MarkGateBlocked(const string source, const string why);
+void DecisionTelemetry_MarkNoCandidates(const string source, const string why);
+void DecisionTelemetry_RecordPassFromPick(const string source,
+                                          const StratReg::RoutedPick &pick);
+void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source);
+
+inline void _UnusedICTContext(const ICT_Context &ctx) { }
 
 // Backend-only UI wrappers (no-op unless BUILD_WITH_UI is defined elsewhere)
 void UI_Render(const Settings &cfg);
@@ -795,8 +795,9 @@ input int              InpThrottle_NewsPost_Sec     = 900;
 input int              InpTradeCooldown_Sec     = 900; // Policy Cooldown
 
 // Routing choice
-input bool             InpUseRegistryRouting    = false; // Registry Routing
-input double           InpRegimeThreshold       = 0.55; // Regime Threshold
+input bool             InpUseRegistryRouting         = false; // Legacy registry routing gate
+input bool             InpLegacyProcessSymbolTester  = false; // Tester only: explicit legacy ProcessSymbol compatibility mode
+input double           InpRegimeThreshold            = 0.55;  // Regime Threshold
 
 // --------- Profiles (top-level presets) ----------
 input TradingProfile   InpProfileType           = PROF_TREND; // Profile Type: Balanced/Trend/MR/Scalp
@@ -950,7 +951,7 @@ static bool g_show_breakdown = true;
 static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
-static bool g_use_registry = false; // legacy registry routing enabled (tester only)
+static bool g_use_registry = false; // explicit tester-only legacy ProcessSymbol compatibility mode
 
 // ---- Router threshold resolution telemetry/state ----
 static bool   g_router_resolve_logged    = false;
@@ -1082,6 +1083,30 @@ static double g_last_mid_stop      = 0.0;
 // streak state (reset daily by Risk day cache or session start)
 static int    g_consec_wins        = 0;
 static int    g_consec_losses      = 0;
+
+struct DecisionTelemetryState
+{
+   bool      has_decision_ts;
+   datetime  decision_ts;
+   string    decision_source;
+   string    status;
+   string    last_drop_reason;
+
+   bool      has_ict_score;
+   double    ict_score;
+
+   bool      has_classical_score;
+   double    classical_score;
+
+   bool      has_armed_name;
+   string    armed_name;
+
+   int       pick_id;
+   int       pick_dir;
+   double    pick_score;
+};
+
+static DecisionTelemetryState g_decision_tel;
 
 // =================== No-Trade Breadcrumbs (Gate→Router→Policies→Risk→Exec) ===================
 enum TraceStage
@@ -1264,22 +1289,34 @@ void TraceNoTrade(const string sym,
                   const double lots=0.0,
                   const int retcode=0)
 {
-   if(!InpDebug)
+   const bool allow_non_debug_router_pick_drop =
+      (stage == TS_ROUTER && code == TR_ROUTER_PICK_DROP);
+
+   if(!InpDebug && !allow_non_debug_router_pick_drop)
       return;
 
    static datetime last_ts = 0;
-   static int last_stage = 0;
-   static int last_code = 0;
-   static string last_sym = "";
+   static int      last_stage = 0;
+   static int      last_code = 0;
+   static string   last_sym = "";
+   static int      last_strat_id = 0;
+   static string   last_detail = "";
 
    const datetime now = TimeCurrent();
-   if(now==last_ts && stage==last_stage && code==last_code && sym==last_sym)
+   if(now == last_ts &&
+      stage == last_stage &&
+      code == last_code &&
+      sym == last_sym &&
+      strat_id == last_strat_id &&
+      detail == last_detail)
       return;
 
    last_ts = now;
    last_stage = stage;
-   last_code  = code;
-   last_sym   = sym;
+   last_code = code;
+   last_sym = sym;
+   last_strat_id = strat_id;
+   last_detail = detail;
 
    const string code_str = (stage==TS_GATE ? _GateReasonStr(code) : IntegerToString(code));
 
@@ -2429,6 +2466,88 @@ void _LogCandidateDrop(const string origin,
                  (int)bd.veto, (int)bd.veto_mask, bd.meta));
   }
 
+string _BuildIntentDropDetail(const StrategyID id,
+                              const Direction dir,
+                              const StratScore &ss,
+                              const ConfluenceBreakdown &bd,
+                              const double min_sc,
+                              const string why)
+  {
+   return StringFormat("why=%s id=%d dir=%s eligible=%d score=%.3f min_sc=%.3f bd.veto=%d veto_mask=%d meta=%s",
+                       why,
+                       (int)id,
+                       _DirStr(dir),
+                       (int)ss.eligible,
+                       ss.score,
+                       min_sc,
+                       (int)bd.veto,
+                       (int)bd.veto_mask,
+                       LogX::San(bd.meta));
+  }
+
+void _EmitIntentDropInfo(const string sym,
+                         const StrategyID id,
+                         const Direction dir,
+                         const StratScore &ss,
+                         const ConfluenceBreakdown &bd,
+                         const double min_sc,
+                         const string why)
+  {
+   static datetime last_emit = 0;
+   static string   last_key  = "";
+
+   const datetime now = TimeCurrent();
+   const string detail = _BuildIntentDropDetail(id, dir, ss, bd, min_sc, why);
+   const string key =
+      sym + "|" +
+      IntegerToString((int)id) + "|" +
+      _DirStr(dir) + "|" +
+      why + "|" +
+      detail;
+
+   if(now == last_emit && key == last_key)
+      return;
+
+   last_emit = now;
+   last_key  = key;
+
+   LogX::Info(StringFormat("[IntentDrop] sym=%s %s", sym, detail));
+   TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_PICK_DROP, detail, (int)id, dir, ss.score);
+  }
+
+bool PickPassesIntentGate(const string sym,
+                          const StratReg::RoutedPick &pick,
+                          const double min_sc,
+                          string &why_out,
+                          string &detail_out,
+                          const bool emit_drop_info)
+  {
+   why_out = "";
+   detail_out = "";
+
+   if(!pick.ok && (int)pick.id <= 0)
+     {
+      why_out = "no_pick";
+      return false;
+     }
+
+   if(pick.bd.veto)
+      why_out = "veto";
+   else if(!pick.ss.eligible)
+      why_out = "ineligible";
+   else if(pick.ss.score < min_sc)
+      why_out = "below_min_score";
+   else
+      return true;
+
+   detail_out = _BuildIntentDropDetail(pick.id, pick.dir, pick.ss, pick.bd, min_sc, why_out);
+
+   if(emit_drop_info)
+      _EmitIntentDropInfo(sym, pick.id, pick.dir, pick.ss, pick.bd, min_sc, why_out);
+
+   return false;
+  }
+
 // Echo static thresholds once at startup (useful context in logs)
 void _LogThresholdsOnce(const Settings &cfg)
   {
@@ -2780,12 +2899,29 @@ void RunIndicatorBenchmarks()
 
 inline void UpdateRegistryRoutingFlag()
 {
-   // Legacy registry path is tester-only.
-   g_use_registry = (InpUseRegistryRouting && g_is_tester);
+   // Legacy ProcessSymbol harness is tester-only and requires BOTH:
+   // 1) historical registry-routing input
+   // 2) explicit legacy compatibility opt-in
+   g_use_registry = (g_is_tester &&
+                     InpUseRegistryRouting &&
+                     InpLegacyProcessSymbolTester);
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
       g_use_registry = false;
+}
+
+bool UseLegacyProcessSymbolEngine()
+{
+   return (g_is_tester && g_use_registry);
+}
+
+string ActiveRoutingEngineName()
+{
+   if(UseLegacyProcessSymbolEngine())
+      return "legacy_processsymbol";
+
+   return "canonical_router";
 }
 
 // --- One-eval-per-bar compatibility dispatcher (tester-only RouterX path) ---
@@ -2816,7 +2952,7 @@ void MaybeEvaluate()
     if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
        g_use_registry = false;
 
-    if(g_use_registry)
+    if(UseLegacyProcessSymbolEngine())
     {
        if(!GateViaPolicies(g_cfg, _Symbol))
          return;
@@ -4393,12 +4529,88 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    PublishMicrostructureSnapshot(sym);
 }
 
+void DecisionTelemetry_MarkPassiveSkip(const string why)
+{
+   g_decision_tel.status = "decision_skipped";
+   g_decision_tel.last_drop_reason = why;
+}
+
+void DecisionTelemetry_MarkGateBlocked(const string source, const string why)
+{
+   g_decision_tel.decision_source = source;
+   g_decision_tel.status = "gate_blocked";
+   g_decision_tel.last_drop_reason = why;
+}
+
+void DecisionTelemetry_MarkNoCandidates(const string source, const string why)
+{
+   g_decision_tel.decision_source = source;
+   g_decision_tel.status = "no_candidates";
+   g_decision_tel.last_drop_reason = why;
+}
+
+void DecisionTelemetry_RecordPassFromPick(const string source,
+                                          const StratReg::RoutedPick &pick)
+{
+   string armed_name = "";
+   StratReg::GetStrategyNameById((StrategyID)pick.id, armed_name);
+
+   g_decision_tel.decision_source     = source;
+   g_decision_tel.status              = "decision_passed";
+   g_decision_tel.last_drop_reason    = "";
+   g_decision_tel.has_decision_ts     = true;
+   g_decision_tel.decision_ts         = TimeCurrent();
+
+   g_decision_tel.has_ict_score       = true;
+   g_decision_tel.ict_score           = pick.ss.score;
+
+   g_decision_tel.has_classical_score = true;
+   g_decision_tel.classical_score     = pick.bd.score_base;
+
+   g_decision_tel.has_armed_name      = (StringLen(armed_name) > 0);
+   g_decision_tel.armed_name          = armed_name;
+
+   g_decision_tel.pick_id             = (int)pick.id;
+   g_decision_tel.pick_dir            = (int)pick.dir;
+   g_decision_tel.pick_score          = pick.ss.score;
+}
+
+void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source)
+{
+   string armed_name = Telemetry::RouterDecisionPickName();
+
+   if(StringLen(armed_name) <= 0 && Telemetry::RouterDecisionPickID() > 0)
+      StratReg::GetStrategyNameById((StrategyID)Telemetry::RouterDecisionPickID(), armed_name);
+
+   g_decision_tel.decision_source     = source;
+   g_decision_tel.status              = "decision_passed";
+   g_decision_tel.last_drop_reason    = "";
+   g_decision_tel.has_decision_ts     = Telemetry::RouterDecisionHasSnapshot();
+   g_decision_tel.decision_ts         = Telemetry::RouterDecisionTS();
+
+   g_decision_tel.has_ict_score       = Telemetry::RouterDecisionHasSnapshot();
+   g_decision_tel.ict_score           = Telemetry::RouterDecisionPickScore();
+
+   g_decision_tel.has_classical_score = false;
+   g_decision_tel.classical_score     = 0.0;
+
+   g_decision_tel.has_armed_name      = (StringLen(armed_name) > 0);
+   g_decision_tel.armed_name          = armed_name;
+
+   g_decision_tel.pick_id             = Telemetry::RouterDecisionPickID();
+   g_decision_tel.pick_dir            = (int)Telemetry::RouterDecisionPickDir();
+   g_decision_tel.pick_score          = Telemetry::RouterDecisionPickScore();
+}
+
 bool RunCachedRouterPass(const string router_sym,
                          const datetime now_srv,
                          const string origin_tag)
 {
    if(router_sym == "")
+   {
+      DecisionTelemetry_MarkPassiveSkip("router_sym_empty");
       return false;
+   }
 
    // Live/new-order orchestration must remain:
    // scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill
@@ -4406,6 +4618,8 @@ bool RunCachedRouterPass(const string router_sym,
 
    if(!WarmupGateOK())
    {
+      DecisionTelemetry_MarkGateBlocked("router", "warmup");
+
       TraceNoTrade(router_sym, TS_GATE, GATE_WARMUP,
                    StringFormat("%s blocked: WarmupGateOK=false", origin_tag));
       return false;
@@ -4417,6 +4631,8 @@ bool RunCachedRouterPass(const string router_sym,
    int gate_reason = 0;
    if(!RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))
    {
+      DecisionTelemetry_MarkGateBlocked("router", _GateReasonStr(gate_reason));
+
       if(InpDebug)
       {
          static datetime last_emit = 0;
@@ -4438,8 +4654,16 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
+   const int router_seq_before = Telemetry::RouterDecisionSeq();
+
    ICT_Context ictCtx = StateGetICTContext(g_state);
    RouterEvaluateAll(g_router, g_cfg, ictCtx);
+
+   if(Telemetry::RouterDecisionSeq() != router_seq_before)
+      DecisionTelemetry_RecordPassFromRouterSnapshot("router");
+   else
+      DecisionTelemetry_MarkNoCandidates("router", "router_no_candidates");
+
    MSH_DirtyClear();
    return true;
 }
@@ -4448,17 +4672,30 @@ bool RunCachedRouterPass(const string router_sym,
 // PushICTTelemetryToReviewUI()
 // Backend-only: keep telemetry/log export, remove chart ReviewUI dependency.
 //--------------------------------------------------------------------
-void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx,
-                                const double      classicalScore,
-                                const double      ictScore,
-                                const string     &armedName)
+void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
 {
+   _UnusedICTContext(ictCtx);
+
+   string status = g_decision_tel.status;
+   if(StringLen(status) <= 0)
+      status = "decision_skipped";
+
+   string source = g_decision_tel.decision_source;
+   if(StringLen(source) <= 0)
+      source = (UseLegacyProcessSymbolEngine() ? "legacy_processsymbol" : "router");
+
+   const bool has_drop_reason = (StringLen(g_decision_tel.last_drop_reason) > 0);
+
    string j = "{";
    j += "\"sym\":\"" + Telemetry::_Esc(_Symbol) + "\",";
    j += "\"tf\":" + IntegerToString(Period()) + ",";
-   j += "\"ict_score\":" + DoubleToString(ictScore, 3) + ",";
-   j += "\"classical_score\":" + DoubleToString(classicalScore, 3) + ",";
-   j += "\"armed\":\"" + Telemetry::_Esc(armedName) + "\"";
+   j += "\"ict_score\":" + Telemetry::JsonNumberOrNull(g_decision_tel.has_ict_score, g_decision_tel.ict_score, 3) + ",";
+   j += "\"classical_score\":" + Telemetry::JsonNumberOrNull(g_decision_tel.has_classical_score, g_decision_tel.classical_score, 3) + ",";
+   j += "\"armed\":" + Telemetry::JsonStringOrNull(g_decision_tel.has_armed_name, g_decision_tel.armed_name) + ",";
+   j += "\"status\":\"" + Telemetry::_Esc(status) + "\",";
+   j += "\"decision_source\":\"" + Telemetry::_Esc(source) + "\",";
+   j += "\"decision_ts\":" + Telemetry::JsonDateTimeOrNull(g_decision_tel.has_decision_ts, g_decision_tel.decision_ts) + ",";
+   j += "\"last_drop_reason\":" + Telemetry::JsonStringOrNull(has_drop_reason, g_decision_tel.last_drop_reason);
    j += "}";
 
 #ifdef TELEMETRY_HAS_KV
@@ -4516,14 +4753,15 @@ int OnInit()
 
    LogX::Info(cfg_effective_msg);
 
-   // Backend-only live runtime: legacy registry path is tester-only.
+   // Backend-only live runtime: legacy ProcessSymbol harness is tester-only and opt-in.
    if(!g_is_tester)
       g_use_registry = false;
 
-   if(g_is_tester && g_use_registry)
-      LogX::Warn("[Routing] TESTER registry path enabled. Live remains RouterEvaluateAll-only.");
-   else
-      LogX::Info("[Routing] RouterEvaluateAll ACTIVE.");
+   LogX::Info(StringFormat("[Routing] engine=%s tester=%s registry_input=%s legacy_tester_mode=%s",
+                           ActiveRoutingEngineName(),
+                           (g_is_tester ? "true" : "false"),
+                           (InpUseRegistryRouting ? "true" : "false"),
+                           (InpLegacyProcessSymbolTester ? "true" : "false")));
                         
    #ifdef CA_USE_HANDLE_REGISTRY
       HR::Init();
@@ -4773,6 +5011,7 @@ int OnInit()
    }
 
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+   DecisionTelemetry_MarkPassiveSkip("init");
 
    // UX: show server/local times once for sanity
    datetime now_srv = TimeCurrent();
@@ -4878,35 +5117,15 @@ void OnTick()
    // Tick path must NOT recompute timer-owned scanner / institutional snapshot math.
    // OnTick only refreshes lightweight runtime context and consumes cached
    // scanner outputs produced by MarketScannerHub on OnTimer().
-   const string runtime_sym = ((g_is_tester && g_use_registry) ? _Symbol : CanonicalRouterSymbol());
+   const string runtime_sym = (UseLegacyProcessSymbolEngine() ? _Symbol : CanonicalRouterSymbol());
    RefreshRuntimeContextLight(runtime_sym);
 
    // Autochartist + scanner cadence remain timer-driven.
    ICT_Context ictCtx = StateGetICTContext(g_state);
    
-   // TESTER-ONLY compatibility path. Live trading must route only via RouterEvaluateAll().
-   if(g_is_tester && g_use_registry)
-     {
-      if(single_symbol)
-        {
-         const bool newbar = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
-         // Existing per-symbol processing
-         ProcessSymbol(_Symbol, newbar);
-        }
-      else
-        {
-         // Multi-symbol: Process every symbol as before.
-         for(int i=0;i<g_symCount;i++)
-           {
-            const string sym   = g_symbols[i];
-            const bool   newbar = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
-            ProcessSymbol(sym, newbar);
-           }
-
-         if(InpOnlyNewBar && !IsNewBar(_Symbol, InpEntryTF))
-            return;
-         } // end else (multi-symbol)
-   } // end if(g_use_registry)
+   // New-order routing is timer-owned only.
+   // Tester no longer routes through ProcessSymbol() on OnTick().
+   // Canonical cached routing is consumed on OnTimer() to avoid split-brain execution.
    
    // Router mode still needs position management every tick (safer than relying on timer only)
    PM::ManageAll(S);
@@ -4919,23 +5138,7 @@ void OnTick()
    //    - absorption flags (absorptionBull/absorptionBear)
    //    - emaFastHTF / emaSlowHTF
 
-   // 3.1 Pull scores from confluence layer
-   #ifdef HAS_CONFLUENCE_API
-      double classicalScore = Confluence_GetLastClassicalScore();
-      double ictScore       = Confluence_GetLastICTScore();
-   #else
-      double classicalScore = 0.0;
-      double ictScore       = 0.0;
-   #endif
-
-   // 3.2 Query which strat is currently armed (last eligible)
-   string armedName = "-";
-   #ifdef ROUTER_HAS_LAST_ARMED_NAME
-      armedName = RouterGetLastArmedName(g_router);
-   #endif
-
-   // 3.3 Push to the UI
-   PushICTTelemetryToReviewUI(ictCtx, classicalScore, ictScore, armedName);
+   PushICTTelemetryToReviewUI(ictCtx);
 
    if(!g_use_registry)
    {
@@ -5049,7 +5252,11 @@ void OnTimer()
       const string gate_sym = (use_reg ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
    
       if(!IsNewBarRouter(gate_sym, tf))
+      {
+         DecisionTelemetry_MarkPassiveSkip("timer_not_new_bar");
+         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
+      }
    }
 
    // Timer breadcrumb (once per entry bar): helps diagnose pool on sparse-tick symbols
@@ -5062,17 +5269,23 @@ void OnTimer()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
       g_use_registry = false;
 
-   // Respect the chosen execution path (registry vs router) to avoid double-firing.
-   if(g_is_tester && g_use_registry)
+   // Optional tester-only legacy compatibility harness. Default OFF.
+   // Canonical router remains the primary path for tester and live.
+   if(UseLegacyProcessSymbolEngine())
    {
       if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
+      {
+         DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
+         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
+      }
       
       if(InpOnlyNewBar && g_msh_dirty_n <= 0)
       {
          const bool nb0 = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
          ProcessSymbol(_Symbol, nb0);
          MSH_DirtyClear();
+         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
       }
 
@@ -5081,12 +5294,16 @@ void OnTimer()
          const string sym = g_symbols[i];
          if(!MSH_DirtyHasSym(sym))
             continue;
+
          const bool nb = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
          ProcessSymbol(sym, nb);
       }
+
       MSH_DirtyClear();
+      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
       return;
-   }   
+   }
+
    // Legacy centralized router eval on timer – disabled.
    // if(!g_use_registry)
    //    MaybeEvaluate();
@@ -5094,9 +5311,14 @@ void OnTimer()
    // Router mode path (cached-context only).
    // Scanning remains timer-owned by MarketScannerHub above; routing consumes cached state only.
    if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
+   {
+      DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
+      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
       return;
+   }
 
    RunCachedRouterPass(router_sym, now_srv, "Timer");
+   PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
   }
 
    bool   RouteMainOnlyPick(const Settings &cfg,
@@ -5157,10 +5379,10 @@ void OnTimer()
    
          if(RouteMainOnlyPick(cfg, main_pick))
          {
-            const bool main_valid =
-               (!main_pick.bd.veto && main_pick.ss.eligible && main_pick.ss.score >= min_sc);
-   
-            if(main_valid)
+            string main_drop_why = "";
+            string main_drop_detail = "";
+
+            if(PickPassesIntentGate(sym, main_pick, min_sc, main_drop_why, main_drop_detail, false))
             {
                pick_out = main_pick;
                okRoute = true;
@@ -5212,9 +5434,17 @@ void OnTimer()
       }
    }
 
-   if(pick_out.bd.veto || !pick_out.ss.eligible || pick_out.ss.score < min_sc)
+   if(!okRoute)
+      return false;
+
+   string pick_drop_why = "";
+   string pick_drop_detail = "";
+
+   if(!PickPassesIntentGate(sym, pick_out, min_sc, pick_drop_why, pick_drop_detail, true))
    {
-      _LogCandidateDrop("intent_reject", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
+      if(pick_drop_why != "no_pick")
+         _LogCandidateDrop("intent_drop", pick_out.id, pick_out.dir, pick_out.ss, pick_out.bd, min_sc);
+
       return false;
    }
    
@@ -5820,6 +6050,8 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    // 0) Unified warmup gate (single source of truth)
    if(!WarmupGateOK())
    {
+      DecisionTelemetry_MarkGateBlocked("legacy_processsymbol", "warmup");
+
       TraceNoTrade(sym, TS_GATE, GATE_WARMUP, "ProcessSymbol blocked: WarmupGateOK=false");
       PM::ManageAll(S);
       UI_Render(S);
@@ -5831,22 +6063,29 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 
    if(g_inhibit_trading)
    {
+      DecisionTelemetry_MarkGateBlocked("legacy_processsymbol", "inhibit");
+   
       UI_SetGate(GATE_INHIBIT);
       TraceNoTrade(sym, TS_GATE, GATE_INHIBIT, "ProcessSymbol blocked: trading inhibited (drift alarm)");
       UI_Render(S);
       return;
    }
 
-   // Safety: in LIVE, ProcessSymbol() is allowed only when registry routing is explicitly enabled.
-   if(!g_is_tester && !g_use_registry)
+   // Safety: ProcessSymbol is an opt-in tester compatibility harness only.
+   if(!UseLegacyProcessSymbolEngine())
    {
-      if(InpDebug) LogX::Warn("[LEGACY] ProcessSymbol blocked in LIVE (registry routing is OFF).");
+      DecisionTelemetry_MarkPassiveSkip("legacy_engine_off");
+
+      if(InpDebug)
+         LogX::Warn("[LEGACY] ProcessSymbol blocked (legacy tester compatibility mode is OFF).");
       return;
    }
 
    // NOTE: current strategies rely on _Symbol internally; only evaluate on chart symbol.
    if(sym != _Symbol)
    {
+      DecisionTelemetry_MarkPassiveSkip("sym_mismatch");
+
       TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT, "sym != _Symbol; evaluation skipped");
       UI_Render(S);
       return;
@@ -5861,6 +6100,8 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    const datetime now_srv = TimeUtils::NowServer();
    if(!RouterGateOK(sym, S, now_srv, gate_reason))
    {
+      DecisionTelemetry_MarkGateBlocked("legacy_processsymbol", _GateReasonStr(gate_reason));
+
       // RouterGateOK will breadcrumb; this keeps ProcessSymbol consistent too
       TraceNoTrade(sym, TS_GATE, gate_reason,
                    StringFormat("RouterGateOK=false (%s)", _GateReasonStr(gate_reason)));
@@ -5871,30 +6112,37 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    // Clear the gate indicator when we pass all gates
    UI_SetGate(GATE_NONE);
 
-   // 2) Policies::Evaluate (or router fallback) → intent/pick
+   // 2) Policies::Evaluate (or router fallback) to intent/pick
    StratReg::RoutedPick pick;
    ZeroMemory(pick);
+
+   const double min_sc = EA_RouterResolvedMinScore();
    if(!TryMinimalPathIntent(sym, S, pick))
      {
+      string pick_drop_why = "";
+      string pick_drop_detail = "";
+
+      if(StringLen(pick_drop_why) <= 0)
+         pick_drop_why = "no_pick";
+
+      DecisionTelemetry_MarkNoCandidates("legacy_processsymbol", pick_drop_why);
+
+      if(!PickPassesIntentGate(sym, pick, min_sc, pick_drop_why, pick_drop_detail, false) &&
+         pick_drop_why != "no_pick")
+        {
+         // TryMinimalPathIntent() already emitted the authoritative intent-drop line.
+         UI_Render(S);
+         return;
+        }
+
       TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_NO_INTENT,
-             "TryMinimalPathIntent=false (no eligible pick/intent)");
+                   "TryMinimalPathIntent=false (no eligible pick/intent)");
       UI_Render(S);
       return;
      }
 
-   // Drop ineligible / under-threshold picks (prevents the RET_UNSPEC spam)
-   const double min_sc = EA_RouterResolvedMinScore();
-   if(!pick.ss.eligible || pick.ss.score < min_sc)
-     {
-      TraceNoTrade(sym, TS_ROUTER, TR_ROUTER_PICK_DROP,
-             StringFormat("intent_drop: eligible=%d score=%.3f min=%.2f veto=%d",
-                          (int)pick.ss.eligible, pick.ss.score, min_sc, (int)pick.bd.veto),
-             (int)pick.id, pick.dir, pick.ss.score);
-      _LogCandidateDrop("intent_drop", pick.id, pick.dir, pick.ss, pick.bd, min_sc);
-      PM::ManageAll(S);
-      UI_Render(S);
-      return;
-     }
+   // Intent gate already passed inside TryMinimalPathIntent(); do not re-check here.
+   DecisionTelemetry_RecordPassFromPick("legacy_processsymbol", pick);
 
    // ---- Veto instrumentation (lightweight) ----
    static int veto_counts[16];
