@@ -2646,13 +2646,13 @@ void MaybeEvaluate()
        return;
     }
 
-   RefreshMicrostructureSnapshot(_Symbol, false);
-   StateOnTickUpdate(g_state);
-   RefreshICTContext(g_state);
+   const string router_sym = CanonicalRouterSymbol();
 
-   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(_Symbol);
+   RefreshRuntimeContextFromHub(router_sym, false);
+
+   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
    string inst_diag = "";
-   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(_Symbol, required_bar_time, inst_diag);
+   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(router_sym, required_bar_time, inst_diag);
 
    if(InpDebug && !inst_ready && inst_diag != "")
    {
@@ -2661,22 +2661,20 @@ void MaybeEvaluate()
       {
          last_tick_inst_key = required_bar_time;
          PrintFormat("[InstReady][Tick] sym=%s ready=0 req=%s detail=%s",
-                     _Symbol,
+                     router_sym,
                      InstDiagTimeStr(required_bar_time),
                      inst_diag);
       }
    }
 
-   LogCanonicalInstitutionalGateDiag(_Symbol, required_bar_time, "Tick");
-
-   PublishMicrostructureSnapshot(_Symbol);
+   LogCanonicalInstitutionalGateDiag(router_sym, required_bar_time, "Tick");
 
    int gate_reason = 0;
-   if(!RouterGateOK_Global(_Symbol, g_cfg, now_srv, gate_reason))
+   if(!RouterGateOK_Global(router_sym, g_cfg, now_srv, gate_reason))
       return;
 
    ICT_Context ictCtx = StateGetICTContext(g_state);
-   
+
    RouterEvaluateAll(g_router, g_cfg, ictCtx);
   }
 
@@ -4137,8 +4135,25 @@ void PublishMicrostructureSnapshot(const string sym)
       return;
 }
 
-void RefreshRuntimeContextLight()
+void RefreshRuntimeContextLight(const string sym = "")
 {
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+
+   if(use_sym != "" && g_state.symbol != use_sym)
+   {
+      g_state.symbol = use_sym;
+      g_state.digits = (int)SymbolInfoInteger(use_sym, SYMBOL_DIGITS);
+      g_state.point  = SymbolInfoDouble(use_sym, SYMBOL_POINT);
+      if(g_state.point <= 0.0)
+         g_state.point = _Point;
+
+      g_state.tickValue = SymbolInfoDouble(use_sym, SYMBOL_TRADE_TICK_VALUE);
+      if(g_state.tickValue <= 0.0)
+         g_state.tickValue = SymbolInfoDouble(use_sym, SYMBOL_TRADE_TICK_VALUE_PROFIT);
+      if(g_state.tickValue <= 0.0)
+         g_state.tickValue = SymbolInfoDouble(use_sym, SYMBOL_TRADE_TICK_VALUE_LOSS);
+   }
+
    StateOnTickUpdate(g_state);
    RefreshICTContext(g_state);
 }
@@ -4148,7 +4163,7 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    if(sym != "")
       RefreshMicrostructureSnapshot(sym, force_micro_refresh);
 
-   RefreshRuntimeContextLight();
+   RefreshRuntimeContextLight((sym == "" ? CanonicalRouterSymbol() : sym));
 
    const datetime requested_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
    string inst_diag = "";
@@ -4658,7 +4673,8 @@ void OnTick()
    // Tick path must NOT recompute timer-owned scanner / institutional snapshot math.
    // OnTick only refreshes lightweight runtime context and consumes cached
    // scanner outputs produced by MarketScannerHub on OnTimer().
-   RefreshRuntimeContextLight();
+   const string runtime_sym = ((g_is_tester && g_use_registry) ? _Symbol : CanonicalRouterSymbol());
+   RefreshRuntimeContextLight(runtime_sym);
 
    // Autochartist + scanner cadence remain timer-driven.
    ICT_Context ictCtx = StateGetICTContext(g_state);
@@ -5632,6 +5648,10 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       UI_Render(S);
       return;
    }
+
+   // Keep State / ICT aligned to the exact symbol being evaluated.
+   // This is defense-in-depth for all tester registry entry points.
+   RefreshRuntimeContextFromHub(sym, false);
 
    // 1) Unified gate wrapper (Policies/Session/Time/Price/News/ExecLock)
    int gate_reason = 0;
