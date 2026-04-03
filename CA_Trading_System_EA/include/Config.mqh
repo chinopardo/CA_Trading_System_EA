@@ -4364,12 +4364,12 @@ namespace Config
   //──────────────────────────────────────────────────────────────────
   inline int ClampMinute(const int m){ if(m<0) return 0; if(m>=1440) return 1439; return m; }
 
-  // Map feature “enable” flags → explicit veto knobs (keeps older UIs compatible)
+  // Keep feature toggles and hard-veto toggles independent.
+  // structure_enable = feature/scoring participation
+  // struct_veto_on   = explicit hard-gate control
+  // Legacy auto-mapping remains only for the other veto families below.
   inline void Postwire_StrategyVetoDefaults(Settings &cfg)
   {
-    #ifdef CFG_HAS_STRUCT_VETO
-      if(!cfg.struct_veto_on) cfg.struct_veto_on = cfg.structure_enable;
-    #endif
     #ifdef CFG_HAS_LIQUIDITY_VETO
       if(!cfg.liquidity_veto_on) cfg.liquidity_veto_on = cfg.liquidity_enable;
     #endif
@@ -12134,6 +12134,9 @@ namespace Config
     s+=",vsaSCCL="+DoubleToString(c.vsa_sellclimax_clv_min,3);
     
     s+=",struct="+BoolStr(c.structure_enable);
+    #ifdef CFG_HAS_STRUCT_VETO
+      s+=",structVeto="+BoolStr(c.struct_veto_on);
+    #endif
     s+=",liq="+BoolStr(c.liquidity_enable);
     s+=",corrS="+BoolStr(c.corr_softveto_enable);
 
@@ -15595,6 +15598,9 @@ namespace Config
       else if(k=="vsaSCCL")   { cfg.vsa_sellclimax_clv_min = ToDouble(v); seenVsaSCCL=true; }
       
       else if(k=="struct") cfg.structure_enable = ToBool(v);
+      #ifdef CFG_HAS_STRUCT_VETO
+      else if(k=="structVeto") cfg.struct_veto_on = ToBool(v);
+      #endif
       else if(k=="liq")    cfg.liquidity_enable = ToBool(v);
       else if(k=="corrS")  cfg.corr_softveto_enable = ToBool(v);
 

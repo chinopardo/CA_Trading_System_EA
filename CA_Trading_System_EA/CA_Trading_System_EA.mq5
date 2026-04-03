@@ -420,6 +420,10 @@ input int              InpRouterMode            = 0;    // Registry Router & Str
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
 input double           InpRouterMinScore        = 0.22; // Registry Router & Strategy: Min Score
 input int              InpRouterMaxStrats       = 4;   // Registry Router & Strategy: Max Strat
+input int              InpRouterThresholdPrecedence   = -1;   // Router threshold precedence: -1=legacy bool fallback, 0=manual, 1=profile
+input bool             InpRouterTesterClampProfileMin = true; // Tester safety: clamp profile-sourced min_score against manual
+input double           InpRouterTesterClampMaxDelta   = 0.10; // Tester safety: max allowed profile overshoot above manual
+input bool             InpRouterTesterAllowWideProfileMin = false; // Tester safety: allow profile min_score above manual + delta
 
 // Position management
 input int              InpPMMode                = 2;     // Position Mgnt: PM Mode - 0=Off 1=Basic 2=Full
@@ -723,8 +727,9 @@ input double           InpATR_SlMult            = 1.70;  // ATR & Quantile TP/SL
 // Feature toggles
 input bool             InpVSA_Enable            = true;  // Feature: VSA Enable
 input double           InpVSA_PenaltyMax        = 0.25;  // Feature: VSA Max Penalty
-input bool             InpVSA_AllowTickVolume    = true;  // VSA: allow tick volume fallback (FX-friendly)
+input bool             InpVSA_AllowTickVolume   = true;  // VSA: allow tick volume fallback (FX-friendly)
 input bool             InpStructure_Enable      = true;  // Feature: Structure Enable
+input bool             InpStructVetoOn          = false; // Feature: Hard Structure Veto
 input bool             InpLiquidity_Enable      = true;  // Feature: Liquidity Enable
 input bool             InpCorrSoftVeto_Enable   = false;  // Feature: Corr Soft Veto Enable
 
@@ -803,7 +808,7 @@ input double           InpRegimeThreshold            = 0.55;  // Regime Threshol
 input TradingProfile   InpProfileType           = PROF_TREND; // Profile Type: Balanced/Trend/MR/Scalp
 input bool             InpProfileApply          = true;   // Profile Type Apply: apply profile weights/throttles + carry + confluence defaults
 input bool             InpProfileAllowManual    = true;   // Profile allow manual inputs to override after profile
-input bool             InpProfileUseRouterHints = true;   // Profile use router hint's min_score/max_strats
+input bool             InpProfileUseRouterHints = true;   // Legacy fallback only: router threshold precedence now uses InpRouterThresholdPrecedence
 input bool             InpProfileSaveCSV        = false;  // Profile: save profile CSV to Files/
 input string           InpProfileCSVName        = "";     // Profile: optional filename stem
 
@@ -954,15 +959,18 @@ static bool g_is_tester      = false;   // true only in Strategy Tester / Optimi
 static bool g_use_registry = false; // explicit tester-only legacy ProcessSymbol compatibility mode
 
 // ---- Router threshold resolution telemetry/state ----
-static bool   g_router_resolve_logged    = false;
-static double g_router_last_manual_min   = -1.0;
-static double g_router_last_profile_min  = -1.0;
-static double g_router_last_resolved_min = -1.0;
-static int    g_router_last_manual_cap   = -1;
-static int    g_router_last_profile_cap  = -1;
-static int    g_router_last_resolved_cap = -1;
-static bool   g_router_last_hints_on     = false;
-static int    g_router_last_profile_type = -1;
+static bool   g_router_resolve_logged       = false;
+static double g_router_last_manual_min      = -1.0;
+static double g_router_last_profile_min     = -1.0;
+static double g_router_last_requested_min   = -1.0;
+static double g_router_last_resolved_min    = -1.0;
+static int    g_router_last_manual_cap      = -1;
+static int    g_router_last_profile_cap     = -1;
+static int    g_router_last_resolved_cap    = -1;
+static string g_router_last_source          = "";
+static string g_router_last_policy          = "";
+static bool   g_router_last_tester_clamped  = false;
+static int    g_router_last_profile_type    = -1;
 
 // ---- Runtime drift alarm (S must match g_cfg; S is read-only after finalize in backend-only mode) ----
 static bool     g_drift_armed          = false;   // set true after finalize/approved commit
@@ -1478,6 +1486,68 @@ int EA_RouterProfileMaxStrats(const Config::ProfileSpec &ps)
    return EA_RouterManualMaxStrats();
 }
 
+bool EA_RouterUseProfileThresholds()
+{
+   if(InpRouterThresholdPrecedence == 0)
+      return false;
+
+   if(InpRouterThresholdPrecedence == 1)
+      return true;
+
+   return InpProfileUseRouterHints;
+}
+
+string EA_RouterThresholdPolicyName()
+{
+   if(InpRouterThresholdPrecedence == 0)
+      return "manual";
+
+   if(InpRouterThresholdPrecedence == 1)
+      return "profile";
+
+   if(InpProfileUseRouterHints)
+      return "legacy_profile";
+
+   return "legacy_manual";
+}
+
+string EA_RouterThresholdSourceName(const bool use_profile_source)
+{
+   if(use_profile_source)
+      return "profile";
+
+   return "manual";
+}
+
+double EA_RouterClampProfileMinForTester(const double manual_min,
+                                         const double requested_min,
+                                         bool &clamped_out)
+{
+   clamped_out = false;
+
+   double resolved = requested_min;
+
+   if(!g_is_tester)
+      return resolved;
+
+   if(!InpRouterTesterClampProfileMin)
+      return resolved;
+
+   if(InpRouterTesterAllowWideProfileMin)
+      return resolved;
+
+   double max_delta   = MathMax(0.0, InpRouterTesterClampMaxDelta);
+   double max_allowed = MathMin(1.0, manual_min + max_delta);
+
+   if(resolved > max_allowed)
+   {
+      resolved = max_allowed;
+      clamped_out = true;
+   }
+
+   return resolved;
+}
+
 double EA_RouterResolvedMinScore()
 {
    RouterConfig rc = StratReg::GetGlobalRouterConfig();
@@ -1514,26 +1584,32 @@ void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
 }
 
 void EA_LogRouterThresholdResolution(const string origin_tag,
+                                     const string precedence_policy,
+                                     const string resolved_source,
                                      const double manual_min,
                                      const double profile_min,
+                                     const double requested_min,
                                      const double resolved_min,
                                      const int manual_cap,
                                      const int profile_cap,
-                                     const int resolved_cap)
+                                     const int resolved_cap,
+                                     const bool tester_clamped)
 {
-   const bool hints_on = InpProfileUseRouterHints;
    const int profile_type = (int)InpProfileType;
 
    const bool changed =
       (!g_router_resolve_logged ||
        g_router_last_profile_type != profile_type ||
-       g_router_last_hints_on != hints_on ||
+       g_router_last_policy != precedence_policy ||
+       g_router_last_source != resolved_source ||
        MathAbs(g_router_last_manual_min - manual_min) > 0.000001 ||
        MathAbs(g_router_last_profile_min - profile_min) > 0.000001 ||
+       MathAbs(g_router_last_requested_min - requested_min) > 0.000001 ||
        MathAbs(g_router_last_resolved_min - resolved_min) > 0.000001 ||
        g_router_last_manual_cap != manual_cap ||
        g_router_last_profile_cap != profile_cap ||
-       g_router_last_resolved_cap != resolved_cap);
+       g_router_last_resolved_cap != resolved_cap ||
+       g_router_last_tester_clamped != tester_clamped);
 
    if(!changed)
       return;
@@ -1541,47 +1617,64 @@ void EA_LogRouterThresholdResolution(const string origin_tag,
    if(!g_router_resolve_logged)
    {
       LogX::Info(StringFormat(
-         "[RouterStartup] profile=%s hints=%s manual_min=%.2f resolved_min=%.2f manual_max_strats=%d resolved_max_strats=%d",
-         Config::ProfileName((TradingProfile)InpProfileType),
-         (hints_on ? "ON" : "OFF"),
-         manual_min,
+         "[RouterStartup] resolved_min_score=%.2f source=%s profile=%s resolved_max_strats=%d precedence=%s tester_clamped=%s",
          resolved_min,
-         manual_cap,
-         resolved_cap));
+         resolved_source,
+         Config::ProfileName((TradingProfile)InpProfileType),
+         resolved_cap,
+         precedence_policy,
+         (tester_clamped ? "true" : "false")));
    }
 
    LogX::Info(StringFormat(
-      "[RouterResolve][%s] profile=%s hints=%s manual_min=%.2f profile_min=%.2f resolved_min=%.2f manual_max_strats=%d profile_max_strats=%d resolved_max_strats=%d",
+      "[RouterResolve][%s] precedence=%s source=%s profile=%s manual_min=%.2f profile_min=%.2f requested_min=%.2f resolved_min_score=%.2f manual_max_strats=%d profile_max_strats=%d resolved_max_strats=%d tester_clamped=%s",
       origin_tag,
+      precedence_policy,
+      resolved_source,
       Config::ProfileName((TradingProfile)InpProfileType),
-      (hints_on ? "ON" : "OFF"),
       manual_min,
       profile_min,
+      requested_min,
       resolved_min,
       manual_cap,
       profile_cap,
-      resolved_cap));
+      resolved_cap,
+      (tester_clamped ? "true" : "false")));
 
-   if((resolved_min - manual_min) >= 0.20)
+   if(tester_clamped)
    {
       LogX::Warn(StringFormat(
-         "[RouterResolve] resolved min_score %.2f is %.2f stricter than manual %.2f (profile=%s hints=%s)",
+         "[RouterResolve] tester clamp applied: profile=%s manual_min=%.2f requested_min=%.2f resolved_min_score=%.2f max_delta=%.2f",
+         Config::ProfileName((TradingProfile)InpProfileType),
+         manual_min,
+         requested_min,
+         resolved_min,
+         MathMax(0.0, InpRouterTesterClampMaxDelta)));
+   }
+   else
+   if(StringCompare(resolved_source, "profile") == 0 && (resolved_min - manual_min) >= 0.20)
+   {
+      LogX::Warn(StringFormat(
+         "[RouterResolve] resolved min_score %.2f is %.2f stricter than manual %.2f (profile=%s precedence=%s)",
          resolved_min,
          (resolved_min - manual_min),
          manual_min,
          Config::ProfileName((TradingProfile)InpProfileType),
-         (hints_on ? "ON" : "OFF")));
+         precedence_policy));
    }
 
-   g_router_resolve_logged    = true;
-   g_router_last_manual_min   = manual_min;
-   g_router_last_profile_min  = profile_min;
-   g_router_last_resolved_min = resolved_min;
-   g_router_last_manual_cap   = manual_cap;
-   g_router_last_profile_cap  = profile_cap;
-   g_router_last_resolved_cap = resolved_cap;
-   g_router_last_hints_on     = hints_on;
-   g_router_last_profile_type = profile_type;
+   g_router_resolve_logged      = true;
+   g_router_last_manual_min     = manual_min;
+   g_router_last_profile_min    = profile_min;
+   g_router_last_requested_min  = requested_min;
+   g_router_last_resolved_min   = resolved_min;
+   g_router_last_manual_cap     = manual_cap;
+   g_router_last_profile_cap    = profile_cap;
+   g_router_last_resolved_cap   = resolved_cap;
+   g_router_last_source         = resolved_source;
+   g_router_last_policy         = precedence_policy;
+   g_router_last_tester_clamped = tester_clamped;
+   g_router_last_profile_type   = profile_type;
 }
 
 void ApplyRouterConfig()  // manual-input version
@@ -1599,22 +1692,29 @@ void ApplyRouterConfig()  // manual-input version
    StratReg::SetGlobalRouterConfig(rc);
 
    EA_LogRouterThresholdResolution("manual",
+                                   "manual",
+                                   "manual",
+                                   manual_min,
                                    manual_min,
                                    manual_min,
                                    rc.min_score,
                                    manual_cap,
                                    manual_cap,
-                                   rc.max_strats);
+                                   rc.max_strats,
+                                   false);
 
    LogX::Info(StringFormat(
-      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [manual authoritative]",
-      InpRouterMode, InpAB_Bucket, rc.min_score, rc.max_strats));
+      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [source=manual precedence=manual]",
+      InpRouterMode,
+      InpAB_Bucket,
+      rc.min_score,
+      rc.max_strats));
 }
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint version
+void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-aware version
 {
    RouterConfig rc = StratReg::GetGlobalRouterConfig();
 
@@ -1625,9 +1725,17 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint v
    const double profile_min = EA_RouterProfileMinScore(ps);
    const int    profile_cap = EA_RouterProfileMaxStrats(ps);
 
-   if(InpProfileUseRouterHints)
+   const bool   use_profile_source = EA_RouterUseProfileThresholds();
+   const string precedence_policy  = EA_RouterThresholdPolicyName();
+   const string resolved_source    = EA_RouterThresholdSourceName(use_profile_source);
+
+   double requested_min = manual_min;
+   bool   tester_clamped = false;
+
+   if(use_profile_source)
    {
-      rc.min_score  = profile_min;
+      requested_min = profile_min;
+      rc.min_score  = EA_RouterClampProfileMinForTester(manual_min, profile_min, tester_clamped);
       rc.max_strats = profile_cap;
    }
    else
@@ -1639,25 +1747,31 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-hint v
    StratReg::SetGlobalRouterConfig(rc);
 
    EA_LogRouterThresholdResolution("profile",
+                                   precedence_policy,
+                                   resolved_source,
                                    manual_min,
                                    profile_min,
+                                   requested_min,
                                    rc.min_score,
                                    manual_cap,
                                    profile_cap,
-                                   rc.max_strats);
+                                   rc.max_strats,
+                                   tester_clamped);
 
    LogX::Info(StringFormat(
-      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [profile=%s hints=%s manual_min=%.2f profile_min=%.2f manual_cap=%d profile_cap=%d]",
+      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [source=%s precedence=%s profile=%s manual_min=%.2f profile_min=%.2f manual_cap=%d profile_cap=%d tester_clamped=%s]",
       InpRouterMode,
       InpAB_Bucket,
       rc.min_score,
       rc.max_strats,
+      resolved_source,
+      precedence_policy,
       Config::ProfileName((TradingProfile)InpProfileType),
-      (InpProfileUseRouterHints ? "ON" : "OFF"),
       manual_min,
       profile_min,
       manual_cap,
-      profile_cap));
+      profile_cap,
+      (tester_clamped ? "true" : "false")));
 }
 
 // ------------------------------------------------------------------
@@ -2175,8 +2289,15 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.vwap_lookback = InpVWAP_Lookback; cfg.vwap_sigma = InpVWAP_Sigma;
 
   // ---- Feature toggles ----
-  cfg.vsa_enable = InpVSA_Enable; cfg.vsa_penalty_max = InpVSA_PenaltyMax;
-  cfg.structure_enable = InpStructure_Enable; cfg.liquidity_enable = InpLiquidity_Enable;
+  cfg.vsa_enable = InpVSA_Enable;
+  cfg.vsa_penalty_max = InpVSA_PenaltyMax;
+
+  cfg.structure_enable = InpStructure_Enable;
+  #ifdef CFG_HAS_STRUCT_VETO
+    cfg.struct_veto_on = InpStructVetoOn;
+  #endif
+
+  cfg.liquidity_enable = InpLiquidity_Enable;
 
   // ---- Misc ----
   cfg.trade_selector = InpTradeSelector;
@@ -3312,6 +3433,9 @@ void BuildSettingsFromInputs(Settings &cfg)
    cfg.vsa_enable            = InpVSA_Enable;
    cfg.vsa_penalty_max       = InpVSA_PenaltyMax;
    cfg.structure_enable      = InpStructure_Enable;
+   #ifdef CFG_HAS_STRUCT_VETO
+      cfg.struct_veto_on     = InpStructVetoOn;
+   #endif
    cfg.liquidity_enable      = InpLiquidity_Enable;
 
    // Optional FVG defaults if you added such fields (compile-safe)
@@ -3425,7 +3549,7 @@ void FinalizeRuntimeSettings()
    if(InpProfileApply)
    {
       Config::ApplyTradingProfile(cfg, prof,
-                                 /*apply_router_hints=*/InpProfileUseRouterHints,
+                                 /*apply_router_hints=*/EA_RouterUseProfileThresholds(),
                                  /*apply_carry_defaults=*/true,
                                  /*log_summary=*/true);
 
@@ -3552,6 +3676,20 @@ void FinalizeRuntimeSettings()
    // and BEFORE registry/router sync so downstream gates see the final state.
    ApplyTesterOnlyFeatureOverrides(S);
    g_cfg = S;
+
+   #ifdef CFG_HAS_STRUCT_VETO
+   {
+      static bool warned_struct_veto_migration = false;
+
+      if(!warned_struct_veto_migration &&
+         S.structure_enable &&
+         !S.struct_veto_on)
+      {
+         warned_struct_veto_migration = true;
+         LogX::Warn("[ConfigMigration] structure_enable no longer auto-enables struct_veto_on. Structure remains active for feature/scoring, but hard structure veto is OFF. Set InpStructVetoOn=true to restore legacy hard-veto behavior.");
+      }
+   }
+   #endif
 
    #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
    if(Config::CfgInstitutionalTransportRuntimeIntent(S) &&
