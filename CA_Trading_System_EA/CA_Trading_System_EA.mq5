@@ -2855,21 +2855,142 @@ bool NewBarFor(const string sym, const ENUM_TIMEFRAMES tf)
    return false;
   }
 
-// Router path new-bar gate (separate from DebugChecklist IsNewBar)
-static datetime g_router_lastBar = 0;
+// Router path new-bar latches (timer and tick must not share state)
+static datetime g_router_lastBar_timer = 0;
+static datetime g_router_lastBar_tick  = 0;
 
-bool IsNewBarRouter(const string sym, const ENUM_TIMEFRAMES tf)
+bool IsNewBarRouterByLatch(const string sym,
+                           const ENUM_TIMEFRAMES tf,
+                           datetime &last_bar_latch)
 {
    const datetime t0 = iTime(sym, tf, 0);
-   if(t0<=0)
+   if(t0 <= 0)
       return false;
 
-   if(g_router_lastBar != t0)
+   if(last_bar_latch != t0)
    {
-      g_router_lastBar = t0;
+      last_bar_latch = t0;
       return true;
    }
    return false;
+}
+
+bool IsNewBarRouterTimer(const string sym, const ENUM_TIMEFRAMES tf)
+{
+   return IsNewBarRouterByLatch(sym, tf, g_router_lastBar_timer);
+}
+
+bool IsNewBarRouterTick(const string sym, const ENUM_TIMEFRAMES tf)
+{
+   return IsNewBarRouterByLatch(sym, tf, g_router_lastBar_tick);
+}
+
+string _RouterTFStr(const ENUM_TIMEFRAMES tf)
+{
+   string s = EnumToString(tf);
+   if(StringLen(s) <= 0)
+      s = IntegerToString((int)tf);
+   return s;
+}
+
+string _RouterBarTimeStr(const datetime t)
+{
+   if(t <= 0)
+      return "-";
+   return TimeToString(t, TIME_DATE | TIME_MINUTES);
+}
+
+void _EmitRouterBarDiagKV(const string handler,
+                          const string event_name,
+                          const string sym,
+                          const ENUM_TIMEFRAMES tf,
+                          const datetime bar_time,
+                          const datetime latch_ref)
+{
+   string j = "{";
+   j += "\"sym\":\"" + Telemetry::_Esc(sym) + "\",";
+   j += "\"tf\":" + IntegerToString((int)tf) + ",";
+   j += "\"status\":\"router_bar_diag\",";
+   j += "\"decision_source\":\"" + Telemetry::_Esc(handler) + "\",";
+   j += "\"decision_ts\":" + Telemetry::JsonDateTimeOrNull(true, TimeCurrent()) + ",";
+   j += "\"bar_event\":\"" + Telemetry::_Esc(event_name) + "\",";
+   j += "\"handler\":\"" + Telemetry::_Esc(handler) + "\",";
+   j += "\"bar_time\":" + Telemetry::JsonDateTimeOrNull(bar_time > 0, bar_time) + ",";
+   j += "\"latch_ref\":" + Telemetry::JsonDateTimeOrNull(latch_ref > 0, latch_ref) + ",";
+   j += "\"last_drop_reason\":null";
+   j += "}";
+   Telemetry::KV("ict.ctx", j);
+}
+
+void _DebugRouterNewBar(const string handler,
+                        const string sym,
+                        const ENUM_TIMEFRAMES tf,
+                        const datetime bar_time,
+                        const datetime prev_latch)
+{
+   if(!InpDebug)
+      return;
+
+   const string key =
+      handler + "|" +
+      sym + "|" +
+      IntegerToString((int)tf) + "|" +
+      IntegerToString((int)bar_time);
+
+   if(handler == "Tick")
+   {
+      static string last_tick_key = "";
+      if(last_tick_key == key)
+         return;
+      last_tick_key = key;
+   }
+   else
+   {
+      static string last_timer_key = "";
+      if(last_timer_key == key)
+         return;
+      last_timer_key = key;
+   }
+
+   LogX::Info(StringFormat("[RouterBar] handler=%s event=new_bar sym=%s tf=%s bar=%s prev_latch=%s",
+                           handler,
+                           sym,
+                           _RouterTFStr(tf),
+                           _RouterBarTimeStr(bar_time),
+                           _RouterBarTimeStr(prev_latch)));
+
+   _EmitRouterBarDiagKV(handler, "new_bar", sym, tf, bar_time, prev_latch);
+}
+
+void _DebugRouterSkipNotNewBar(const string handler,
+                               const string sym,
+                               const ENUM_TIMEFRAMES tf,
+                               const datetime bar_time,
+                               const datetime timer_latch)
+{
+   if(!InpDebug)
+      return;
+
+   const string key =
+      handler + "|" +
+      sym + "|" +
+      IntegerToString((int)tf) + "|" +
+      IntegerToString((int)bar_time) + "|" +
+      IntegerToString((int)timer_latch);
+
+   static string last_skip_key = "";
+   if(last_skip_key == key)
+      return;
+   last_skip_key = key;
+
+   LogX::Info(StringFormat("[RouterBar] handler=%s event=skip_not_new_bar sym=%s tf=%s bar=%s timer_latch=%s",
+                           handler,
+                           sym,
+                           _RouterTFStr(tf),
+                           _RouterBarTimeStr(bar_time),
+                           _RouterBarTimeStr(timer_latch)));
+
+   _EmitRouterBarDiagKV(handler, "skip_not_new_bar", sym, tf, bar_time, timer_latch);
 }
 
 // ---------------- Indicator micro-benchmark ----------------
@@ -5082,43 +5203,31 @@ void OnTick()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
        g_use_registry = false;
        
-   if(InpOnlyNewBar)
-    {
-       const Settings gate_cfg = (g_use_registry ? S : g_cfg);
-       const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
-
-       // Router mode must not depend on chart symbol; use a stable watchlist reference.
-       const string gate_sym = (g_use_registry ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
-
-       if(!IsNewBarRouter(gate_sym, tf))
-       {
-          UI_Render(S);
-          return;
-       }
-    }
-     
-   static datetime _hb_last_bar = 0;
-   const datetime _bar_time = iTime(_Symbol, g_cfg.tf_entry, 0);
-   if(_bar_time != _hb_last_bar)
-   {
-     _hb_last_bar = _bar_time;
-     if(InpDebug)
-     {
-        PrintFormat("[HB] %s M%d new bar %s",
-                    _Symbol, (int)(PeriodSeconds(S.tf_entry)/60),
-                    TimeToString(_bar_time, TIME_DATE|TIME_MINUTES));
-     }
-   }
-   // Centralized router eval (legacy path) – disabled; RouterEvaluateAll() now owns ICT flow.
-   // if(!g_use_registry)
-   //    MaybeEvaluate();
-   const bool single_symbol = (g_symCount<=1) || (g_symbols[0]==_Symbol && g_symCount==1);
+   // OnTimer is the only owner of route/decision dispatch and router cadence.
+   // OnTick must never consume timer-owned routing cadence state or the timer router latch.
+   // Keep this path tick-safe only: lightweight runtime refresh,
+   // open-position management, telemetry/UI helpers, and debug checklist cadence.
 
    // Tick path must NOT recompute timer-owned scanner / institutional snapshot math.
    // OnTick only refreshes lightweight runtime context and consumes cached
    // scanner outputs produced by MarketScannerHub on OnTimer().
    const string runtime_sym = (UseLegacyProcessSymbolEngine() ? _Symbol : CanonicalRouterSymbol());
    RefreshRuntimeContextLight(runtime_sym);
+
+   // Tick-side bar observer uses its own latch only for diagnostics/telemetry.
+   // It must never control router dispatch.
+   {
+      const bool tick_use_reg = (g_use_registry && g_cfg.strat_mode != STRAT_MAIN_ONLY);
+      const Settings tick_gate_cfg = (tick_use_reg ? S : g_cfg);
+      const ENUM_TIMEFRAMES tick_tf = Warmup::TF_Entry(tick_gate_cfg);
+      const string tick_sym = (tick_use_reg ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
+
+      const datetime tick_prev_latch = g_router_lastBar_tick;
+      const bool tick_new_bar = IsNewBarRouterTick(tick_sym, tick_tf);
+
+      if(tick_new_bar)
+         _DebugRouterNewBar("Tick", tick_sym, tick_tf, iTime(tick_sym, tick_tf, 0), tick_prev_latch);
+   }
 
    // Autochartist + scanner cadence remain timer-driven.
    ICT_Context ictCtx = StateGetICTContext(g_state);
@@ -5247,12 +5356,20 @@ void OnTimer()
       const bool use_reg = (g_use_registry && g_cfg.strat_mode != STRAT_MAIN_ONLY);
       const Settings gate_cfg = (use_reg ? S : g_cfg);
       const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(gate_cfg);
-   
+
       // Router mode should use a stable watchlist reference; registry mode uses chart symbol.
       const string gate_sym = (use_reg ? _Symbol : (g_symCount > 0 ? g_symbols[0] : _Symbol));
-   
-      if(!IsNewBarRouter(gate_sym, tf))
+
+      const datetime timer_prev_latch = g_router_lastBar_timer;
+      const datetime timer_bar_time   = iTime(gate_sym, tf, 0);
+      const bool timer_new_bar        = IsNewBarRouterTimer(gate_sym, tf);
+
+      if(timer_new_bar)
+         _DebugRouterNewBar("Timer", gate_sym, tf, timer_bar_time, timer_prev_latch);
+
+      if(!timer_new_bar)
       {
+         _DebugRouterSkipNotNewBar("Timer", gate_sym, tf, timer_bar_time, g_router_lastBar_timer);
          DecisionTelemetry_MarkPassiveSkip("timer_not_new_bar");
          PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
