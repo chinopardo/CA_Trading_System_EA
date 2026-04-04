@@ -93,7 +93,7 @@ void MSH_RouteEvent(const Scan::ScanEvent &e);
 Settings g_cfg;        // live config snapshot (ICT/router-aware Settings)
 EAState    g_state;      // global EA state (market buffers, ICT_Context, etc.)
 CArrayObj g_strategies;  // StrategyBase*
-Router   g_router;     // strategy router / dispatcher
+Router   g_exec_router;     // strategy router / dispatcher
 bool     g_inited = false;
 
 //--------------------------------------------------------------------
@@ -113,6 +113,16 @@ void DecisionTelemetry_RecordPassFromPick(const string source,
                                           const StratReg::RoutedPick &pick);
 void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source);
 
+void DecisionTelemetry_ResetTimerNotNewBarThrottle(const string sym,
+                                                   const ENUM_TIMEFRAMES tf,
+                                                   const datetime bar_time,
+                                                   const datetime latch_time);
+
+bool DecisionTelemetry_ShouldEmitTimerNotNewBar(const string sym,
+                                                const ENUM_TIMEFRAMES tf,
+                                                const datetime bar_time,
+                                                const datetime latch_time);
+
 void EmitDeterministicStartupStrategyAudit(const Settings &cfg);
 
 void PublishTesterDegradedFallbackRuntimeState(const string sym,
@@ -123,6 +133,12 @@ bool GetTesterDegradedFallbackRuntimeState(const string sym,
                                           bool &active,
                                           string &status,
                                           string &detail);
+
+bool RuntimeTesterDegradedScorePolicySnapshot(const string sym,
+                                              bool &active,
+                                              string &policy_type,
+                                              double &magnitude);
+string RuntimeTesterDegradedScorePolicyTypeName(const int policy_type);
 
 inline void _UnusedICTContext(const ICT_Context &ctx) { }
 
@@ -296,10 +312,33 @@ void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
    LogX::Info(StratReg::BuildStartupAuditSummary(cfg));
 
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
-   if(sm != STRAT_MAIN_ONLY)
+   const bool in_tester = IsTesterRuntime();
+   const int tradable_n = StratReg::CountTradableRegisteredStrategies(cfg);
+
+   if(in_tester)
    {
-      const int tradable_n = StratReg::CountTradableRegisteredStrategies(cfg);
-      if(tradable_n < 2)
+      LogX::Info(StringFormat(
+         "[StartupAudit] tester_main_only_selected_non_core_orderables=%s selected_non_core_ids=%s",
+         (InpTester_MainOnlyAllowSelectedNonCoreOrderables ? "true" : "false"),
+         (StringLen(InpTester_MainOnlySelectedNonCoreIds) > 0 ? InpTester_MainOnlySelectedNonCoreIds : "NONE")));
+
+      if(tradable_n < 3)
+      {
+         LogX::Warn(StringFormat(
+            "[StartupAudit] tester safety warning: mode=%s(%d) tradable_in_mode=%d < 3. Orderable coverage is thin and tester diagnostics may be misleading.",
+            StrategyModeNameLocal(sm),
+            (int)sm,
+            tradable_n));
+      }
+   }
+   else
+   {
+      if(InpTester_MainOnlyAllowSelectedNonCoreOrderables)
+      {
+         LogX::Warn("[StartupAudit] tester-only selected non-core MAIN_ONLY override is configured but ignored outside tester.");
+      }
+
+      if(sm != STRAT_MAIN_ONLY && tradable_n < 2)
       {
          LogX::Warn(StringFormat(
             "[StartupAudit] low tradable population: mode=%s(%d) tradable_in_mode=%d. Candidate pool may be under-populated.",
@@ -511,6 +550,8 @@ input int InpMaxPositionsTotal       = 0;  // Max open/pending positions total (
 // Default OFF (confluence-only) unless explicitly enabled.
 input bool InpEnable_PackStrategies          = false; // Allow pack strategies to register/trade in PACK_ONLY / COMBINED
 input bool InpDisable_PackStrategies         = false; // Fail-safe hard disable pack strategies (overrides enable)
+input bool   InpTester_MainOnlyAllowSelectedNonCoreOrderables = false; // Tester only: allow selected non-core StrategyID values to become orderable in MAIN_ONLY
+input string InpTester_MainOnlySelectedNonCoreIds             = "";    // Tester only: CSV StrategyID list, example "20021,20024"
 
 // Separate magic ranges (helps you segment PnL & mgmt)
 input int MagicBase_Main               = 11000;
@@ -959,6 +1000,17 @@ input bool             InpMS_TesterAllowUnavailable = true;   // canonical teste
 input bool             InpMS_TesterLogUnavailable   = true;   // tester/optimization: print one throttled fallback diagnostic
 input bool             InpMS_LiveAllowDegradedInstFallback = false; // live: optional degraded fallback when canonical micro is unavailable (default OFF)
 
+enum TesterDegradedScorePolicyType
+  {
+   TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE = 0,
+   TESTER_DEGRADED_SCORE_POLICY_ADD_SCORE       = 1
+  };
+
+input bool InpMS_TesterDegradedScorePolicyEnable      = false;  // tester-only: allow score relaxation when degraded institutional transport is active
+input TesterDegradedScorePolicyType
+           InpMS_TesterDegradedScorePolicyType        = TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE;
+input double InpMS_TesterDegradedScorePolicyMagnitude = 0.03;   // bounded tester-only adjustment, clamped later to 0.08 max
+
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
 // Keep them here now so the EA owns the policy knobs, but do NOT consume them
 // in this file until MarketData/Types/State expose the canonical fields.
@@ -976,6 +1028,16 @@ input bool            InpTester_DisableNewsAndCorrelation = true; // Tester / Op
 input string          InpTesterNote     = ""; // Tester / Optimization: Note
 input string          InpTestCase      = "none";  // see TesterCases::ScenarioList()
 input string          InpTesterPreset  = "";
+
+bool SR_Input_TesterMainOnlyAllowSelectedNonCoreOrderables()
+{
+   return InpTester_MainOnlyAllowSelectedNonCoreOrderables;
+}
+
+string SR_Input_TesterMainOnlySelectedNonCoreIds()
+{
+   return InpTester_MainOnlySelectedNonCoreIds;
+}
 
 // ================== Globals ==================
 // g_cfg = canonical runtime snapshot
@@ -1018,6 +1080,10 @@ static bool g_inhibit_trading = false;
 string   g_symbols[];              // parsed watchlist
 int      g_symCount = 0;
 static datetime g_lastBarTime[];   // per-symbol last closed-bar time on entry TF
+static datetime g_decision_tel_timer_skip_bar[];
+static int      g_decision_tel_timer_skip_tf[];
+static datetime g_decision_tel_timer_skip_latch[];
+static bool     g_decision_tel_timer_skip_emitted[];
 
 // ================== MarketScannerHub: event-driven routing trigger ==================
 #define MSH_DIRTY_MAX 64
@@ -1192,6 +1258,64 @@ bool GetTesterDegradedFallbackRuntimeState(const string sym,
    active = g_tester_fb_runtime.active;
    status = g_tester_fb_runtime.status;
    detail = g_tester_fb_runtime.detail;
+   return true;
+}
+
+string RuntimeTesterDegradedScorePolicyTypeName(const int policy_type)
+{
+   if(policy_type == (int)TESTER_DEGRADED_SCORE_POLICY_ADD_SCORE)
+      return "add_score";
+
+   return "relax_min_score";
+}
+
+bool RuntimeTesterDegradedScorePolicySnapshot(const string sym,
+                                              bool &active,
+                                              string &policy_type,
+                                              double &magnitude)
+{
+   active = false;
+   policy_type = "off";
+   magnitude = 0.0;
+
+   const bool tester_runtime =
+      ((MQLInfoInteger(MQL_TESTER) != 0) ||
+       (MQLInfoInteger(MQL_OPTIMIZATION) != 0) ||
+       (MQLInfoInteger(MQL_VISUAL_MODE) != 0));
+
+   if(!tester_runtime)
+      return true;
+
+   if(!InpMS_TesterDegradedScorePolicyEnable)
+      return true;
+
+   bool fallback_active = false;
+   string fallback_status = "off";
+   string fallback_detail = "";
+
+   if(!GetTesterDegradedFallbackRuntimeState(sym,
+                                             fallback_active,
+                                             fallback_status,
+                                             fallback_detail))
+      return true;
+
+   if(!fallback_active)
+      return true;
+
+   policy_type = RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType);
+
+   magnitude = InpMS_TesterDegradedScorePolicyMagnitude;
+   if(magnitude < 0.0) magnitude = 0.0;
+   if(magnitude > 0.08) magnitude = 0.08;
+
+   if(magnitude <= 0.0)
+   {
+      policy_type = "off";
+      magnitude = 0.0;
+      return true;
+   }
+
+   active = true;
    return true;
 }
 
@@ -3369,7 +3493,7 @@ void MaybeEvaluate()
 
    ICT_Context ictCtx = StateGetICTContext(g_state);
 
-   RouterEvaluateAll(g_router, g_cfg, ictCtx);
+   RouterEvaluateAll(g_exec_router, g_cfg, ictCtx);
   }
 
 //--------------------------------------------------------------------
@@ -3858,6 +3982,12 @@ void FinalizeRuntimeSettings()
                               (InpMS_LiveAllowDegradedInstFallback ? "true" : "false"),
                               (live_fb_allow ? "true" : "false"),
                               (effective_fb_allow ? "true" : "false"),
+                              (g_is_tester ? "true" : "false")));
+
+      LogX::Info(StringFormat("[DegradedScorePolicy] enabled=%s type=%s magnitude=%.3f tester=%s live_applies=false",
+                              (InpMS_TesterDegradedScorePolicyEnable ? "true" : "false"),
+                              RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType),
+                              MathMin(MathMax(InpMS_TesterDegradedScorePolicyMagnitude, 0.0), 0.08),
                               (g_is_tester ? "true" : "false")));
    }
    #endif
@@ -4750,6 +4880,32 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
       return false;
    }
 
+   const bool degraded_gate_active =
+      (tester_allow_degraded &&
+       StateInstitutionalDegradedTesterUsableActive(g_state,
+                                                    effective_required_bar_time));
+
+   if(degraded_gate_active)
+   {
+      const string degraded_detail =
+         StringFormat("degraded_tester_usable mode=%s req=%s flow=%s",
+                      Inst_FlowModeToStr(flow_mode),
+                      InstDiagTimeStr(freshness_anchor_time),
+                      InstDiagTimeStr(flow_ts));
+
+      PublishTesterDegradedFallbackRuntimeState(sym,
+                                                true,
+                                                "degraded_tester_usable",
+                                                degraded_detail);
+   }
+   else
+   {
+      PublishTesterDegradedFallbackRuntimeState(sym,
+                                                false,
+                                                published_fb_status,
+                                                "");
+   }
+
    return true;
 }
 
@@ -4942,6 +5098,47 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    PublishMicrostructureSnapshot(sym);
 }
 
+void DecisionTelemetry_ResetTimerNotNewBarThrottle(const string sym,
+                                                   const ENUM_TIMEFRAMES tf,
+                                                   const datetime bar_time,
+                                                   const datetime latch_time)
+{
+   const int idx = IndexOfSymbol(sym);
+   if(idx < 0 || idx >= ArraySize(g_decision_tel_timer_skip_bar))
+      return;
+
+   g_decision_tel_timer_skip_tf[idx]       = (int)tf;
+   g_decision_tel_timer_skip_bar[idx]      = bar_time;
+   g_decision_tel_timer_skip_latch[idx]    = latch_time;
+   g_decision_tel_timer_skip_emitted[idx]  = false;
+}
+
+bool DecisionTelemetry_ShouldEmitTimerNotNewBar(const string sym,
+                                                const ENUM_TIMEFRAMES tf,
+                                                const datetime bar_time,
+                                                const datetime latch_time)
+{
+   const int idx = IndexOfSymbol(sym);
+   if(idx < 0 || idx >= ArraySize(g_decision_tel_timer_skip_bar))
+      return true;
+
+   if(g_decision_tel_timer_skip_tf[idx]    != (int)tf ||
+      g_decision_tel_timer_skip_bar[idx]   != bar_time ||
+      g_decision_tel_timer_skip_latch[idx] != latch_time)
+   {
+      g_decision_tel_timer_skip_tf[idx]      = (int)tf;
+      g_decision_tel_timer_skip_bar[idx]     = bar_time;
+      g_decision_tel_timer_skip_latch[idx]   = latch_time;
+      g_decision_tel_timer_skip_emitted[idx] = false;
+   }
+
+   if(g_decision_tel_timer_skip_emitted[idx])
+      return false;
+
+   g_decision_tel_timer_skip_emitted[idx] = true;
+   return true;
+}
+
 void DecisionTelemetry_MarkPassiveSkip(const string why)
 {
    g_decision_tel.status = "decision_skipped";
@@ -5070,7 +5267,7 @@ bool RunCachedRouterPass(const string router_sym,
    const int router_seq_before = Telemetry::RouterDecisionSeq();
 
    ICT_Context ictCtx = StateGetICTContext(g_state);
-   RouterEvaluateAll(g_router, g_cfg, ictCtx);
+   RouterEvaluateAll(g_exec_router, g_cfg, ictCtx);
 
    if(Telemetry::RouterDecisionSeq() != router_seq_before)
       DecisionTelemetry_RecordPassFromRouterSnapshot("router");
@@ -5293,9 +5490,21 @@ int OnInit()
       ArrayResize(g_symbols,1);
       g_symbols[0]=_Symbol;
      }
+
    ArrayResize(g_lastBarTime, g_symCount);
-   for(int i=0;i<g_symCount;i++)
-      g_lastBarTime[i]=0;
+   ArrayResize(g_decision_tel_timer_skip_bar, g_symCount);
+   ArrayResize(g_decision_tel_timer_skip_tf, g_symCount);
+   ArrayResize(g_decision_tel_timer_skip_latch, g_symCount);
+   ArrayResize(g_decision_tel_timer_skip_emitted, g_symCount);
+   
+   for(int i=0; i<g_symCount; i++)
+   {
+      g_lastBarTime[i]                    = 0;
+      g_decision_tel_timer_skip_bar[i]    = 0;
+      g_decision_tel_timer_skip_tf[i]     = 0;
+      g_decision_tel_timer_skip_latch[i]  = 0;
+      g_decision_tel_timer_skip_emitted[i] = false;
+   }
 
    // History warm-up for entry + HTFs on all tracked symbols
    const int need = Warmup::NeededBars(S);
@@ -5384,8 +5593,8 @@ int OnInit()
    MarketData::EnsureWarmup_CorrReturns(_Symbol, tf, lb, 1);
 
    // 3. Initialize Router strategies registry (ICT-aware)
-   RouterInit(g_router, g_cfg);
-   RouterSetWatchlist(g_router, g_symbols, g_symCount);
+   RouterInit(g_exec_router, g_cfg);
+   RouterSetWatchlist(g_exec_router, g_symbols, g_symCount);
    
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();
@@ -5657,15 +5866,35 @@ void OnTimer()
       const datetime timer_prev_latch = g_router_lastBar_timer;
       const datetime timer_bar_time   = iTime(gate_sym, tf, 0);
       const bool timer_new_bar        = IsNewBarRouterTimer(gate_sym, tf);
+      const datetime timer_latch_time = g_router_lastBar_timer;
 
       if(timer_new_bar)
+      {
          _DebugRouterNewBar("Timer", gate_sym, tf, timer_bar_time, timer_prev_latch);
+
+         DecisionTelemetry_ResetTimerNotNewBarThrottle(gate_sym,
+                                                       tf,
+                                                       timer_bar_time,
+                                                       timer_latch_time);
+      }
 
       if(!timer_new_bar)
       {
-         _DebugRouterSkipNotNewBar("Timer", gate_sym, tf, timer_bar_time, g_router_lastBar_timer);
-         DecisionTelemetry_MarkPassiveSkip("timer_not_new_bar");
-         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+         if(DecisionTelemetry_ShouldEmitTimerNotNewBar(gate_sym,
+                                                       tf,
+                                                       timer_bar_time,
+                                                       timer_latch_time))
+         {
+            _DebugRouterSkipNotNewBar("Timer",
+                                      gate_sym,
+                                      tf,
+                                      timer_bar_time,
+                                      timer_latch_time);
+
+            DecisionTelemetry_MarkPassiveSkip("timer_not_new_bar");
+            PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+         }
+
          return;
       }
    }
