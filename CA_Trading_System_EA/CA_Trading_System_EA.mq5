@@ -113,6 +113,15 @@ void DecisionTelemetry_RecordPassFromPick(const string source,
                                           const StratReg::RoutedPick &pick);
 void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source);
 
+void PublishTesterDegradedFallbackRuntimeState(const string sym,
+                                               const bool active,
+                                               const string status,
+                                               const string detail);
+bool GetTesterDegradedFallbackRuntimeState(const string sym,
+                                          bool &active,
+                                          string &status,
+                                          string &detail);
+
 inline void _UnusedICTContext(const ICT_Context &ctx) { }
 
 // Backend-only UI wrappers (no-op unless BUILD_WITH_UI is defined elsewhere)
@@ -1116,6 +1125,54 @@ struct DecisionTelemetryState
 
 static DecisionTelemetryState g_decision_tel;
 
+struct TesterDegradedFallbackRuntimeState
+{
+   bool      known;
+   datetime  ts;
+   string    sym;
+   bool      active;
+   string    status;
+   string    detail;
+};
+
+static TesterDegradedFallbackRuntimeState g_tester_fb_runtime;
+
+void PublishTesterDegradedFallbackRuntimeState(const string sym,
+                                               const bool active,
+                                               const string status,
+                                               const string detail)
+{
+   g_tester_fb_runtime.known  = true;
+   g_tester_fb_runtime.ts     = TimeCurrent();
+   g_tester_fb_runtime.sym    = sym;
+   g_tester_fb_runtime.active = active;
+   g_tester_fb_runtime.status = status;
+   g_tester_fb_runtime.detail = detail;
+}
+
+bool GetTesterDegradedFallbackRuntimeState(const string sym,
+                                          bool &active,
+                                          string &status,
+                                          string &detail)
+{
+   active = false;
+   status = "off";
+   detail = "";
+
+   if(!g_tester_fb_runtime.known)
+      return false;
+
+   if(sym != "" &&
+      g_tester_fb_runtime.sym != "" &&
+      g_tester_fb_runtime.sym != sym)
+      return false;
+
+   active = g_tester_fb_runtime.active;
+   status = g_tester_fb_runtime.status;
+   detail = g_tester_fb_runtime.detail;
+   return true;
+}
+
 // =================== No-Trade Breadcrumbs (Gate→Router→Policies→Risk→Exec) ===================
 enum TraceStage
 {
@@ -1677,6 +1734,28 @@ void EA_LogRouterThresholdResolution(const string origin_tag,
    g_router_last_profile_type   = profile_type;
 }
 
+void EA_SyncResolvedRouterThresholdsToRuntimeSnapshots(const double requested_min,
+                                                       const double resolved_min,
+                                                       const int resolved_cap,
+                                                       const string resolved_source,
+                                                       const bool tester_clamped)
+{
+#ifdef CFG_HAS_ROUTER_MIN_SCORE
+   g_cfg.router_min_score = resolved_min;
+   S.router_min_score     = resolved_min;
+#endif
+
+#ifdef CFG_HAS_ROUTER_MAX_STRATS
+   g_cfg.router_max_strats = resolved_cap;
+   S.router_max_strats     = resolved_cap;
+#endif
+
+   StratReg::SetRouterMinScoreResolutionTelemetry(requested_min,
+                                                  resolved_min,
+                                                  resolved_source,
+                                                  tester_clamped);
+}
+
 void ApplyRouterConfig()  // manual-input version
 {
    RouterConfig rc = StratReg::GetGlobalRouterConfig();
@@ -1690,6 +1769,12 @@ void ApplyRouterConfig()  // manual-input version
    rc.max_strats = manual_cap;
 
    StratReg::SetGlobalRouterConfig(rc);
+
+   EA_SyncResolvedRouterThresholdsToRuntimeSnapshots(manual_min,
+                                                     rc.min_score,
+                                                     rc.max_strats,
+                                                     "manual",
+                                                     false);
 
    EA_LogRouterThresholdResolution("manual",
                                    "manual",
@@ -1745,6 +1830,11 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-aware 
    }
 
    StratReg::SetGlobalRouterConfig(rc);
+   EA_SyncResolvedRouterThresholdsToRuntimeSnapshots(requested_min,
+                                                     rc.min_score,
+                                                     rc.max_strats,
+                                                     resolved_source,
+                                                     tester_clamped);
 
    EA_LogRouterThresholdResolution("profile",
                                    precedence_policy,
@@ -4468,14 +4558,34 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
    detail = "";
 
    if(!InpMS_EnableRuntimeGate)
+   {
+      PublishTesterDegradedFallbackRuntimeState(sym, false, "off", "gate_disabled");
       return true;
+   }
 
    if(sym == "")
+   {
+      PublishTesterDegradedFallbackRuntimeState(sym, false, "off", "sym_empty");
       return true;
+   }
 
    const datetime effective_required_bar_time = (required_bar_time > 0
                                                  ? required_bar_time
                                                  : ResolveCanonicalInstitutionalRequiredBarTime(sym));
+
+   bool tester_allow_degraded = false;
+
+   #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+      tester_allow_degraded = S.allow_tester_degraded_inst_fallback;
+   #else
+      tester_allow_degraded = InpMS_TesterAllowUnavailable;
+   #endif
+
+   string published_fb_status = "off";
+   if(IsTesterRuntime())
+      published_fb_status = (tester_allow_degraded ? "standby" : "disabled");
+
+   PublishTesterDegradedFallbackRuntimeState(sym, false, published_fb_status, "");
 
    double ofi_abs01   = 0.0;
    double obi_abs01   = 0.0;
@@ -4500,19 +4610,15 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
                                           state_detail))
    {
       if(!InpMS_BlockIfUnavailable)
+      {
+         PublishTesterDegradedFallbackRuntimeState(sym, false, published_fb_status, state_detail);
          return true;
-
-      bool tester_allow_degraded = false;
-
-      #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
-         tester_allow_degraded = S.allow_tester_degraded_inst_fallback;
-      #else
-         tester_allow_degraded = InpMS_TesterAllowUnavailable;
-      #endif
+      }
 
       if(IsTesterRuntime() && tester_allow_degraded)
       {
          detail = "tester_fallback: " + state_detail;
+         PublishTesterDegradedFallbackRuntimeState(sym, true, "active", detail);
 
          if(InpMS_TesterLogUnavailable)
          {
@@ -4538,6 +4644,7 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
       }
 
       detail = state_detail;
+      PublishTesterDegradedFallbackRuntimeState(sym, false, published_fb_status, detail);
       return false;
    }
 
@@ -5042,7 +5149,12 @@ int OnInit()
 
    // Router confluence-only pool status (inputs -> Settings mirror)
    LogRouterConfluencePoolStatus(S, "[OnInit]");
-    
+
+   StratReg::LogTradableStrategySummary(
+      S,
+      StringFormat("[OnInit][TradableStrategies][profile=%s]",
+                   Config::ProfileName((TradingProfile)InpProfileType)));
+
    // --- Init subsystems ---
    if(!MarketData::Init(S))
    {

@@ -10113,7 +10113,67 @@ namespace Config
      // DO NOT modify io.router_min_score here.
      // The effective runtime floor is computed by RouterMinScore(cfg), purely.
    }
-  
+
+  inline void AppendLowTradeProbabilityWarnings(const Settings &cfg, string &warns)
+  {
+     const StrategyMode sm = CfgStrategyMode(cfg);
+     const double min_score = CfgRouterMinScore(cfg);
+     const bool pool_wanted = CfgMainOnly_AllowPackConfluencePool(cfg);
+     const bool packs_blocked = (cfg.disable_packs || !cfg.enable_pack_strats);
+
+     int core_on = 0;
+     if(cfg.enable_strat_main) core_on++;
+     if(cfg.enable_strat_ict_silverbullet) core_on++;
+     if(cfg.enable_strat_ict_po3) core_on++;
+     if(cfg.enable_strat_ict_continuation) core_on++;
+     if(cfg.enable_strat_ict_wyckoff_turn) core_on++;
+
+     int pack_on = 0;
+     if(cfg.enable_trend_vwap_pullback) pack_on++;
+     if(cfg.enable_trend_bos_continuation) pack_on++;
+     if(cfg.enable_mr_vwap_band) pack_on++;
+     if(cfg.enable_mr_range_nr7ib) pack_on++;
+     if(cfg.enable_breakout_squeeze) pack_on++;
+     if(cfg.enable_breakout_orb) pack_on++;
+     if(cfg.enable_reversal_sweep_choch) pack_on++;
+     if(cfg.enable_reversal_vsa_climax_fade) pack_on++;
+     if(cfg.enable_corr_divergence) pack_on++;
+     if(cfg.enable_pairs_spreadlite) pack_on++;
+     if(cfg.enable_news_deviation) pack_on++;
+     if(cfg.enable_news_postfade) pack_on++;
+
+     if(sm == STRAT_MAIN_ONLY)
+     {
+        if(core_on <= 0)
+           warns += "MAIN_ONLY selected but all MAIN/ICT strategy toggles are OFF; no tradable strategy remains.\n";
+
+        if(core_on <= 1 && min_score >= 0.75)
+           warns += "MAIN_ONLY with <=1 enabled core strategy and router min_score >= 0.75 is a common no-trade setup.\n";
+
+        if(!pool_wanted && packs_blocked && min_score >= 0.70)
+           warns += "MAIN_ONLY + pack confluence pool unavailable + elevated router min_score is a common no-trade configuration.\n";
+     }
+     else if(sm == STRAT_PACK_ONLY)
+     {
+        if(packs_blocked)
+           warns += "PACK_ONLY selected while pack registration is blocked (enable_pack_strats=false or disable_packs=true); no pack strategy can trade.\n";
+        else if(pack_on <= 0)
+           warns += "PACK_ONLY selected but all pack strategy toggles are OFF; no tradable pack strategy remains.\n";
+        else if(pack_on <= 1 && min_score >= 0.75)
+           warns += "PACK_ONLY with <=1 enabled pack strategy and router min_score >= 0.75 is a very sparse setup.\n";
+     }
+     else
+     {
+        const bool no_core = (core_on <= 0);
+        const bool no_pack = (packs_blocked || pack_on <= 0);
+
+        if(no_core && no_pack)
+           warns += "COMBINED selected but neither core nor pack strategies are effectively tradable after current toggles/gates.\n";
+        else if(!no_core && min_score >= 0.85 && pack_on <= 0)
+           warns += "COMBINED is effectively running core-only with router min_score >= 0.85; expect very low trade frequency.\n";
+     }
+  }
+
   inline bool Validate(const Settings &cfg, string &warns)
   {
      warns="";
@@ -10173,7 +10233,9 @@ namespace Config
         #endif
       }
     #endif
-    
+
+     AppendLowTradeProbabilityWarnings(cfg, warns);
+
     #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
       if(cfg.max_positions_per_symbol < 1)
         warns += "max_positions_per_symbol < 1; Normalize() will clamp to 1.\n";
