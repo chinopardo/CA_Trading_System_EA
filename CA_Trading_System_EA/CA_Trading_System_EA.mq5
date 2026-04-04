@@ -113,6 +113,8 @@ void DecisionTelemetry_RecordPassFromPick(const string source,
                                           const StratReg::RoutedPick &pick);
 void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source);
 
+void EmitDeterministicStartupStrategyAudit(const Settings &cfg);
+
 void PublishTesterDegradedFallbackRuntimeState(const string sym,
                                                const bool active,
                                                const string status,
@@ -289,6 +291,25 @@ inline void MaybeLogRouterConfluencePoolStatusOncePerBar(const Settings &cfg, co
   LogRouterConfluencePoolStatus(cfg, where_tag);
 }
 
+void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
+{
+   LogX::Info(StratReg::BuildStartupAuditSummary(cfg));
+
+   const StrategyMode sm = Config::CfgStrategyMode(cfg);
+   if(sm != STRAT_MAIN_ONLY)
+   {
+      const int tradable_n = StratReg::CountTradableRegisteredStrategies(cfg);
+      if(tradable_n < 2)
+      {
+         LogX::Warn(StringFormat(
+            "[StartupAudit] low tradable population: mode=%s(%d) tradable_in_mode=%d. Candidate pool may be under-populated.",
+            StrategyModeNameLocal(sm),
+            (int)sm,
+            tradable_n));
+      }
+   }
+}
+
 // ================== User Inputs ==================
 // Assets / TFs
 input string           InpAssetList             = "CURRENT"; // "CURRENT" or comma/space-separated symbols
@@ -430,6 +451,7 @@ input int              InpAB_Bucket             = 0;    // Registry Router & Str
 input double           InpRouterMinScore        = 0.22; // Registry Router & Strategy: Min Score
 input int              InpRouterMaxStrats       = 4;   // Registry Router & Strategy: Max Strat
 input int              InpRouterThresholdPrecedence   = -1;   // Router threshold precedence: -1=legacy bool fallback, 0=manual, 1=profile
+input bool             InpRouterTesterPreferManualThresholds = true; // Tester legacy precedence: true=force manual when precedence=-1, false=allow legacy/profile hints
 input bool             InpRouterTesterClampProfileMin = true; // Tester safety: clamp profile-sourced min_score against manual
 input double           InpRouterTesterClampMaxDelta   = 0.10; // Tester safety: max allowed profile overshoot above manual
 input bool             InpRouterTesterAllowWideProfileMin = false; // Tester safety: allow profile min_score above manual + delta
@@ -1551,6 +1573,9 @@ bool EA_RouterUseProfileThresholds()
    if(InpRouterThresholdPrecedence == 1)
       return true;
 
+   if(g_is_tester && InpRouterTesterPreferManualThresholds)
+      return false;
+
    return InpProfileUseRouterHints;
 }
 
@@ -1561,6 +1586,9 @@ string EA_RouterThresholdPolicyName()
 
    if(InpRouterThresholdPrecedence == 1)
       return "profile";
+
+   if(g_is_tester && InpRouterTesterPreferManualThresholds)
+      return "legacy_tester_manual";
 
    if(InpProfileUseRouterHints)
       return "legacy_profile";
@@ -1829,10 +1857,14 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-aware 
       rc.max_strats = manual_cap;
    }
 
+   const double effective_min = rc.min_score;
+   const int    effective_cap = rc.max_strats;
+
    StratReg::SetGlobalRouterConfig(rc);
+
    EA_SyncResolvedRouterThresholdsToRuntimeSnapshots(requested_min,
-                                                     rc.min_score,
-                                                     rc.max_strats,
+                                                     effective_min,
+                                                     effective_cap,
                                                      resolved_source,
                                                      tester_clamped);
 
@@ -1842,23 +1874,38 @@ void ApplyRouterConfig_Profile(const Config::ProfileSpec &ps)  // profile-aware 
                                    manual_min,
                                    profile_min,
                                    requested_min,
-                                   rc.min_score,
+                                   effective_min,
                                    manual_cap,
                                    profile_cap,
-                                   rc.max_strats,
+                                   effective_cap,
                                    tester_clamped);
 
+   if(g_is_tester &&
+      use_profile_source &&
+      MathAbs(requested_min - effective_min) >= 0.01)
+   {
+      LogX::Warn(StringFormat(
+         "[RouterResolve] tester requested profile min_score %.2f but effective min_score is %.2f (profile=%s precedence=%s tester_clamped=%s)",
+         requested_min,
+         effective_min,
+         Config::ProfileName((TradingProfile)InpProfileType),
+         precedence_policy,
+         (tester_clamped ? "true" : "false")));
+   }
+
    LogX::Info(StringFormat(
-      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [source=%s precedence=%s profile=%s manual_min=%.2f profile_min=%.2f manual_cap=%d profile_cap=%d tester_clamped=%s]",
+      "Router policy=%d (0=max,1=w,2=ab) ab=%d min=%.2f cap=%d [source=%s precedence=%s profile=%s manual_min=%.2f profile_min=%.2f requested_min=%.2f effective_min=%.2f manual_cap=%d profile_cap=%d tester_clamped=%s]",
       InpRouterMode,
       InpAB_Bucket,
-      rc.min_score,
-      rc.max_strats,
+      effective_min,
+      effective_cap,
       resolved_source,
       precedence_policy,
       Config::ProfileName((TradingProfile)InpProfileType),
       manual_min,
       profile_min,
+      requested_min,
+      effective_min,
       manual_cap,
       profile_cap,
       (tester_clamped ? "true" : "false")));
@@ -5150,10 +5197,7 @@ int OnInit()
    // Router confluence-only pool status (inputs -> Settings mirror)
    LogRouterConfluencePoolStatus(S, "[OnInit]");
 
-   StratReg::LogTradableStrategySummary(
-      S,
-      StringFormat("[OnInit][TradableStrategies][profile=%s]",
-                   Config::ProfileName((TradingProfile)InpProfileType)));
+   EmitDeterministicStartupStrategyAudit(S);
 
    // --- Init subsystems ---
    if(!MarketData::Init(S))
