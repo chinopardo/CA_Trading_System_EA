@@ -1006,10 +1006,17 @@ enum TesterDegradedScorePolicyType
    TESTER_DEGRADED_SCORE_POLICY_ADD_SCORE       = 1
   };
 
-input bool InpMS_TesterDegradedScorePolicyEnable      = false;  // tester-only: allow score relaxation when degraded institutional transport is active
-input TesterDegradedScorePolicyType
-           InpMS_TesterDegradedScorePolicyType        = TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE;
-input double InpMS_TesterDegradedScorePolicyMagnitude = 0.03;   // bounded tester-only adjustment, clamped later to 0.08 max
+enum TesterDegradedScorePolicyMode
+{
+   TESTER_DEGRADED_SCORE_POLICY_AUTO = 0,
+   TESTER_DEGRADED_SCORE_POLICY_FORCE_OFF = 1,
+   TESTER_DEGRADED_SCORE_POLICY_FORCE_ON = 2
+};
+
+input bool                           InpMS_TesterDegradedScorePolicyEnable = false;
+input TesterDegradedScorePolicyMode  InpMS_TesterDegradedScorePolicyMode = TESTER_DEGRADED_SCORE_POLICY_AUTO;
+input TesterDegradedScorePolicyType  InpMS_TesterDegradedScorePolicyType = TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE;
+input double                         InpMS_TesterDegradedScorePolicyMagnitude = 0.04;
 
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
 // Keep them here now so the EA owns the policy knobs, but do NOT consume them
@@ -1269,6 +1276,13 @@ string RuntimeTesterDegradedScorePolicyTypeName(const int policy_type)
    return "relax_min_score";
 }
 
+string RuntimeTesterDegradedScorePolicyModeName(const int mode)
+{
+   if(mode == TESTER_DEGRADED_SCORE_POLICY_FORCE_OFF) return "force_off";
+   if(mode == TESTER_DEGRADED_SCORE_POLICY_FORCE_ON)  return "force_on";
+   return "auto";
+}
+
 bool RuntimeTesterDegradedScorePolicySnapshot(const string sym,
                                               bool &active,
                                               string &policy_type,
@@ -1279,43 +1293,104 @@ bool RuntimeTesterDegradedScorePolicySnapshot(const string sym,
    magnitude = 0.0;
 
    const bool tester_runtime =
-      ((MQLInfoInteger(MQL_TESTER) != 0) ||
-       (MQLInfoInteger(MQL_OPTIMIZATION) != 0) ||
-       (MQLInfoInteger(MQL_VISUAL_MODE) != 0));
+      ((bool)MQLInfoInteger(MQL_TESTER) ||
+       (bool)MQLInfoInteger(MQL_OPTIMIZATION) ||
+       (bool)MQLInfoInteger(MQL_VISUAL_MODE));
 
    if(!tester_runtime)
-      return true;
-
-   if(!InpMS_TesterDegradedScorePolicyEnable)
-      return true;
+      return false;
 
    bool fallback_active = false;
+   string fallback_reason = "";
    string fallback_status = "off";
    string fallback_detail = "";
-
-   if(!GetTesterDegradedFallbackRuntimeState(sym,
-                                             fallback_active,
-                                             fallback_status,
-                                             fallback_detail))
+   
+   if(!GetTesterDegradedFallbackRuntimeState(sym, fallback_active, fallback_status, fallback_detail))
       return true;
 
-   if(!fallback_active)
-      return true;
+   const int mode = (int)InpMS_TesterDegradedScorePolicyMode;
+   bool effective_on = false;
 
-   policy_type = RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType);
-
-   magnitude = InpMS_TesterDegradedScorePolicyMagnitude;
-   if(magnitude < 0.0) magnitude = 0.0;
-   if(magnitude > 0.08) magnitude = 0.08;
-
-   if(magnitude <= 0.0)
+   if(mode == TESTER_DEGRADED_SCORE_POLICY_FORCE_OFF)
    {
-      policy_type = "off";
-      magnitude = 0.0;
-      return true;
+      effective_on = false;
+   }
+   else if(mode == TESTER_DEGRADED_SCORE_POLICY_FORCE_ON)
+   {
+      effective_on = true;
+   }
+   else if(InpMS_TesterDegradedScorePolicyEnable)
+   {
+      // explicit legacy override kept for compatibility
+      effective_on = true;
+   }
+   else
+   {
+      // AUTO
+      effective_on =
+         (InpMS_TesterAllowUnavailable &&
+          fallback_active);
    }
 
+   if(!effective_on)
+      return false;
+
    active = true;
+
+   // Under AUTO, prefer relax_min_score first.
+   if(mode == TESTER_DEGRADED_SCORE_POLICY_AUTO && !InpMS_TesterDegradedScorePolicyEnable)
+   {
+      policy_type = "relax_min_score";
+   }
+   else
+   {
+      policy_type = RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType);
+   }
+
+   magnitude = InpMS_TesterDegradedScorePolicyMagnitude;
+   if(magnitude < 0.0)  magnitude = 0.0;
+   if(magnitude > 0.08) magnitude = 0.08;
+
+   // one-line effective-policy log on bar change only
+   static string   s_last_sym = "";
+   static datetime s_last_bar = 0;
+   static bool     s_last_active = false;
+   static string   s_last_type = "";
+   static double   s_last_mag = -1.0;
+
+   string log_sym = sym;
+   if(StringLen(log_sym) == 0)
+      log_sym = _Symbol;
+
+   datetime bar0 = iTime(log_sym, (ENUM_TIMEFRAMES)Period(), 0);
+   if(bar0 <= 0)
+      bar0 = TimeCurrent();
+
+   const bool changed =
+      (s_last_sym != log_sym ||
+       s_last_bar != bar0 ||
+       s_last_active != active ||
+       s_last_type != policy_type ||
+       MathAbs(s_last_mag - magnitude) > 0.000001);
+
+   if(changed)
+   {
+      PrintFormat("[DegradedScorePolicy] effective=ON mode=%s legacy_override=%s type=%s magnitude=%.3f sym=%s fallback_active=%s reason=%s",
+                  RuntimeTesterDegradedScorePolicyModeName(mode),
+                  (InpMS_TesterDegradedScorePolicyEnable ? "true" : "false"),
+                  policy_type,
+                  magnitude,
+                  log_sym,
+                  (fallback_active ? "true" : "false"),
+                  fallback_reason);
+
+      s_last_sym = log_sym;
+      s_last_bar = bar0;
+      s_last_active = active;
+      s_last_type = policy_type;
+      s_last_mag = magnitude;
+   }
+
    return true;
 }
 
@@ -3984,11 +4059,21 @@ void FinalizeRuntimeSettings()
                               (effective_fb_allow ? "true" : "false"),
                               (g_is_tester ? "true" : "false")));
 
-      LogX::Info(StringFormat("[DegradedScorePolicy] enabled=%s type=%s magnitude=%.3f tester=%s live_applies=false",
-                              (InpMS_TesterDegradedScorePolicyEnable ? "true" : "false"),
-                              RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType),
-                              MathMin(MathMax(InpMS_TesterDegradedScorePolicyMagnitude, 0.0), 0.08),
-                              (g_is_tester ? "true" : "false")));
+      bool degraded_active = false;
+      string degraded_type = "off";
+      double degraded_mag = 0.0;
+      RuntimeTesterDegradedScorePolicySnapshot(CanonicalRouterSymbol(), degraded_active, degraded_type, degraded_mag);
+   
+      PrintFormat("[DegradedScorePolicy] configured{mode=%s legacy_override=%s type=%s magnitude=%.3f} effective{active=%s type=%s magnitude=%.3f} tester_allow_unavailable=%s tester=%s live_applies=false",
+                  RuntimeTesterDegradedScorePolicyModeName((int)InpMS_TesterDegradedScorePolicyMode),
+                  (InpMS_TesterDegradedScorePolicyEnable ? "true" : "false"),
+                  RuntimeTesterDegradedScorePolicyTypeName((int)InpMS_TesterDegradedScorePolicyType),
+                  InpMS_TesterDegradedScorePolicyMagnitude,
+                  (degraded_active ? "true" : "false"),
+                  degraded_type,
+                  degraded_mag,
+                  (InpMS_TesterAllowUnavailable ? "true" : "false"),
+                  (IsTesterRuntime() ? "true" : "false"));
    }
    #endif
 
