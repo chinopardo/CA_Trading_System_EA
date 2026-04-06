@@ -237,35 +237,44 @@
 #define BUILD_TAG "[CA_TS]"
 
 // -------------------------------------------------------------------
-// 3) Tester-only direct execution scheme (opt-in)
+// 3) Tester direct execution profile
 // -------------------------------------------------------------------
-// These flags support StrategyDirectExecGuards.mqh.
+// Runtime/config guards are the authority for whether direct execution may run.
+// In tester builds we always expose the runtime-gated surface.
 //
-// Meaning:
-//  - STRAT_DIRECT_EXEC_TESTER_ONLY : Compiles direct-exec surfaces into strategies
-//  - STRAT_DIRECT_EXEC_ALLOW       : Explicitly allows use (still runtime-gated to Tester/Opt)
-//  - STRAT_DIRECT_EXEC_VERBOSE     : Prints standardized block reasons when denied
-//
-// Recommended workflow:
-//  - For normal trading (even in tester): leave all OFF.
-//  - For regression testing direct exec: turn ON both *_TESTER_ONLY and *_ALLOW.
-//  - For noisy diagnostics: also enable *_VERBOSE.
-
+// IMPORTANT:
+// - STRAT_DIRECT_EXEC_ALLOW is the profile-level "enabled for tester build" macro.
+// - STRAT_DIRECT_EXEC_TESTER_ONLY is retained only as a legacy compatibility alias
+//   for strategy files that still compile-gate direct-exec helper surfaces on it.
+// - Actual use must still be blocked/allowed by runtime tester checks and config.
 #ifdef BUILD_PROFILE_TESTER
 
-   // Compile the direct-exec code paths (still not usable unless ALLOW is defined).
-   // Uncomment to compile direct execution helpers into strategy binaries:
-   #define STRAT_DIRECT_EXEC_TESTER_ONLY
+   #ifndef BUILD_DIRECT_EXEC_RUNTIME_GATED
+      #define BUILD_DIRECT_EXEC_RUNTIME_GATED
+   #endif
 
-   // Explicitly allow execution of those helpers (still blocked unless in Tester/Optimization at runtime).
-   // Uncomment ONLY when you intentionally want to run strategy direct-exec regression:
-   #define STRAT_DIRECT_EXEC_ALLOW
+   // Tester profile: always compile with direct-exec runtime permission available.
+   #ifndef STRAT_DIRECT_EXEC_ALLOW
+      #define STRAT_DIRECT_EXEC_ALLOW
+   #endif
 
-   // Optional: prints standardized denial reasons
-   #define STRAT_DIRECT_EXEC_VERBOSE
+   // Legacy compatibility alias:
+   // Keep this until all strategy files stop using STRAT_DIRECT_EXEC_TESTER_ONLY
+   // as a compile-time include gate.
+   #ifndef STRAT_DIRECT_EXEC_TESTER_ONLY
+      #define STRAT_DIRECT_EXEC_TESTER_ONLY
+   #endif
+
+   // Optional diagnostics remain enabled in tester profile.
+   #ifndef STRAT_DIRECT_EXEC_VERBOSE
+      #define STRAT_DIRECT_EXEC_VERBOSE
+   #endif
 
 #else
    // Production: hard safety. If someone tries to enable these flags, block the build.
+   #ifdef BUILD_DIRECT_EXEC_RUNTIME_GATED
+      #error "BUILD_DIRECT_EXEC_RUNTIME_GATED must not be enabled in PRODUCTION builds"
+   #endif
    #ifdef STRAT_DIRECT_EXEC_TESTER_ONLY
       #error "STRAT_DIRECT_EXEC_TESTER_ONLY must not be enabled in PRODUCTION builds"
    #endif
@@ -438,16 +447,23 @@ inline void BuildFlags_PrintSummary()
 {
    Print(BUILD_TAG, " Build profile: ", BUILD_PROFILE_NAME);
 
-   string de = "OFF";
-#ifdef STRAT_DIRECT_EXEC_TESTER_ONLY
-   de = "COMPILED";
-#endif
+   string de_allow = "OFF";
 #ifdef STRAT_DIRECT_EXEC_ALLOW
-   if(de == "COMPILED") de = "COMPILED+ALLOWED";
-   else de = "ALLOWED"; // shouldn't happen, but kept explicit
+   de_allow = "ON";
 #endif
+   Print(BUILD_TAG, " Strategy direct execution allow macro: ", de_allow);
 
-   Print(BUILD_TAG, " Strategy direct execution: ", de);
+   string de_runtime = "STANDARD";
+#ifdef BUILD_DIRECT_EXEC_RUNTIME_GATED
+   de_runtime = "CONFIG+TESTER_RUNTIME";
+#endif
+   Print(BUILD_TAG, " Strategy direct execution authority: ", de_runtime);
+
+   string de_compat = "OFF";
+#ifdef STRAT_DIRECT_EXEC_TESTER_ONLY
+   de_compat = "LEGACY_COMPAT_ON";
+#endif
+   Print(BUILD_TAG, " Strategy direct execution legacy compile alias: ", de_compat);
 
 #ifdef STRAT_DIRECT_EXEC_VERBOSE
    Print(BUILD_TAG, " Direct exec verbose: ON");
@@ -574,12 +590,37 @@ inline void BuildFlags_PrintSummary()
                  " DEBUG=", (string)BUILD_LOG_LEVEL_DEBUG);
 }
 
+inline void BuildFlags_PrintRuntimeOverrides(const double router_min_score,
+                                             const bool tester_degraded_active,
+                                             const bool news_gate_enabled,
+                                             const bool regime_gate_enabled,
+                                             const bool liquidity_gate_enabled,
+                                             const bool tester_policy_bypass_active)
+{
+   Print(BUILD_TAG, " Runtime router min score: ", DoubleToString(router_min_score, 3));
+   Print(BUILD_TAG, " Runtime tester degraded active: ", (tester_degraded_active ? "ON" : "OFF"));
+   Print(BUILD_TAG, " Runtime tester policy bypass: ", (tester_policy_bypass_active ? "ON" : "OFF"));
+   Print(BUILD_TAG, " Runtime policy gates: news=", (news_gate_enabled ? "ON" : "OFF"),
+                 " regime=", (regime_gate_enabled ? "ON" : "OFF"),
+                 " liquidity=", (liquidity_gate_enabled ? "ON" : "OFF"));
+}
+
 // -------------------------------------------------------------------
 // 5) Integration notes (for your codebase)
 // -------------------------------------------------------------------
-// Recommended include order:
+// Recommended include order / usage:
+//
 //   - In CA_Trading_System_EA.mq5 (very top of includes):
 //       #include "include/BuildFlags.mqh"
+//
+//   - In OnInit(), after Settings S is finalized:
+//       BuildFlags_PrintSummary();
+//       BuildFlags_PrintRuntimeOverrides(Config::CfgRouterMinScore(S),
+//                                        Config::CfgTesterDegradedModeActive(S),
+//                                        Config::CfgNewsBlockEnabled(S),
+//                                        Config::CfgRegimeGateEnabled(S),
+//                                        Config::CfgLiquidityGateEnabled(S),
+//                                        (IsTesterRuntime() && InpTester_BypassPolicyGates));
 //
 //   - In each of the 5 strategy files (near the top, before StrategyDirectExecGuards):
 //       #include "../BuildFlags.mqh"   // adjust relative path to match your folder structure

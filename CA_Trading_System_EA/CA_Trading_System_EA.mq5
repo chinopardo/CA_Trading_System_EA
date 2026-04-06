@@ -444,6 +444,8 @@ input bool             InpPolicy_LiqInvalidHardFail = false; // Policy: hard-fai
 input bool             InpOnlyNewBar            = true; // Loop controls / heartbeat: Only New Bar - Per-symbol last-bar gate
 input bool             InpMain_OnlyNewBar       = true; // Timer routing: require new bar before RouterEvaluateAll on OnTimer
 input int              InpTimerMS               = 150; // Loop controls / heartbeat: Timer MS
+input int              InpTester_TimerSec                  = 60;    // Tester: OnTimer / Hub heartbeat in seconds
+input bool             InpTester_ForceTimerEveryHeartbeat  = false; // Tester: bypass EA-level timer new-bar gate and evaluate every timer heartbeat
 input int              InpServerOffsetMinutes   = 0; // Loop controls / heartbeat: Server Offset Mins
 
 // -------- Session windows (UTC minutes) — legacy union (London/NY) --------
@@ -495,6 +497,7 @@ input bool             InpRouterTesterPreferManualThresholds = true; // Tester l
 input bool             InpRouterTesterClampProfileMin = true; // Tester safety: clamp profile-sourced min_score against manual
 input double           InpRouterTesterClampMaxDelta   = 0.05; // Tester safety: max allowed profile overshoot above manual
 input bool             InpRouterTesterAllowWideProfileMin = false; // Tester safety: allow profile min_score above manual + delta
+input double           InpRouterTesterMinScoreOverride     = 0.15; // Tester: effective router min score override when tester degraded mode is active; <=0 uses InpRouterMinScore
 
 // Position management
 input int              InpPMMode                = 2;     // Position Mgnt: PM Mode - 0=Off 1=Basic 2=Full
@@ -1019,6 +1022,7 @@ input bool                           InpMS_TesterDegradedScorePolicyEnable = fal
 input TesterDegradedScorePolicyMode  InpMS_TesterDegradedScorePolicyMode = TESTER_DEGRADED_SCORE_POLICY_AUTO;
 input TesterDegradedScorePolicyType  InpMS_TesterDegradedScorePolicyType = TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE;
 input double                         InpMS_TesterDegradedScorePolicyMagnitude = 0.04;
+input bool                           InpTester_BypassPolicyGates         = true;  // Tester: bypass news/regime/liquidity hard gates in degraded tester mode
 
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
 // Keep them here now so the EA owns the policy knobs, but do NOT consume them
@@ -1842,6 +1846,68 @@ int EA_RouterResolvedMaxStrats()
    if(rc.max_strats > 0)
       return rc.max_strats;
    return EA_RouterManualMaxStrats();
+}
+
+int EA_ResolveHubTimerSec(const Settings &cfg)
+{
+   if(IsTesterRuntime())
+      return MathMax(1, InpTester_TimerSec);
+
+   return MathMax(1, (cfg.timer_ms <= 1000 ? 1 : cfg.timer_ms / 1000));
+}
+
+string EA_RuntimeGateJsonFragment(const Settings &cfg)
+{
+   bool degraded_policy_active = false;
+   string degraded_policy_type = "";
+   double degraded_policy_mag = 0.0;
+
+   RuntimeTesterDegradedScorePolicySnapshot(CanonicalRouterSymbol(),
+                                            degraded_policy_active,
+                                            degraded_policy_type,
+                                            degraded_policy_mag);
+
+   string j = "";
+   j += ",\"router_min_score\":" + DoubleToString(Config::CfgRouterMinScore(cfg), 3);
+   j += ",\"tester_degraded\":" + (Config::CfgTesterDegradedModeActive(cfg) ? "true" : "false");
+   j += ",\"news_gate\":" + (Config::CfgNewsBlockEnabled(cfg) ? "true" : "false");
+   j += ",\"regime_gate\":" + (Config::CfgRegimeGateEnabled(cfg) ? "true" : "false");
+   j += ",\"liquidity_gate\":" + (Config::CfgLiquidityGateEnabled(cfg) ? "true" : "false");
+   j += ",\"tester_policy_bypass\":" + ((IsTesterRuntime() && InpTester_BypassPolicyGates) ? "true" : "false");
+   j += ",\"degraded_score_policy_active\":" + (degraded_policy_active ? "true" : "false");
+   j += ",\"degraded_score_policy_type\":" + Telemetry::JsonStringOrNull(StringLen(degraded_policy_type) > 0, degraded_policy_type);
+   j += ",\"degraded_score_policy_mag\":" + DoubleToString(degraded_policy_mag, 3);
+   j += ",\"timer_sec\":" + IntegerToString(EA_ResolveHubTimerSec(cfg));
+   j += ",\"timer_force_every_heartbeat\":" + ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? "true" : "false");
+   return j;
+}
+
+void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
+{
+   bool degraded_policy_active = false;
+   string degraded_policy_type = "";
+   double degraded_policy_mag = 0.0;
+
+   RuntimeTesterDegradedScorePolicySnapshot(CanonicalRouterSymbol(),
+                                            degraded_policy_active,
+                                            degraded_policy_type,
+                                            degraded_policy_mag);
+
+   LogX::Info(StringFormat(
+      "%s runtime_gates tester=%d degraded=%d router_min=%.3f news_gate=%d regime_gate=%d liquidity_gate=%d tester_policy_bypass=%d degraded_score_policy=%d degraded_score_type=%s degraded_score_mag=%.3f timer_sec=%d force_timer_every_heartbeat=%d",
+      where,
+      (IsTesterRuntime() ? 1 : 0),
+      (Config::CfgTesterDegradedModeActive(cfg) ? 1 : 0),
+      Config::CfgRouterMinScore(cfg),
+      (Config::CfgNewsBlockEnabled(cfg) ? 1 : 0),
+      (Config::CfgRegimeGateEnabled(cfg) ? 1 : 0),
+      (Config::CfgLiquidityGateEnabled(cfg) ? 1 : 0),
+      ((IsTesterRuntime() && InpTester_BypassPolicyGates) ? 1 : 0),
+      (degraded_policy_active ? 1 : 0),
+      degraded_policy_type,
+      degraded_policy_mag,
+      EA_ResolveHubTimerSec(cfg),
+      ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? 1 : 0)));
 }
 
 void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
@@ -3786,6 +3852,34 @@ void BuildSettingsFromInputs(Settings &cfg)
       cfg.allow_live_degraded_inst_fallback   = InpMS_LiveAllowDegradedInstFallback;
    #endif
 
+   #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+      cfg.router_tester_min_score_override =
+         (InpRouterTesterMinScoreOverride > 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
+   #endif
+
+   #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+      cfg.enable_news_block = true;
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+      cfg.enable_regime_gate = true;
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+      cfg.enable_liquidity_gate = true;
+   #endif
+
+   if(g_is_tester && InpTester_BypassPolicyGates)
+   {
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+         cfg.enable_news_block = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+         cfg.enable_regime_gate = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+         cfg.enable_liquidity_gate = false;
+      #endif
+   }
+
    // --- Session / mode flags (Smart Money runtime gates) ---
    cfg.mode_use_silverbullet =
       (InpEnable_SilverBulletMode && cfg.enable_strat_ict_silverbullet);
@@ -4129,7 +4223,8 @@ void UI_CommitSettings(const string reason, const bool resync_router=false)
       
    if(InpDebug)
       LogX::Info(StringFormat("[UI] Settings committed: %s", reason));
-      
+
+   EA_LogRuntimeGateSummary("[UI]", S);
    DriftAlarm_SetApproved(reason);
 }
 
@@ -4770,45 +4865,66 @@ bool IsTesterRuntime()
 
 void ApplyTesterOnlyFeatureOverrides(Settings &cfg)
 {
-   if(!IsTesterRuntime() || !InpTester_DisableNewsAndCorrelation)
+   if(!IsTesterRuntime())
       return;
 
-   // Tester/optimization/visual mode often has incomplete cross-symbol and calendar/news context.
-   // Disable only runtime blocker/gate flags here; do not mutate general scoring weights.
-   cfg.cf_correlation       = false;
-   cfg.extra_correlation    = false;
-   cfg.corr_softveto_enable = false;
+   if(InpTester_DisableNewsAndCorrelation)
+   {
+      // Tester/optimization/visual mode often has incomplete cross-symbol and calendar/news context.
+      // Disable only runtime blocker/gate flags here; do not mutate general scoring weights.
+      cfg.cf_correlation       = false;
+      cfg.extra_correlation    = false;
+      cfg.corr_softveto_enable = false;
 
-   cfg.news_on              = false;
-   cfg.cf_news_ok           = false;
-   cfg.extra_news           = false;
-   cfg.block_pre_m          = 0;
-   cfg.block_post_m         = 0;
-   cfg.news_impact_mask     = 0;
-   cfg.cal_lookback_mins    = 0;
-   cfg.cal_hard_skip        = 0.0;
-   cfg.cal_soft_knee        = 0.0;
-   cfg.cal_min_scale        = 1.0;
+      cfg.news_on              = false;
+      cfg.cf_news_ok           = false;
+      cfg.extra_news           = false;
+      cfg.block_pre_m          = 0;
+      cfg.block_post_m         = 0;
+      cfg.news_impact_mask     = 0;
+      cfg.cal_lookback_mins    = 0;
+      cfg.cal_hard_skip        = 0.0;
+      cfg.cal_soft_knee        = 0.0;
+      cfg.cal_min_scale        = 1.0;
 
-   #ifdef CFG_HAS_NEWS_FILTER_ENABLED
-      cfg.newsFilterEnabled = false;
+      #ifdef CFG_HAS_NEWS_FILTER_ENABLED
+         cfg.newsFilterEnabled = false;
+      #endif
+
+      #ifdef CFG_HAS_NEWS_BACKEND
+         cfg.news_backend_mode = 0;
+      #endif
+
+      #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
+         cfg.news_mvp_no_block = false;
+      #endif
+
+      #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
+         cfg.news_failover_to_csv = false;
+      #endif
+
+      #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
+         cfg.news_neutral_on_no_data = false;
+      #endif
+   }
+
+   #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+      cfg.router_tester_min_score_override =
+         (InpRouterTesterMinScoreOverride > 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
    #endif
 
-   #ifdef CFG_HAS_NEWS_BACKEND
-      cfg.news_backend_mode = 0;
-   #endif
-
-   #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
-      cfg.news_mvp_no_block = false;
-   #endif
-
-   #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
-      cfg.news_failover_to_csv = false;
-   #endif
-
-   #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
-      cfg.news_neutral_on_no_data = false;
-   #endif
+   if(InpTester_BypassPolicyGates)
+   {
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+         cfg.enable_news_block = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+         cfg.enable_regime_gate = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+         cfg.enable_liquidity_gate = false;
+      #endif
+   }
 }
 
 bool MicrostructureGateOK(const string sym, const datetime now_srv, const datetime required_bar_time, string &detail)
@@ -5386,6 +5502,7 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
    j += "\"status\":\"" + Telemetry::_Esc(status) + "\",";
    j += "\"decision_source\":\"" + Telemetry::_Esc(source) + "\",";
    j += "\"decision_ts\":" + Telemetry::JsonDateTimeOrNull(g_decision_tel.has_decision_ts, g_decision_tel.decision_ts) + ",";
+   j += EA_RuntimeGateJsonFragment(S) + ",";
    j += "\"last_drop_reason\":" + Telemetry::JsonStringOrNull(has_drop_reason, g_decision_tel.last_drop_reason);
    j += "}";
 
@@ -5443,6 +5560,7 @@ int OnInit()
    #endif
 
    LogX::Info(cfg_effective_msg);
+   EA_LogRuntimeGateSummary("[OnInit]", S);
 
    // Backend-only live runtime: legacy ProcessSymbol harness is tester-only and opt-in.
    if(!g_is_tester)
@@ -5686,9 +5804,17 @@ int OnInit()
    MSH::HubOptions hub_opt;
    MSH::OptionsDefault(hub_opt);
 
-   // Preserve current EA behavior: seconds timer derived from S.timer_ms
+   // Live: preserve existing fast cadence from cfg.timer_ms.
+   // Tester: use a slower heartbeat to reduce same-bar spam while still guaranteeing evaluation within the bar.
    hub_opt.use_ms_timer = false;
-   hub_opt.timer_sec    = MathMax(1, (S.timer_ms <= 1000 ? 1 : S.timer_ms / 1000));
+   hub_opt.timer_sec    = EA_ResolveHubTimerSec(S);
+
+   LogX::Info(StringFormat("[Timer] hub_timer_sec=%d entry_tf_sec=%d only_new_bar=%d tester=%d force_timer_every_heartbeat=%d",
+                           hub_opt.timer_sec,
+                           PeriodSeconds((ENUM_TIMEFRAMES)S.tf_entry),
+                           ((InpOnlyNewBar && InpMain_OnlyNewBar) ? 1 : 0),
+                           (g_is_tester ? 1 : 0),
+                           ((g_is_tester && InpTester_ForceTimerEveryHeartbeat) ? 1 : 0)));
 
    // Universe cap (Hub has hard cap HUB_MAX_SYMBOLS)
    hub_opt.max_symbols  = MathMin(g_symCount, (int)MSH::HUB_MAX_SYMBOLS);
@@ -5905,7 +6031,7 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    const string router_sym = CanonicalRouterSymbol();
-   const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar);
+   const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));
 
    // Canonical timer-owned orchestration:
    // 1) MarketScannerHub drives scanners/signals

@@ -82,6 +82,19 @@ namespace StrategyDirectExec
       return InTesterEnv();
    }
 
+   inline void SyncTesterBypassFromConfig(const Settings &cfg)
+   {
+      SetTesterBypass(Config::CfgTesterDegradedModeActive(cfg));
+   }
+
+   inline bool ConfigTesterOverrideActive(const Settings &cfg)
+   {
+      if(Config::CfgTesterDegradedModeActive(cfg))
+         return(true);
+
+      return(false);
+   }
+
    // ----------------------------------------------------------------
    // Message helpers (standard phrasing across all strategies).
    // ----------------------------------------------------------------
@@ -110,6 +123,11 @@ namespace StrategyDirectExec
    inline string Msg_TesterBypass(const string strategy_name)
    {
       return(Prefix(strategy_name) + " direct execution tester bypass active");
+   }
+
+   inline string Msg_TesterOverride(const string strategy_name)
+   {
+      return(Prefix(strategy_name) + " direct execution forced by tester degraded config override");
    }
 
    inline string Msg_TaggedVeto(const string strategy_name,
@@ -167,6 +185,21 @@ namespace StrategyDirectExec
       return(true);
    }
 
+   inline bool CanRun(const string strategy_name, const Settings &cfg, string &why_out)
+   {
+      why_out = "";
+
+      SyncTesterBypassFromConfig(cfg);
+
+      if(ConfigTesterOverrideActive(cfg))
+      {
+         why_out = Msg_TesterOverride(strategy_name);
+         return(true);
+      }
+
+      return(CanRun(strategy_name, why_out));
+   }
+
    // ----------------------------------------------------------------
    // Optional logging hook (standardized).
    // ----------------------------------------------------------------
@@ -191,6 +224,14 @@ namespace StrategyDirectExec
       return(ok);
    }
 
+   inline bool GuardBool(const string strategy_name, const Settings &cfg, string &why_out)
+   {
+      const bool ok = CanRun(strategy_name, cfg, why_out);
+      if(!ok)
+         MaybeLogBlocked(why_out);
+      return(ok);
+   }
+
    // ----------------------------------------------------------------
    // Preferred guard: full strategy structs. This is the canonical
    // direct-exec gate after strategy evaluation has already populated
@@ -204,7 +245,7 @@ namespace StrategyDirectExec
    {
       why_out = "";
 
-      if(!CanRun(strategy_name, why_out))
+      if(!CanRun(strategy_name, cfg, why_out))
       {
          if(ss.veto_tag == "")
             ss.veto_tag = "direct_exec_env_block";
@@ -247,7 +288,15 @@ namespace StrategyDirectExec
       }
 
       bd.veto = false;
-      bd.meta = "";
+
+      if(why_out == Msg_TesterOverride(strategy_name) || why_out == Msg_TesterBypass(strategy_name))
+         bd.meta = why_out;
+      else
+         bd.meta = "";
+
+      if(ss.reason == "" && why_out != "")
+         ss.reason = why_out;
+
       StratCopyHeadMetaToBreakdown(ss, bd);
       return(true);
    }
@@ -386,8 +435,10 @@ namespace StrategyDirectExec
 //    // Then during init / setup:
 //    // StrategyDirectExec::SetTesterBypass(InpAllowDirectExec);
 //
+//    // Or, better, when cfg is available:
+//    // StrategyDirectExec::SetTesterBypass(CfgTesterDegradedModeActive(cfg));
+//
 //    // This bypass is tester-only at runtime and does not weaken live mode.
-//    // Compile-time direct-exec flags must still be enabled in BuildFlags.mqh.
 //
 // 1) Guard the Execution include in EACH strategy file:
 //

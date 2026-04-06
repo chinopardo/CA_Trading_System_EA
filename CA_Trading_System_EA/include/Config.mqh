@@ -839,6 +839,26 @@ struct Settings;
   #define CFG_HAS_ICT_STRATEGY_KNOBS 1
 #endif
 
+#ifndef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+  #define CFG_HAS_ICT_HEAD_BLEND_WEIGHTS 1
+#endif
+
+#ifndef CFG_HAS_ICT_SCORE_DEBUG_LOG
+  #define CFG_HAS_ICT_SCORE_DEBUG_LOG 1
+#endif
+
+#ifndef CFG_HAS_ICT_ARM_ON_SIGNAL
+  #define CFG_HAS_ICT_ARM_ON_SIGNAL 1
+#endif
+
+#ifndef CFG_HAS_ICT_ARM_TESTER_RELAX
+  #define CFG_HAS_ICT_ARM_TESTER_RELAX 1
+#endif
+
+#ifndef CFG_HAS_ICT_TESTER_SCORE_BOOST
+  #define CFG_HAS_ICT_TESTER_SCORE_BOOST 1
+#endif
+
 // --- Pack strategy registration/runtime toggles (used by StrategyRegistry/Router)
 #ifndef CFG_HAS_ENABLE_PACK_STRATS
   #define CFG_HAS_ENABLE_PACK_STRATS 1
@@ -1221,6 +1241,21 @@ struct Settings;
 #ifndef CFG_HAS_ROUTER_FB_MIN
   #define CFG_HAS_ROUTER_FB_MIN 1
 #endif
+
+#ifndef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+  #define CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE 1
+#endif
+
+#ifndef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+  #define CFG_HAS_POLICY_ENABLE_NEWS_BLOCK 1
+#endif
+#ifndef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+  #define CFG_HAS_POLICY_ENABLE_REGIME_GATE 1
+#endif
+#ifndef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+  #define CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE 1
+#endif
+
 // Router confluence-only pool toggles (optional)
 #ifndef CFG_HAS_ROUTER_USE_CONFL_POOL
   #define CFG_HAS_ROUTER_USE_CONFL_POOL 1
@@ -1651,6 +1686,24 @@ namespace Config
      double main_alpha_min;
      double main_exec_min;
      double main_risk_max;
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     double ict_head_weight_alpha;
+     double ict_head_weight_execution;
+     double ict_head_weight_risk_inverse;
+   #endif
+   #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     bool   ict_score_debug_log;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     bool   ict_arm_on_signal;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     bool   ict_arm_tester_relax;
+   #endif
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     double ict_tester_score_boost;
+   #endif
 
      bool   main_require_poi;
      bool   main_require_sweep_reject;
@@ -2477,6 +2530,24 @@ namespace Config
    #endif
    }
 
+   inline bool CfgIsTesterRuntime()
+   {
+      if(MQLInfoInteger(MQL_TESTER) != 0)
+         return true;
+      if(MQLInfoInteger(MQL_OPTIMIZATION) != 0)
+         return true;
+      return false;
+   }
+
+   inline bool CfgTesterDegradedModeActive(const Settings &cfg)
+   {
+      if(!CfgIsTesterRuntime())
+         return false;
+      if(!CfgAllowTesterDegradedInstFallback(cfg))
+         return false;
+      return true;
+   }
+
    inline bool CfgInstitutionalStrictTransportExpected()
    {
    #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
@@ -2616,12 +2687,25 @@ namespace Config
      #endif
    }
    
-   inline double CfgRouterMinScore(const Settings &cfg){
-     #ifdef CFG_HAS_ROUTER_MIN_SCORE
-       return (cfg.router_min_score>0.0? cfg.router_min_score : 0.55);
-     #else
-       return 0.55;
-     #endif
+   inline double CfgRouterMinScore(const Settings &cfg)
+   {
+      double v = 0.55;
+
+      #ifdef CFG_HAS_ROUTER_MIN_SCORE
+         v = (cfg.router_min_score > 0.0 ? cfg.router_min_score : 0.55);
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+         if(CfgTesterDegradedModeActive(cfg))
+         {
+            if(cfg.router_tester_min_score_override > 0.0)
+               v = cfg.router_tester_min_score_override;
+         }
+      #endif
+
+      if(v < 0.0) v = 0.0;
+      if(v > 1.0) v = 1.0;
+      return v;
    }
    
    inline int CfgRouterMaxStrats(const Settings &cfg){
@@ -2655,7 +2739,129 @@ namespace Config
      #endif
      return (v>0.0? v : 0.50);
    }
+
+   inline bool CfgNewsBlockEnabled(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+         return (cfg.enable_news_block ? true : false);
+      #else
+         return true;
+      #endif
+   }
+
+   inline bool CfgRegimeGateEnabled(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+         return (cfg.enable_regime_gate ? true : false);
+      #else
+         return true;
+      #endif
+   }
+
+   inline bool CfgLiquidityGateEnabled(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+         return (cfg.enable_liquidity_gate ? true : false);
+      #else
+         return true;
+      #endif
+   }
+
+   inline double CfgICTHeadWeightAlpha(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+       double a = cfg.ict_head_weight_alpha;
+       double e = cfg.ict_head_weight_execution;
+       double r = cfg.ict_head_weight_risk_inverse;
+     #else
+       double a = 0.40;
+       double e = 0.35;
+       double r = 0.25;
+     #endif
    
+     const double s = a + e + r;
+     if(s <= 0.0)
+       return 0.40;
+   
+     return a / s;
+   }
+   
+   inline double CfgICTHeadWeightExecution(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+       double a = cfg.ict_head_weight_alpha;
+       double e = cfg.ict_head_weight_execution;
+       double r = cfg.ict_head_weight_risk_inverse;
+     #else
+       double a = 0.40;
+       double e = 0.35;
+       double r = 0.25;
+     #endif
+   
+     const double s = a + e + r;
+     if(s <= 0.0)
+       return 0.35;
+   
+     return e / s;
+   }
+   
+   inline double CfgICTHeadWeightRiskInverse(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+       double a = cfg.ict_head_weight_alpha;
+       double e = cfg.ict_head_weight_execution;
+       double r = cfg.ict_head_weight_risk_inverse;
+     #else
+       double a = 0.40;
+       double e = 0.35;
+       double r = 0.25;
+     #endif
+   
+     const double s = a + e + r;
+     if(s <= 0.0)
+       return 0.25;
+   
+     return r / s;
+   }
+   
+   inline bool CfgICTScoreDebugLog(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+       return (cfg.ict_score_debug_log ? true : false);
+     #else
+       return false;
+     #endif
+   }
+   
+   inline bool CfgICTArmOnSignal(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+       return (cfg.ict_arm_on_signal ? true : false);
+     #else
+       return true;
+     #endif
+   }
+   
+   inline bool CfgICTArmTesterRelax(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+       return (cfg.ict_arm_tester_relax ? true : false);
+     #else
+       return false;
+     #endif
+   }
+   
+   inline double CfgICTTesterScoreBoost(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+       if(cfg.ict_tester_score_boost < 0.0) return 0.0;
+       if(cfg.ict_tester_score_boost > 0.25) return 0.25;
+       return cfg.ict_tester_score_boost;
+     #else
+       return 0.0;
+     #endif
+   }
+
    inline int CfgRouterTopKLog(const Settings &cfg){
      #ifdef CFG_HAS_ROUTER_TOPK
        return (cfg.router_topk_log>0? (int)cfg.router_topk_log : 5);
@@ -3126,6 +3332,24 @@ namespace Config
      cfg.main_alpha_min              = x.main_alpha_min;
      cfg.main_exec_min               = x.main_exec_min;
      cfg.main_risk_max               = x.main_risk_max;
+
+#ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     cfg.ict_head_weight_alpha        = x.ict_head_weight_alpha;
+     cfg.ict_head_weight_execution    = x.ict_head_weight_execution;
+     cfg.ict_head_weight_risk_inverse = x.ict_head_weight_risk_inverse;
+#endif
+#ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     cfg.ict_score_debug_log          = x.ict_score_debug_log;
+#endif
+#ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     cfg.ict_arm_on_signal            = x.ict_arm_on_signal;
+#endif
+#ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     cfg.ict_arm_tester_relax         = x.ict_arm_tester_relax;
+#endif
+#ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     cfg.ict_tester_score_boost       = x.ict_tester_score_boost;
+#endif
 
      cfg.main_require_poi            = x.main_require_poi;
      cfg.main_require_sweep_reject   = x.main_require_sweep_reject;
@@ -3904,6 +4128,24 @@ namespace Config
      x.main_alpha_min              = 0.55;
      x.main_exec_min               = 0.45;
      x.main_risk_max               = 0.55;
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     x.ict_head_weight_alpha        = 0.40;
+     x.ict_head_weight_execution    = 0.35;
+     x.ict_head_weight_risk_inverse = 0.25;
+   #endif
+   #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     x.ict_score_debug_log          = false;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     x.ict_arm_on_signal            = true;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     x.ict_arm_tester_relax         = true;
+   #endif
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     x.ict_tester_score_boost       = 0.05;
+   #endif
 
      x.main_require_poi            = true;
      x.main_require_sweep_reject   = true;
@@ -6973,7 +7215,7 @@ namespace Config
         warns += "visible-range VP is caller-driven only in this codebase; NormalizeOrderFlowFamily() forces scan_vp_profile_mode away from visible-range and clears scan_vp_visible_range_sec unless a real visible-range provider exists.\n";
   }
 
-#ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
+   #ifdef CFG_HAS_SCAN_INST_STATE_SETTINGS
   inline void ValidateInstitutionalStateFamily(const Settings &cfg, string &warns)
   {
      // Mapping note:
@@ -6984,15 +7226,45 @@ namespace Config
         !CfgInstitutionalStateProducerEnabled(cfg))
         warns += "Institutional transport warning: runtime intent requires canonical institutional transport, but scan_inst_state_enable=false. This disables the canonical transport / Confluence mirror / State promotion chain and can hard-veto at MicrostructureGateOK before routing. Re-enable scInstOn unless you intentionally want degraded unavailable-transport behavior.\n";
 
-#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+   #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
      if(CfgAllowTesterDegradedInstFallback(cfg))
         warns += "allow_tester_degraded_inst_fallback=true; tester/optimization may continue through reduced/mock degraded institutional routing when canonical transport is unavailable.\n";
-#endif
-
-#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+   #endif
+   
+   #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
      if(cfg.allow_live_degraded_inst_fallback)
         warns += "allow_live_degraded_inst_fallback=true; live runtime may continue with degraded institutional transport when canonical transport is unavailable. Keep this OFF unless that behavior is explicitly intended.\n";
-#endif
+   #endif
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     if((cfg.ict_head_weight_alpha +
+         cfg.ict_head_weight_execution +
+         cfg.ict_head_weight_risk_inverse) <= 0.0)
+        warns += "ICT head blend weights sum to <= 0.0; defaults will be used (alpha=0.40, execution=0.35, risk_inverse=0.25).\n";
+   #endif
+   
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     if(CfgTesterDegradedModeActive(cfg) && cfg.ict_tester_score_boost > 0.0)
+        warns += "tester degraded mode active; ICT framework may apply ict_tester_score_boost during score composition.\n";
+   #endif
+
+   #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+     if(CfgTesterDegradedModeActive(cfg) && cfg.router_tester_min_score_override > 0.0)
+        warns += "tester degraded mode active; CfgRouterMinScore() will use router_tester_min_score_override instead of router_min_score.\n";
+   #endif
+   
+   #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+     if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_news_block)
+        warns += "tester degraded mode active; news block is disabled at config layer.\n";
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+     if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_regime_gate)
+        warns += "tester degraded mode active; regime gate is disabled at config layer.\n";
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+     if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_liquidity_gate)
+        warns += "tester degraded mode active; liquidity gate is disabled at config layer.\n";
+   #endif
 
      if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
@@ -8554,7 +8826,39 @@ namespace Config
      if(cfg.risk_head_max < 0.0)       cfg.risk_head_max = 0.0;
      if(cfg.risk_head_max > 1.0)       cfg.risk_head_max = 1.0;
    #endif
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     if(cfg.ict_head_weight_alpha < 0.0)        cfg.ict_head_weight_alpha = 0.0;
+     if(cfg.ict_head_weight_execution < 0.0)    cfg.ict_head_weight_execution = 0.0;
+     if(cfg.ict_head_weight_risk_inverse < 0.0) cfg.ict_head_weight_risk_inverse = 0.0;
+
+     const double ict_head_sum =
+       cfg.ict_head_weight_alpha +
+       cfg.ict_head_weight_execution +
+       cfg.ict_head_weight_risk_inverse;
+
+     if(ict_head_sum <= 0.0)
+     {
+       cfg.ict_head_weight_alpha        = 0.40;
+       cfg.ict_head_weight_execution    = 0.35;
+       cfg.ict_head_weight_risk_inverse = 0.25;
+     }
+   #endif
    
+   #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     cfg.ict_score_debug_log = (cfg.ict_score_debug_log ? true : false);
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     cfg.ict_arm_on_signal = (cfg.ict_arm_on_signal ? true : false);
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     cfg.ict_arm_tester_relax = (cfg.ict_arm_tester_relax ? true : false);
+   #endif
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     if(cfg.ict_tester_score_boost < 0.0)  cfg.ict_tester_score_boost = 0.0;
+     if(cfg.ict_tester_score_boost > 0.25) cfg.ict_tester_score_boost = 0.25;
+   #endif
+
    #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
      cfg.ict_sb_require_strict_micro         = (cfg.ict_sb_require_strict_micro ? true : false);
      cfg.ict_sb_require_profile              = (cfg.ict_sb_require_profile ? true : false);
@@ -9943,6 +10247,35 @@ namespace Config
        if(cfg.router_fb_min < 0.0) cfg.router_fb_min = 0.0;
        if(cfg.router_fb_min > 1.0) cfg.router_fb_min = 1.0;
     #endif
+
+    #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+      if(cfg.router_tester_min_score_override < 0.0) cfg.router_tester_min_score_override = 0.0;
+      if(cfg.router_tester_min_score_override > 1.0) cfg.router_tester_min_score_override = 1.0;
+    #endif
+
+    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+      cfg.enable_news_block = (cfg.enable_news_block ? true : false);
+    #endif
+    #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+      cfg.enable_regime_gate = (cfg.enable_regime_gate ? true : false);
+    #endif
+    #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+      cfg.enable_liquidity_gate = (cfg.enable_liquidity_gate ? true : false);
+    #endif
+
+    if(CfgTesterDegradedModeActive(cfg))
+    {
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+        cfg.enable_news_block = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+        cfg.enable_regime_gate = false;
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+        cfg.enable_liquidity_gate = false;
+      #endif
+    }
+
     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
       if(cfg.router_pool_blend_w < 0.0) cfg.router_pool_blend_w = 0.0;
       if(cfg.router_pool_blend_w > 1.0) cfg.router_pool_blend_w = 1.0;
@@ -10597,6 +10930,9 @@ namespace Config
      #ifdef CFG_HAS_ROUTER_FB_MIN
        cfg.router_fb_min = 0.0;
      #endif
+     #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+       cfg.router_tester_min_score_override = 0.15;
+     #endif
      #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
       cfg.router_eval_all_mode = 0; // default: current behavior (best-of-all-symbols)
      #endif
@@ -10693,7 +11029,25 @@ namespace Config
      cfg.execution_head_min  = 0.50;
      cfg.risk_head_max       = 0.65;
    #endif
-   
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     cfg.ict_head_weight_alpha        = 0.40;
+     cfg.ict_head_weight_execution    = 0.35;
+     cfg.ict_head_weight_risk_inverse = 0.25;
+   #endif
+   #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     cfg.ict_score_debug_log          = false;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     cfg.ict_arm_on_signal            = true;
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     cfg.ict_arm_tester_relax         = true;
+   #endif
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     cfg.ict_tester_score_boost       = 0.05;
+   #endif
+
    #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
      cfg.ict_sb_require_strict_micro         = true;
      cfg.ict_sb_require_profile              = true;
@@ -10976,7 +11330,30 @@ namespace Config
      cfg.structure_enable     = structure_enable;
      cfg.liquidity_enable     = liquidity_enable;
      cfg.corr_softveto_enable = corr_softveto_enable;
-   
+
+     #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+       cfg.enable_news_block = true;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+       cfg.enable_regime_gate = true;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+       cfg.enable_liquidity_gate = true;
+     #endif
+
+     if(CfgTesterDegradedModeActive(cfg))
+     {
+        #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+          cfg.enable_news_block = false;
+        #endif
+        #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+          cfg.enable_regime_gate = false;
+        #endif
+        #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+          cfg.enable_liquidity_gate = false;
+        #endif
+     }
+
      // >>> Only this line applies all “extras”
      ApplyExtras(cfg, extra);
    
@@ -11969,7 +12346,25 @@ namespace Config
      s+=",gEx="+DoubleToString(c.execution_head_min,4);
      s+=",gRk="+DoubleToString(c.risk_head_max,4);
    #endif
-   
+
+   #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+     s+=",gWAl="+DoubleToString(c.ict_head_weight_alpha,4);
+     s+=",gWEx="+DoubleToString(c.ict_head_weight_execution,4);
+     s+=",gWRk="+DoubleToString(c.ict_head_weight_risk_inverse,4);
+   #endif
+   #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+     s+=",gDbg="+BoolStr(c.ict_score_debug_log);
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+     s+=",gArm="+BoolStr(c.ict_arm_on_signal);
+   #endif
+   #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+     s+=",gArmTR="+BoolStr(c.ict_arm_tester_relax);
+   #endif
+   #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+     s+=",gTBoost="+DoubleToString(c.ict_tester_score_boost,4);
+   #endif
+
    #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
      s+=",sbMic="+BoolStr(c.ict_sb_require_strict_micro);
      s+=",sbProf="+BoolStr(c.ict_sb_require_profile);
@@ -13054,6 +13449,9 @@ namespace Config
     #ifdef CFG_HAS_ROUTER_MIN_SCORE
       s+=",routerMin="+DoubleToString(c.router_min_score,3);
     #endif
+    #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+      s+=",routerMinTs="+DoubleToString(c.router_tester_min_score_override,3);
+    #endif
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       s+=",routerCap="+IntegerToString(c.router_max_strats);
     #endif
@@ -13081,6 +13479,16 @@ namespace Config
    #endif
    #ifdef CFG_HAS_LONDON_LIQ_POLICY
      s+=",lonPolicy="+BoolStr(c.london_liquidity_policy);
+   #endif
+
+   #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+     s+=",gateNews="+BoolStr(c.enable_news_block);
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+     s+=",gateRegime="+BoolStr(c.enable_regime_gate);
+   #endif
+   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+     s+=",gateLiq="+BoolStr(c.enable_liquidity_gate);
    #endif
    
    #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
@@ -14515,7 +14923,25 @@ namespace Config
         else if(k=="gEx") cfg.execution_head_min = ToDouble(v);
         else if(k=="gRk") cfg.risk_head_max = ToDouble(v);
       #endif
-      
+
+      #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+        else if(k=="gWAl") cfg.ict_head_weight_alpha = ToDouble(v);
+        else if(k=="gWEx") cfg.ict_head_weight_execution = ToDouble(v);
+        else if(k=="gWRk") cfg.ict_head_weight_risk_inverse = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+        else if(k=="gDbg") cfg.ict_score_debug_log = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+        else if(k=="gArm") cfg.ict_arm_on_signal = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+        else if(k=="gArmTR") cfg.ict_arm_tester_relax = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+        else if(k=="gTBoost") cfg.ict_tester_score_boost = ToDouble(v);
+      #endif
+
       #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
         else if(k=="sbMic") cfg.ict_sb_require_strict_micro = ToBool(v);
         else if(k=="sbProf") cfg.ict_sb_require_profile = ToBool(v);
@@ -15347,12 +15773,33 @@ namespace Config
         else if(k=="gEx") cfg.execution_head_min = ToDouble(v);
         else if(k=="gRk") cfg.risk_head_max = ToDouble(v);
       #endif
-      
+
+      #ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+        else if(k=="gWAl") cfg.ict_head_weight_alpha = ToDouble(v);
+        else if(k=="gWEx") cfg.ict_head_weight_execution = ToDouble(v);
+        else if(k=="gWRk") cfg.ict_head_weight_risk_inverse = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+        else if(k=="gDbg") cfg.ict_score_debug_log = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+        else if(k=="gArm") cfg.ict_arm_on_signal = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+        else if(k=="gArmTR") cfg.ict_arm_tester_relax = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+        else if(k=="gTBoost") cfg.ict_tester_score_boost = ToDouble(v);
+      #endif
+
       else if(_CfgApplyICTStrategyKnobKey(cfg, k, v)) { }
 
       // Router hints / gates
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
         else if(k=="routerMin") cfg.router_min_score = ToDouble(v);
+      #endif
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+        else if(k=="routerMinTs") cfg.router_tester_min_score_override = ToDouble(v);
       #endif
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
         else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
@@ -15383,6 +15830,16 @@ namespace Config
       #endif
       #ifdef CFG_HAS_LONDON_LIQ_POLICY
         else if(k=="lonPolicy") cfg.london_liquidity_policy = ToBool(v);
+      #endif
+
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+        else if(k=="gateNews") cfg.enable_news_block = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+        else if(k=="gateRegime") cfg.enable_regime_gate = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+        else if(k=="gateLiq") cfg.enable_liquidity_gate = ToBool(v);
       #endif
 
       // Router fallback min key (serializer writes routerFBMin no matter which alias exists)
@@ -16001,6 +16458,28 @@ struct Settings
   double            alpha_head_min;
   double            execution_head_min;
   double            risk_head_max;
+#endif
+
+#ifdef CFG_HAS_ICT_HEAD_BLEND_WEIGHTS
+  double            ict_head_weight_alpha;
+  double            ict_head_weight_execution;
+  double            ict_head_weight_risk_inverse;
+#endif
+
+#ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+  bool              ict_score_debug_log;
+#endif
+
+#ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
+  bool              ict_arm_on_signal;
+#endif
+
+#ifdef CFG_HAS_ICT_ARM_TESTER_RELAX
+  bool              ict_arm_tester_relax;
+#endif
+
+#ifdef CFG_HAS_ICT_TESTER_SCORE_BOOST
+  double            ict_tester_score_boost;
 #endif
 
   // --- Challenge protection (account-wide) -----------------------------------
@@ -17798,6 +18277,15 @@ struct Settings
   bool              corr_veto_on;
   double            regime_tq_min;       // 0..1
   double            regime_sg_min;       // 0..1
+  #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+    bool              enable_news_block;      // master switch for news hard-block path
+  #endif
+  #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+    bool              enable_regime_gate;     // master switch for regime/correlation gate path
+  #endif
+  #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+    bool              enable_liquidity_gate;  // master switch for liquidity veto path
+  #endif
 
   // --- Liquidity Flow Matrix (LFM) global math / weighting settings ---
   int               lfm_atr_period;       // default 14
@@ -17896,6 +18384,10 @@ struct Settings
   #ifdef CFG_HAS_ROUTER_FB_MIN
     double           router_fb_min; // alias for older writers; same meaning as router_fallback_min_score
   #endif
+  #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+    double            router_tester_min_score_override;   // tester degraded runtime floor; 0.0 = use live router_min_score
+  #endif
+
   #ifdef CFG_HAS_ROUTER_HINTS
      string router_profile_alias;           // profile alias used for fallback hinting ("trend", "mr", ...)
      double router_fallback_min_confluence; // 0..1; 0 = ignore / unused

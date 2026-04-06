@@ -1244,7 +1244,72 @@ namespace Policies
 
     return true;
   }
-  
+
+  inline bool PolicyTesterDegradedActive(const Settings &cfg)
+  {
+    if(Config::CfgTesterDegradedModeActive(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicySessionBypassActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicyNewsBypassActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    if(!Config::CfgNewsBlockEnabled(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicyRegimeBypassActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    if(!Config::CfgRegimeGateEnabled(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicyLiquidityBypassActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    if(!Config::CfgLiquidityGateEnabled(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicyRiskCapsRelaxActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline bool PolicyInstitutionalBypassActive(const Settings &cfg)
+  {
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    return false;
+  }
+
   inline int CfgMaxSpreadPts(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAX_SPREAD_POINTS
@@ -1258,7 +1323,10 @@ namespace Policies
    {
      if(!PolicySessionGateEnabled())
        return false;
-   
+
+     if(PolicySessionBypassActive(cfg))
+       return false;
+
      #ifdef CFG_HAS_SESSION_FILTER
        return (bool)cfg.session_filter;
      #else
@@ -1461,12 +1529,12 @@ namespace Policies
 
    inline bool CfgNewsPolicyEnabled(const Settings &cfg)
    {
-     // Centralized runtime switch for all policy-side news handling.
-     // In tester/optimization, POLICY_TESTER_RELAX can suppress policy-side
-     // news vetoes even if cfg.news_on remains enabled upstream.
      if(!PolicyNewsGateEnabled())
        return false;
-   
+
+     if(PolicyNewsBypassActive(cfg))
+       return false;
+
      return CfgNewsOn(cfg);
    }
 
@@ -1642,6 +1710,9 @@ namespace Policies
 
   inline bool CfgRegimeGateOn(const Settings &cfg)
   {
+    if(PolicyRegimeBypassActive(cfg))
+      return false;
+
     #ifdef CFG_HAS_REGIME_GATE_ON
       return (bool)cfg.regime_gate_on;
     #else
@@ -2501,7 +2572,17 @@ namespace Policies
    }
 
   inline bool EffSessionFilter(const Settings &cfg, const string sym)
-  { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_session) return s_over[k].session_filter; return CfgSessionFilter(cfg); }
+  {
+    if(PolicySessionBypassActive(cfg))
+      return false;
+
+    const int k = _FindOverIdx(sym);
+    if(k >= 0 && s_over[k].has_session)
+      return s_over[k].session_filter;
+
+    return CfgSessionFilter(cfg);
+  }
+  
   inline double EffLiqMinRatio(const Settings &cfg, const string sym, const double default_floor)
   { const int k=_FindOverIdx(sym); if(k>=0 && s_over[k].has_liq) return s_over[k].liq_min_ratio; return (default_floor>0.0? default_floor : CfgLiqMinRatio(cfg)); }
 
@@ -2586,6 +2667,13 @@ namespace Policies
   inline bool ADRCapOK(const Settings &cfg, const string sym, int &reason, double &adr_pts_out)
    {
      reason = GATE_OK; adr_pts_out = 0.0;
+
+     if(PolicyRiskCapsRelaxActive(cfg))
+     {
+       _GateDetail(cfg, GATE_ADR, sym, "tester_bypass=1 adr_cap_relaxed=1");
+       return true;
+     }
+
      const double adr_pts = ADRPoints(sym, CfgADRLookbackDays(cfg));
      if(adr_pts<=0.0) return true; // neutral if cannot compute
      adr_pts_out = adr_pts;
@@ -3136,6 +3224,13 @@ namespace Policies
 
     dd_pct_out = 0.0;
 
+    if(PolicyRiskCapsRelaxActive(cfg))
+    {
+      s_last_day_dd_active_pct = 0.0;
+      s_last_day_dd_strict_pct = 0.0;
+      return false;
+    }
+
     double limit_pct = CfgMaxDailyDDPct(cfg);
     if(limit_pct <= 0.0) return false;
 
@@ -3224,6 +3319,9 @@ namespace Policies
      _EnsureAccountBaseline(cfg);
    
      dd_pct_out = 0.0;
+
+     if(PolicyRiskCapsRelaxActive(cfg))
+       return false;
    
      // Already latched?
      if(s_acctStopHit || _GVGetB(_Key("ACCT_DD_STOP_FLAG"), false))
@@ -3439,6 +3537,25 @@ namespace Policies
     _EnsureLoaded(cfg);
 
     reason = GATE_OK;
+
+    if(PolicyRiskCapsRelaxActive(cfg))
+    {
+      const double sp_now = MarketData::SpreadPoints(sym);
+      const double tester_cap_pts = MarketData::PointsFromPips(sym, 100.0);
+
+      if(tester_cap_pts > 0.0 && sp_now > tester_cap_pts)
+      {
+        reason = GATE_SPREAD;
+        _GateDetail(cfg, reason, sym,
+                    StringFormat("tester_relax=1 sp=%.1f tester_cap_pts=%.1f",
+                                 sp_now, tester_cap_pts));
+        return false;
+      }
+
+      _GateDetail(cfg, GATE_SPREAD, sym, "tester_bypass=1 spread_gate_relaxed=1");
+      return true;
+    }
+
     int cap = EffMaxSpreadPts(cfg, sym);
     if(cap<=0) return true;
 
@@ -3501,6 +3618,10 @@ namespace Policies
     _EnsureLoaded(cfg);
 
     ratio_out = 0.0;
+
+    if(PolicyRiskCapsRelaxActive(cfg))
+      return false;
+
     if(s_vb_limit <= 0.0) return false; // disabled
 
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
@@ -3526,6 +3647,13 @@ namespace Policies
     _EnsureLoaded(cfg);
 
     reason = GATE_OK;
+
+    if(PolicyRiskCapsRelaxActive(cfg))
+    {
+      _GateDetail(cfg, GATE_CALM, sym, "tester_bypass=1 calm_gate_relaxed=1");
+      return true;
+    }
+
     if(!CfgCalmEnable(cfg)) return true;
 
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
@@ -4923,11 +5051,20 @@ inline void NotifyTradeResult(const double r_multiple)
 
   inline bool RegimeConsensusOK(const Settings &cfg, const string sym)
   {
-    if(!s_regime_gate_on) return true;
+    if(PolicyRegimeBypassActive(cfg))
+    {
+      _GateDetail(cfg, GATE_REGIME, sym, "tester_bypass=1 regime_gate_relaxed=1");
+      return true;
+    }
+
+    if(!s_regime_gate_on)
+      return true;
+
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const double tq = RegimeX::TrendQuality(sym, tf, 60);
-    const double sg = Corr::HysteresisSlopeGuard(sym, tf, 14,23.0,15.0);
-    const bool ok = (tq>=s_reg_tq_min) || (sg>=s_reg_sg_min);
+    const double sg = Corr::HysteresisSlopeGuard(sym, tf, 14, 23.0, 15.0);
+    const bool ok = (tq >= s_reg_tq_min) || (sg >= s_reg_sg_min);
+
     if(!ok)
       _GateDetail(cfg, GATE_REGIME, sym,
                   StringFormat("tq=%.3f sg=%.3f tq_min=%.3f sg_min=%.3f",
@@ -4993,6 +5130,12 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     ratio_out = 0.0;
 
+    if(PolicyLiquidityBypassActive(cfg))
+    {
+      _GateDetail(cfg, GATE_LIQUIDITY, sym, "tester_bypass=1 liquidity_gate_relaxed=1");
+      return true;
+    }
+
     const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
     const int shortP = CfgATRShort(cfg);
 
@@ -5031,6 +5174,13 @@ inline void NotifyTradeResult(const double r_multiple)
    inline bool NewsBlockedNow(const Settings &cfg, const string sym, const datetime now_srv, int &mins_left)
    {
      mins_left = 0;
+
+     if(PolicyNewsBypassActive(cfg))
+     {
+       _GateDetail(cfg, GATE_NEWS, sym, "tester_bypass=1 news_gate_relaxed=1");
+       return false;
+     }
+
      if(!CfgNewsPolicyEnabled(cfg)) return false;
 
      #ifdef NEWSFILTER_AVAILABLE
@@ -5799,6 +5949,28 @@ inline void NotifyTradeResult(const double r_multiple)
       return false;
     }
 
+    if(PolicyInstitutionalBypassActive(cfg))
+    {
+      if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+        out_view.reduced_only = true;
+
+      out_view.gate_reason = GATE_OK;
+      out_view.delay_recommended = false;
+
+      if(StringLen(out_view.route_reason) <= 0)
+        out_view.route_reason = "tester_bypass";
+
+      if(StringLen(out_view.veto_reason) <= 0 || out_view.veto_reason == "none")
+        out_view.veto_reason = "tester_bypass";
+
+      _GateDetail(cfg, GATE_INSTITUTIONAL, sym,
+                  StringFormat("tester_bypass=1 flow_mode=%d direct=%d proxy=%d",
+                               out_view.flow_mode,
+                               (out_view.direct_micro_available ? 1 : 0),
+                               (out_view.proxy_micro_available ? 1 : 0)));
+      return true;
+    }
+
     // Structure-only is always reduced-only from policy perspective.
     if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
       out_view.reduced_only = true;
@@ -6379,14 +6551,8 @@ inline void NotifyTradeResult(const double r_multiple)
       int mins_left = 0;
       const bool ok_news = !Policies::NewsBlockedNow(cfg, mins_left);
 
-      // Router floor (no Router include to avoid cycles)
-      double routerMin =
-      #ifdef CFG_HAS_ROUTER_MIN_SCORE
-          (cfg.router_min_score>0.0 ? cfg.router_min_score : Const::SCORE_ELIGIBILITY_MIN);
-      #else
-          Const::SCORE_ELIGIBILITY_MIN;
-      #endif
-
+      // Router floor (diagnostic only; actual eligibility still lives in Router)
+      const double routerMin = CfgRouterMinScore(cfg);
       const double routerScore = -1.0;
 
       bool   mlEnabled = false;
