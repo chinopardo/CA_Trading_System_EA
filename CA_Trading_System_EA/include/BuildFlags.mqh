@@ -20,7 +20,7 @@
 //
 // To enable tester profile:
 //   Uncomment the next line OR define it in MetaEditor project settings.
-//#define BUILD_PROFILE_TESTER
+   #define BUILD_PROFILE_TESTER
 //
 // Optional: force classic non-strict production during staged migration.
 //   Uncomment the next line OR define it in MetaEditor project settings.
@@ -55,6 +55,40 @@
       #define BUILD_PROFILE_NAME "PRODUCTION_STRICT_INSTITUTIONAL"
    #else
       #define BUILD_PROFILE_NAME "PRODUCTION_CLASSIC"
+   #endif
+#endif
+
+#ifdef BUILD_PROFILE_TESTER
+   #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
+      #define CONFLUENCE_TRANSPORT_IS_PRESENT
+   #endif
+
+   #ifndef BUILD_REQUIRE_STATE_HEADS
+      #define BUILD_REQUIRE_STATE_HEADS
+   #endif
+
+   #ifndef BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+      #define BUILD_REQUIRE_INSTITUTIONAL_BUNDLE_TRANSPORT
+   #endif
+
+   #ifndef INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+      #define INSTITUTIONAL_BUNDLE_TRANSPORT_IS_PRESENT
+   #endif
+
+   #ifndef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+      #define BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE
+   #endif
+
+   #ifndef BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+      #define BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
+   #endif
+
+   #ifndef BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+      #define BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
+   #endif
+
+   #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
+      #define BUILD_ENABLE_PROXY_MICRO_FALLBACK
    #endif
 #endif
 
@@ -221,14 +255,14 @@
 
    // Compile the direct-exec code paths (still not usable unless ALLOW is defined).
    // Uncomment to compile direct execution helpers into strategy binaries:
-   //#define STRAT_DIRECT_EXEC_TESTER_ONLY
+   #define STRAT_DIRECT_EXEC_TESTER_ONLY
 
    // Explicitly allow execution of those helpers (still blocked unless in Tester/Optimization at runtime).
    // Uncomment ONLY when you intentionally want to run strategy direct-exec regression:
-   //#define STRAT_DIRECT_EXEC_ALLOW
+   #define STRAT_DIRECT_EXEC_ALLOW
 
    // Optional: prints standardized denial reasons
-   //#define STRAT_DIRECT_EXEC_VERBOSE
+   #define STRAT_DIRECT_EXEC_VERBOSE
 
 #else
    // Production: hard safety. If someone tries to enable these flags, block the build.

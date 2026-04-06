@@ -67,6 +67,21 @@ namespace StrategyDirectExec
       return (is_tester != 0 || is_opt != 0);
    }
 
+   static bool s_tester_bypass = false;
+
+   inline void SetTesterBypass(const bool on)
+   {
+      s_tester_bypass = on;
+   }
+
+   inline bool TesterBypassActive()
+   {
+      if(!s_tester_bypass)
+         return(false);
+
+      return InTesterEnv();
+   }
+
    // ----------------------------------------------------------------
    // Message helpers (standard phrasing across all strategies).
    // ----------------------------------------------------------------
@@ -90,6 +105,11 @@ namespace StrategyDirectExec
    inline string Msg_NotTester(const string strategy_name)
    {
       return(Prefix(strategy_name) + " direct execution blocked outside Strategy Tester/Optimization (Router owns live trading)");
+   }
+
+   inline string Msg_TesterBypass(const string strategy_name)
+   {
+      return(Prefix(strategy_name) + " direct execution tester bypass active");
    }
 
    inline string Msg_TaggedVeto(const string strategy_name,
@@ -119,6 +139,12 @@ namespace StrategyDirectExec
    inline bool CanRun(const string strategy_name, string &why_out)
    {
       why_out = "";
+
+      if(TesterBypassActive())
+      {
+         why_out = Msg_TesterBypass(strategy_name);
+         return(true);
+      }
 
       if(!Compiled())
       {
@@ -351,6 +377,17 @@ namespace StrategyDirectExec
 //+------------------------------------------------------------------+
 //| Usage reference (copy/paste into each of the 5 strategy files)    |
 //+------------------------------------------------------------------+
+//
+// 0) Optional tester runtime bypass from EA/main file:
+//
+//    // In the main EA file (not in this header):
+//    // input bool InpAllowDirectExec = true;
+//
+//    // Then during init / setup:
+//    // StrategyDirectExec::SetTesterBypass(InpAllowDirectExec);
+//
+//    // This bypass is tester-only at runtime and does not weaken live mode.
+//    // Compile-time direct-exec flags must still be enabled in BuildFlags.mqh.
 //
 // 1) Guard the Execution include in EACH strategy file:
 //

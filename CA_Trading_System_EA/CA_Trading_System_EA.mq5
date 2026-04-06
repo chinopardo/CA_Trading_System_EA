@@ -442,6 +442,7 @@ input bool             InpPolicy_LiqInvalidHardFail = false; // Policy: hard-fai
 
 // Loop controls / heartbeat
 input bool             InpOnlyNewBar            = true; // Loop controls / heartbeat: Only New Bar - Per-symbol last-bar gate
+input bool             InpMain_OnlyNewBar       = true; // Timer routing: require new bar before RouterEvaluateAll on OnTimer
 input int              InpTimerMS               = 150; // Loop controls / heartbeat: Timer MS
 input int              InpServerOffsetMinutes   = 0; // Loop controls / heartbeat: Server Offset Mins
 
@@ -487,12 +488,12 @@ input int              InpBigLossReset_Mins       = 120;   // Reset window minut
 // -------- Registry Router & Strategy knobs --------
 input int              InpRouterMode            = 0;    // Registry Router & Strategy: Mode - 0=MAX,1=WEIGHTED,2=AB
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
-input double           InpRouterMinScore        = 0.22; // Registry Router & Strategy: Min Score
-input int              InpRouterMaxStrats       = 4;   // Registry Router & Strategy: Max Strat
+input double           InpRouterMinScore        = 0.15; // Registry Router & Strategy: Min Score
+input int              InpRouterMaxStrats       = 10;   // Registry Router & Strategy: Max Strat
 input int              InpRouterThresholdPrecedence   = -1;   // Router threshold precedence: -1=legacy bool fallback, 0=manual, 1=profile
 input bool             InpRouterTesterPreferManualThresholds = true; // Tester legacy precedence: true=force manual when precedence=-1, false=allow legacy/profile hints
 input bool             InpRouterTesterClampProfileMin = true; // Tester safety: clamp profile-sourced min_score against manual
-input double           InpRouterTesterClampMaxDelta   = 0.10; // Tester safety: max allowed profile overshoot above manual
+input double           InpRouterTesterClampMaxDelta   = 0.05; // Tester safety: max allowed profile overshoot above manual
 input bool             InpRouterTesterAllowWideProfileMin = false; // Tester safety: allow profile min_score above manual + delta
 
 // Position management
@@ -591,10 +592,10 @@ input double InpRiskMult_WyckoffTurn      = 0.40;
 
 // ================= Confluence Gate (base) =================
 // ---- Main confluence gates
-input int    InpConf_MinCount       = 1;       // Confluence Gate: Min Count
-input double InpConf_MinScore       = 0.35;    // Confluence Gate: Min Score
+input int    InpConf_MinCount       = 0;       // Confluence Gate: Min Count
+input double InpConf_MinScore       = 0.20;    // Confluence Gate: Min Score
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
-input bool   InpMain_RequireChecklist = true;  // Main: require checklist (disable to prevent trade starvation)
+input bool   InpMain_RequireChecklist = false; // Main: require checklist (disabled by default to reduce starvation)
 input int    InpMain_ChecklistSoftFallbackMode = 0; // Main: checklist soft fallback policy (0=auto tester ON/live OFF, 1=force OFF, 2=force ON)
 input bool   InpMain_RequireClassicalConfirm = false; // Main: require classical confirmation layer (optional hard requirement)
 
@@ -761,7 +762,8 @@ input double InpW_TrendRegime          = 1.0;
 
 // ===== Extra confluences (only after Main Trading Strategy confirms) =====
 input bool   InpCF_Extra_Enable        = true; // Exta Confluences: Enable extra confluences only if main logic confirmed
-input int    InpExtra_MinScore     = 1;    // Extra Confluences: Min Needed before entry
+input int    InpExtra_MinScore         = 0;    // Extra Confluences: Min Needed before entry
+input double InpExtra_MinGateScore     = 0.10; // Extra Confluences: Min Score gate before entry
 
 // ---- Extras toggles + weights (used ONLY after main logic confirms) ----
 input bool   InpCF_Liquidity           = true;  // Extra: Liquidity Pools
@@ -1820,16 +1822,10 @@ double EA_RouterClampProfileMinForTester(const double manual_min,
    if(InpRouterTesterAllowWideProfileMin)
       return resolved;
 
-   double max_delta   = MathMax(0.0, InpRouterTesterClampMaxDelta);
-   double max_allowed = MathMin(1.0, manual_min + max_delta);
-
-   if(resolved > max_allowed)
-   {
-      resolved = max_allowed;
+   if(MathAbs(resolved - manual_min) > 0.000001)
       clamped_out = true;
-   }
 
-   return resolved;
+   return manual_min;
 }
 
 double EA_RouterResolvedMinScore()
@@ -2574,10 +2570,10 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.w_correlation = InpW_Correlation;    // also reused by Extra
   cfg.w_news       = InpW_News;            // also reused by Extra
 
-  // ---- Extra (post-main) gate ----
-  cfg.extra_enable     = InpCF_Extra_Enable;
-  cfg.extra_min_needed = MathMax(0, InpExtra_MinScore);
-  cfg.extra_min_score  = MathMax(0.0, InpConf_MinScore);
+   // ---- Extra (post-main) gate ----
+   cfg.extra_enable     = InpCF_Extra_Enable;
+   cfg.extra_min_needed = MathMax(0, InpExtra_MinScore);
+   cfg.extra_min_score  = MathMax(0.0, InpExtra_MinGateScore);
 
   // ---- Extras toggles + weights ----
   cfg.extra_volume_footprint = InpExtra_VolumeFootprint;
@@ -5909,6 +5905,7 @@ void OnTimer()
   {
    datetime now_srv = TimeUtils::NowServer();
    const string router_sym = CanonicalRouterSymbol();
+   const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar);
 
    // Canonical timer-owned orchestration:
    // 1) MarketScannerHub drives scanners/signals
@@ -5938,7 +5935,7 @@ void OnTimer()
    MaybeResetStreaksDaily(now_srv);
 
    DriftAlarm_Check("OnTimer");
-   if(InpOnlyNewBar)
+   if(timer_require_new_bar)
    {
       // Allow timer-driven routing ONCE per bar (fixes sparse-tick stalls).
       const bool use_reg = (g_use_registry && g_cfg.strat_mode != STRAT_MAIN_ONLY);
@@ -5998,14 +5995,14 @@ void OnTimer()
    // Canonical router remains the primary path for tester and live.
    if(UseLegacyProcessSymbolEngine())
    {
-      if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
+      if(!timer_require_new_bar && g_msh_dirty_n <= 0)
       {
          DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
          PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
       }
       
-      if(InpOnlyNewBar && g_msh_dirty_n <= 0)
+      if(timer_require_new_bar && g_msh_dirty_n <= 0)
       {
          const bool nb0 = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
          ProcessSymbol(_Symbol, nb0);
@@ -6035,7 +6032,7 @@ void OnTimer()
    
    // Router mode path (cached-context only).
    // Scanning remains timer-owned by MarketScannerHub above; routing consumes cached state only.
-   if(!InpOnlyNewBar && g_msh_dirty_n <= 0)
+   if(!timer_require_new_bar && g_msh_dirty_n <= 0)
    {
       DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
       PushICTTelemetryToReviewUI(StateGetICTContext(g_state));

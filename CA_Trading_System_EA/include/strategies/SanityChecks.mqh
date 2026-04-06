@@ -218,26 +218,37 @@ namespace Sanity
       return true;
    }
 }
+// -----------------------------------------------------------------------------
+// Legacy placeholder strategy
+// Disabled by default.
+// This file should provide helper checks only unless you explicitly opt in.
+// If another file still tries to register SanityChecks while this class is
+// disabled, remove that registry wiring there.
+// -----------------------------------------------------------------------------
+#ifdef SANITYCHECKS_ENABLE_LEGACY_STRATEGY
+
 #ifndef CA_HAVE_CLASS_SanityChecks
 #define CA_HAVE_CLASS_SanityChecks
 #include "StrategyBase.mqh"
 
 // Conservative "no-trade" checker strategy for legacy wiring.
+// Opt-in only. Do not enable for normal tester/live routing.
 class SanityChecks : public StrategyBase
 {
 protected:
    virtual bool ComputeDirectional(const Direction /*dir*/,
-                                   const Settings  &/*cfg*/,
-                                   StratScore      &ss,
+                                   const Settings &/*cfg*/,
+                                   StratScore &ss,
                                    ConfluenceBreakdown &bd) override
    {
-      // Abstain cleanly; telemetry-friendly.
       StratFinalize(false, 0.0, false, ss, bd);
       return false;
    }
 
    virtual string Name() const { return "SanityChecks"; }
 };
+
 #endif // CA_HAVE_CLASS_SanityChecks
+#endif // SANITYCHECKS_ENABLE_LEGACY_STRATEGY
 
 #endif // SANITY_CHECKS_MQH

@@ -81,6 +81,22 @@
   #define POLICIES_HAS_INSTITUTIONAL_STATE_GATE 1
 #endif
 
+#ifndef POLICY_TESTER_RELAX
+  #define POLICY_TESTER_RELAX 1
+#endif
+
+#ifndef NEWS_ENABLED
+  #define NEWS_ENABLED 1
+#endif
+
+#ifndef VOL_BREAKER_ENABLED
+  #define VOL_BREAKER_ENABLED 1
+#endif
+
+#ifndef SESSION_GATING_ENABLED
+  #define SESSION_GATING_ENABLED 1
+#endif
+
 #ifndef POLICIES_INST_MIN_STATE_QUALITY01
   #define POLICIES_INST_MIN_STATE_QUALITY01 0.35
 #endif
@@ -1085,7 +1101,7 @@ namespace Policies
     r.impact_lambda_max01 = (double)POLICIES_INST_MAX_IMPACT_LAMBDA01;
 
     r.truth_tier01                 = 1.0;
-    r.truth_tier_aggressive_min01  = (double)POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE;
+    r.truth_tier_aggressive_min01  = PolicyTruthTierAggressiveMin01();
     r.execution_posture_mode       = 0;
     r.reduced_only                 = false;
     r.invalidation_event01         = false;
@@ -1166,6 +1182,69 @@ namespace Policies
   // ----------------------------------------------------------------------------
   // Compile-safe Settings getters
   // ----------------------------------------------------------------------------
+  inline bool PolicyTesterRelaxActive()
+  {
+    if(POLICY_TESTER_RELAX == 0)
+      return false;
+
+    if(MQLInfoInteger(MQL_TESTER) != 0)
+      return true;
+
+    if(MQLInfoInteger(MQL_OPTIMIZATION) != 0)
+      return true;
+
+    return false;
+  }
+
+  inline double PolicyStateQualityMin01()
+  {
+    if(PolicyTesterRelaxActive())
+      return 0.30;
+
+    return (double)POLICIES_INST_MIN_STATE_QUALITY01;
+  }
+
+  inline double PolicyTruthTierAggressiveMin01()
+  {
+    if(PolicyTesterRelaxActive())
+      return 0.0;
+
+    return (double)POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE;
+  }
+
+  inline bool PolicySessionGateEnabled()
+  {
+    if(SESSION_GATING_ENABLED == 0)
+      return false;
+
+    if(PolicyTesterRelaxActive())
+      return false;
+
+    return true;
+  }
+
+  inline bool PolicyNewsGateEnabled()
+  {
+    if(NEWS_ENABLED == 0)
+      return false;
+
+    if(PolicyTesterRelaxActive())
+      return false;
+
+    return true;
+  }
+
+  inline bool PolicyVolBreakerGateEnabled()
+  {
+    if(VOL_BREAKER_ENABLED == 0)
+      return false;
+
+    if(PolicyTesterRelaxActive())
+      return false;
+
+    return true;
+  }
+  
   inline int CfgMaxSpreadPts(const Settings &cfg)
   {
     #ifdef CFG_HAS_MAX_SPREAD_POINTS
@@ -1175,14 +1254,17 @@ namespace Policies
     #endif
   }
   
-  inline bool CfgSessionFilter(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_SESSION_FILTER
-      return (bool)cfg.session_filter;
-    #else
-      return false;
-    #endif
-  }
+   inline bool CfgSessionFilter(const Settings &cfg)
+   {
+     if(!PolicySessionGateEnabled())
+       return false;
+   
+     #ifdef CFG_HAS_SESSION_FILTER
+       return (bool)cfg.session_filter;
+     #else
+       return false;
+     #endif
+   }
   
   inline ENUM_TIMEFRAMES CfgTFEntry(const Settings &cfg)
   {
@@ -1380,9 +1462,11 @@ namespace Policies
    inline bool CfgNewsPolicyEnabled(const Settings &cfg)
    {
      // Centralized runtime switch for all policy-side news handling.
-     // Tester-mode suppression must be applied upstream by
-     // ApplyTesterOnlyFeatureOverrides(cfg), which sets cfg.news_on=false.
-     // Policies stays config-driven here and does not add runtime tester checks.
+     // In tester/optimization, POLICY_TESTER_RELAX can suppress policy-side
+     // news vetoes even if cfg.news_on remains enabled upstream.
+     if(!PolicyNewsGateEnabled())
+       return false;
+   
      return CfgNewsOn(cfg);
    }
 
@@ -1984,15 +2068,15 @@ namespace Policies
     return baseMin;
   }
 
-  inline double CfgMicroTruthTierAggressiveMin01(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
-      if(cfg.ms_truth_min_breakout01 > 0.0)
-        return Clamp01(cfg.ms_truth_min_breakout01);
-    #endif
-
-    return (double)POLICIES_INST_MIN_TRUTH_TIER01_AGGRESSIVE;
-  }
+   inline double CfgMicroTruthTierAggressiveMin01(const Settings &cfg)
+   {
+     #ifdef CFG_HAS_MS_ARCHETYPE_TRUTH_THRESHOLDS
+       if(cfg.ms_truth_min_breakout01 > 0.0)
+         return Clamp01(cfg.ms_truth_min_breakout01);
+     #endif
+   
+     return PolicyTruthTierAggressiveMin01();
+   }
 
   inline double CfgMicroProxyDeriskMult01(const Settings &cfg)
   {
@@ -4495,17 +4579,18 @@ inline void NotifyTradeResult(const double r_multiple)
     #endif
     #endif
 
-    // 8) Volatility breaker
-    {
-      double vb_ratio=0.0;
-      if(VolatilityBreaker(cfg, sym, vb_ratio))
-      {
-        _FillATRDiag(cfg, sym, out);
-        out.vol_ratio = vb_ratio;
-        _PolicyVeto(out, GATE_VOLATILITY, CA_POLMASK_VOLATILITY);
-        if(!audit) return false;
-      }
-    }
+   // 8) Volatility breaker
+   if(PolicyVolBreakerGateEnabled())
+   {
+     double vb_ratio=0.0;
+     if(VolatilityBreaker(cfg, sym, vb_ratio))
+     {
+       _FillATRDiag(cfg, sym, out);
+       out.vol_ratio = vb_ratio;
+       _PolicyVeto(out, GATE_VOLATILITY, CA_POLMASK_VOLATILITY);
+       if(!audit) return false;
+     }
+   }
 
     // 9) ADR cap
     {
@@ -5725,13 +5810,13 @@ inline void NotifyTradeResult(const double r_multiple)
       return false;
     }
 
-    // State quality gate
-    if(out_view.state_quality01 < (double)POLICIES_INST_MIN_STATE_QUALITY01)
-    {
-      out_view.delay_recommended = true;
-      out_view.gate_reason = GATE_INSTITUTIONAL;
-      return false;
-    }
+   // State quality gate
+   if(out_view.state_quality01 < PolicyStateQualityMin01())
+   {
+     out_view.delay_recommended = true;
+     out_view.gate_reason = GATE_INSTITUTIONAL;
+     return false;
+   }
 
     // Observability gate
     {
