@@ -1246,6 +1246,64 @@ struct Settings;
   #define CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE 1
 #endif
 
+#ifndef CFG_HAS_ROUTER_DEBUG
+  #define CFG_HAS_ROUTER_DEBUG 1
+#endif
+
+#ifndef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+  #define CFG_HAS_TESTER_DISABLE_NEWS_CORR 1
+#endif
+
+#ifndef CFG_HAS_TESTER_ENFORCE_KILLZONE
+  #define CFG_HAS_TESTER_ENFORCE_KILLZONE 1
+#endif
+
+#ifndef CFG_HAS_TESTERSETTINGS_ENABLE
+  #define CFG_HAS_TESTERSETTINGS_ENABLE 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+  #define CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_PRESET
+  #define CFG_HAS_TESTERSETTINGS_PRESET 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+  #define CFG_HAS_TESTERSETTINGS_LOG_AUDIT 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+  #define CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+  #define CFG_HAS_TESTERSETTINGS_DISABLE_NEWS 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+  #define CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+  #define CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+  #define CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+  #define CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+  #define CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+  #define CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+  #define CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+  #define CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS 1
+#endif
+#ifndef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+  #define CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS 1
+#endif
+
 #ifndef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
   #define CFG_HAS_POLICY_ENABLE_NEWS_BLOCK 1
 #endif
@@ -1501,6 +1559,17 @@ namespace KV {
     return false;
   }
 }
+#endif
+
+#ifndef TESTERSETTINGS_ENUM_DEFINED
+  #define TESTERSETTINGS_ENUM_DEFINED 1
+  enum ENUM_TESTER_SETTINGS_PRESET
+  {
+     TESTER_PRESET_OFF     = 0,
+     TESTER_PRESET_RELAXED = 1,
+     TESTER_PRESET_DEBUG   = 2,
+     TESTER_PRESET_SMOKE   = 3
+  };
 #endif
 
 namespace Config
@@ -2105,7 +2174,77 @@ namespace Config
      double mtf_zone_max_dist_atr;   // e.g., 1.0–1.5 ATR
 
      // Router / gates / require toggles
-     bool enable_hard_gate; double router_min_score; double router_fb_min; int min_features_met;
+      bool   enable_hard_gate;
+      double router_min_score;
+      double router_fb_min;
+      
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+        double router_tester_min_score_override;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        bool   router_debug_log;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        bool   tester_disable_news_and_correlation;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        bool   tester_enforce_killzone;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        bool   tester_settings_enable;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        bool   tester_settings_apply_only_in_tester;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        int    tester_settings_preset;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        bool   tester_settings_log_audit;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        bool   tester_settings_zero_all_min_scores;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        bool   tester_settings_disable_news;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        bool   tester_settings_disable_killzones;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        bool   tester_settings_disable_session_filter;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        bool   tester_settings_disable_correlation;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        bool   tester_settings_reduce_micro_thresholds;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        bool   tester_settings_allow_unavailable_institutional;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        bool   tester_settings_enable_degraded_fallback;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        bool   tester_settings_block_if_unavailable;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        bool   tester_settings_reduce_cooldowns;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        bool   tester_settings_enable_verbose_diagnostics;
+      #endif
+
+      int    min_features_met;
+
      #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
        bool router_use_confl_pool;
      #endif
@@ -2689,20 +2828,17 @@ namespace Config
    
    inline double CfgRouterMinScore(const Settings &cfg)
    {
-      double v = 0.55;
-
+      double v = 0.0;
+   
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
-         v = (cfg.router_min_score > 0.0 ? cfg.router_min_score : 0.55);
+         v = cfg.router_min_score;
       #endif
-
+   
       #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-         if(CfgTesterDegradedModeActive(cfg))
-         {
-            if(cfg.router_tester_min_score_override > 0.0)
-               v = cfg.router_tester_min_score_override;
-         }
+         if(CfgIsTesterRuntime())
+            v = cfg.router_tester_min_score_override;
       #endif
-
+   
       if(v < 0.0) v = 0.0;
       if(v > 1.0) v = 1.0;
       return v;
@@ -2728,16 +2864,22 @@ namespace Config
      #endif
    }
 
-   inline double CfgRouterFallbackMinScore(const Settings &cfg){
-     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-       double v = (cfg.router_fallback_min_score>0.0? cfg.router_fallback_min_score : 0.0);
-     #else
-       double v = 0.0;
-     #endif
-     #ifdef CFG_HAS_ROUTER_FB_MIN
-       if(v<=0.0 && cfg.router_fb_min>0.0) v = cfg.router_fb_min;
-     #endif
-     return (v>0.0? v : 0.50);
+   inline double CfgRouterFallbackMinScore(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+         double v = cfg.router_fallback_min_score;
+      #else
+         double v = -1.0;
+      #endif
+   
+      #ifdef CFG_HAS_ROUTER_FB_MIN
+         if(v < 0.0)
+            v = cfg.router_fb_min;
+      #endif
+   
+      if(v < 0.0) v = 0.0;
+      if(v > 1.0) v = 1.0;
+      return v;
    }
 
    inline bool CfgNewsBlockEnabled(const Settings &cfg)
@@ -2877,7 +3019,28 @@ namespace Config
        return true;
      #endif
    }
+
+   inline bool CfgTesterDisableNewsAndCorrelation(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+         if(CfgIsTesterRuntime())
+            return (cfg.tester_disable_news_and_correlation ? true : false);
+      #endif
+      return false;
+   }
    
+   inline bool CfgEnforceKillzone(const Settings &cfg)
+   {
+      bool v = cfg.mode_enforce_killzone;
+   
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+         if(CfgIsTesterRuntime())
+            v = cfg.tester_enforce_killzone;
+      #endif
+   
+      return (v ? true : false);
+   }
+
    inline bool CfgRouterForceOneNormalVol(const Settings &cfg){
      #ifdef CFG_HAS_ROUTER_FORCE_ONE
        return (bool)cfg.router_force_one_normal_vol;
@@ -3218,29 +3381,28 @@ namespace Config
       // --------------------------------------------------------
       // 1) Normalise fallback threshold + legacy aliases
       // --------------------------------------------------------
-      double primary = 0.0;
-   
+      double primary = -1.0;
+      
       // 1.1 Prefer explicit fallback knob when compiled in
       #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-         if(io.router_fallback_min_score > 0.0)
-            primary = io.router_fallback_min_score;
+         primary = io.router_fallback_min_score;
       #endif
-   
+      
       // 1.2 Legacy alias support (if present)
       #ifdef CFG_HAS_ROUTER_FB_MIN
-         if(primary <= 0.0 && io.router_fb_min > 0.0)
+         if(primary < 0.0)
             primary = io.router_fb_min;
       #endif
-   
-      // 1.3 Derive from router_min_score with a small grace if still unset
+      
+      // 1.3 Derive from router_min_score only if nothing explicit was supplied
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
-         if(primary <= 0.0 && io.router_min_score > 0.0)
-            primary = MathMax(0.0, io.router_min_score - 0.05);
+         if(primary < 0.0)
+            primary = io.router_min_score;
       #endif
-   
+      
       // 1.4 Final defaults & clamp
-      if(primary <= 0.0)
-         primary = 0.50;            // floor for router fallback
+      if(primary < 0.0)
+         primary = 0.0;
       if(primary > 1.0)
          primary = 1.0;
    
@@ -3876,6 +4038,71 @@ namespace Config
      #ifdef CFG_HAS_ROUTER_MIN_SCORE
        cfg.router_min_score = x.router_min_score;
      #endif
+     #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+       cfg.router_tester_min_score_override = x.router_tester_min_score_override;
+     #endif
+      
+     #ifdef CFG_HAS_ROUTER_DEBUG
+       cfg.router_debug_log = x.router_debug_log;
+     #endif
+      
+     #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+       cfg.tester_disable_news_and_correlation = x.tester_disable_news_and_correlation;
+     #endif
+      
+     #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+       cfg.tester_enforce_killzone = x.tester_enforce_killzone;
+     #endif
+
+     #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+       cfg.tester_settings_enable = x.tester_settings_enable;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+       cfg.tester_settings_apply_only_in_tester = x.tester_settings_apply_only_in_tester;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+       cfg.tester_settings_preset = x.tester_settings_preset;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+       cfg.tester_settings_log_audit = x.tester_settings_log_audit;
+     #endif
+     
+     #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+       cfg.tester_settings_zero_all_min_scores = x.tester_settings_zero_all_min_scores;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+       cfg.tester_settings_disable_news = x.tester_settings_disable_news;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+       cfg.tester_settings_disable_killzones = x.tester_settings_disable_killzones;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+       cfg.tester_settings_disable_session_filter = x.tester_settings_disable_session_filter;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+       cfg.tester_settings_disable_correlation = x.tester_settings_disable_correlation;
+     #endif
+     
+     #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+       cfg.tester_settings_reduce_micro_thresholds = x.tester_settings_reduce_micro_thresholds;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+       cfg.tester_settings_allow_unavailable_institutional = x.tester_settings_allow_unavailable_institutional;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+       cfg.tester_settings_enable_degraded_fallback = x.tester_settings_enable_degraded_fallback;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+       cfg.tester_settings_block_if_unavailable = x.tester_settings_block_if_unavailable;
+     #endif
+     
+     #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+       cfg.tester_settings_reduce_cooldowns = x.tester_settings_reduce_cooldowns;
+     #endif
+     #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+       cfg.tester_settings_enable_verbose_diagnostics = x.tester_settings_enable_verbose_diagnostics;
+     #endif
+
      // Some codebases name it differently — set both if present
      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
        cfg.router_fallback_min_score = x.router_fb_min;
@@ -4156,8 +4383,8 @@ namespace Config
      x.main_liquidity_event_weight = 0.15;
 
      x.ms_flow_dir_min                = 0.10;
-     x.ms_max_toxicity01              = 0.68;
-     x.ms_max_observability_penalty01 = 0.55;
+     x.ms_max_toxicity01              = 0.85;
+     x.ms_max_observability_penalty01 = 0.85;
      x.ms_max_xvenue_dislocation01    = 0.65;
 
      x.ms_profile_weight              = 0.10;
@@ -4503,14 +4730,81 @@ namespace Config
      x.w_mtf_zone_h4     = 0.07;
      x.mtf_zone_max_dist_atr = 1.25;
    
-     x.router_min_score=0.55; x.router_fb_min=0.50;
-   
-     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
-       x.router_use_confl_pool = false;   // default OFF (no behavior change)
-     #endif
-     #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
-       x.router_pool_blend_w   = 0.0;     // default 0 (no influence)
-     #endif
+     x.router_min_score = 0.0;
+     x.router_fb_min    = 0.0;
+      
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+        x.router_tester_min_score_override = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        x.router_debug_log = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        x.tester_disable_news_and_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        x.tester_enforce_killzone = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        x.tester_settings_enable = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        x.tester_settings_apply_only_in_tester = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        x.tester_settings_preset = TESTER_PRESET_RELAXED;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        x.tester_settings_log_audit = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        x.tester_settings_zero_all_min_scores = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        x.tester_settings_disable_news = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        x.tester_settings_disable_killzones = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        x.tester_settings_disable_session_filter = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        x.tester_settings_disable_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        x.tester_settings_reduce_micro_thresholds = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        x.tester_settings_allow_unavailable_institutional = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        x.tester_settings_enable_degraded_fallback = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        x.tester_settings_block_if_unavailable = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        x.tester_settings_reduce_cooldowns = false;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        x.tester_settings_enable_verbose_diagnostics = true;
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
+        x.router_use_confl_pool = false;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+        x.router_pool_blend_w = 0.0;
+      #endif
 
      x.london_start_local="08:00";
      x.london_end_local  ="17:00";
@@ -5260,34 +5554,33 @@ namespace Config
       cfg.ms_sd_ob_invalidation_gate_on= true;
       cfg.ms_liquidity_trap_gate_on    = true;
 
-      // Canonical thresholds
-      cfg.ms_vpin_threshold            = 0.65;
-      cfg.ms_flow_dir_min              = 0.10;
-      cfg.ms_max_toxicity01            = 0.68;
-
-      cfg.ms_resil_threshold           = 0.35;
-      cfg.ms_ofi_weight                = 0.25;
-      cfg.ms_ofi_abs_min               = 0.20;
-      cfg.ms_obi_abs_min               = 0.20;
-      cfg.ms_cvd_z_abs_min             = 1.00;
-      cfg.ms_absorption_min01          = 0.25;
-      cfg.ms_impact_window             = 50;
-      cfg.ms_max_impact_beta01         = 0.85;
-      cfg.ms_max_impact_lambda01       = 0.85;
-      cfg.ms_metaorder_cost_cap01      = 0.70;
-
-      cfg.ms_min_observability01       = 0.30;
-      cfg.ms_max_observability_penalty01 = 0.55;
-      cfg.ms_min_venue_scope01         = 0.30;
-      cfg.ms_min_truth_tier01          = 0.25;
-      cfg.ms_max_xvenue_dislocation01  = 0.65;
-
-      cfg.ms_min_darkpool01            = 0.20;
-      cfg.ms_max_darkpool_contradiction01 = 0.65;
-
-      cfg.ms_sd_ob_invalidation_max01  = 0.80;
-      cfg.ms_liquidity_vacuum_max01    = 0.70;
-      cfg.ms_liquidity_hunt_max01      = 0.70;
+      cfg.ms_vpin_threshold              = 0.80;
+      cfg.ms_flow_dir_min                = 0.10;
+      cfg.ms_max_toxicity01              = 0.85;
+      
+      cfg.ms_resil_threshold             = 0.10;
+      cfg.ms_ofi_weight                  = 0.25;
+      cfg.ms_ofi_abs_min                 = 0.20;
+      cfg.ms_obi_abs_min                 = 0.20;
+      cfg.ms_cvd_z_abs_min               = 1.00;
+      cfg.ms_absorption_min01            = 0.0;
+      cfg.ms_impact_window               = 50;
+      cfg.ms_max_impact_beta01           = 1.00;
+      cfg.ms_max_impact_lambda01         = 1.00;
+      cfg.ms_metaorder_cost_cap01        = 0.90;
+      
+      cfg.ms_min_observability01         = 0.05;
+      cfg.ms_max_observability_penalty01 = 0.85;
+      cfg.ms_min_venue_scope01           = 0.10;
+      cfg.ms_min_truth_tier01            = 0.05;
+      cfg.ms_max_xvenue_dislocation01    = 0.85;
+      
+      cfg.ms_min_darkpool01              = 0.0;
+      cfg.ms_max_darkpool_contradiction01= 0.90;
+      
+      cfg.ms_sd_ob_invalidation_max01    = 1.00;
+      cfg.ms_liquidity_vacuum_max01      = 0.90;
+      cfg.ms_liquidity_hunt_max01        = 0.90;
 
       cfg.ms_profile_weight            = 0.10;
       cfg.ms_liquidity_event_weight    = 0.08;
@@ -7247,19 +7540,35 @@ namespace Config
      if(CfgTesterDegradedModeActive(cfg) && cfg.ict_tester_score_boost > 0.0)
         warns += "tester degraded mode active; ICT framework may apply ict_tester_score_boost during score composition.\n";
    #endif
-
+   
    #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-     if(CfgTesterDegradedModeActive(cfg) && cfg.router_tester_min_score_override > 0.0)
-        warns += "tester degraded mode active; CfgRouterMinScore() will use router_tester_min_score_override instead of router_min_score.\n";
+     if(CfgIsTesterRuntime())
+        warns += "tester runtime active; CfgRouterMinScore() will use router_tester_min_score_override.\n";
+   #endif
+   
+   #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+     if(CfgTesterDisableNewsAndCorrelation(cfg))
+        warns += "tester runtime active; news and correlation gates/weights are disabled by tester_disable_news_and_correlation.\n";
+   #endif
+   
+   #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+     if(CfgIsTesterRuntime() && !cfg.tester_enforce_killzone)
+        warns += "tester runtime active; killzone enforcement is disabled by tester_enforce_killzone=false.\n";
    #endif
    
    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
      if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_news_block)
         warns += "tester degraded mode active; news block is disabled at config layer.\n";
    #endif
+   
    #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
      if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_regime_gate)
         warns += "tester degraded mode active; regime gate is disabled at config layer.\n";
+   #endif
+   
+   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+     if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_liquidity_gate)
+        warns += "tester degraded mode active; liquidity gate is disabled at config layer.\n";
    #endif
    #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
      if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_liquidity_gate)
@@ -10218,68 +10527,176 @@ namespace Config
       if(cfg.confl_blend_others>0.50) cfg.confl_blend_others=0.50;
     #endif
 
-    // Router hint defaults (compile-safe)
-    #ifdef CFG_HAS_ROUTER_MIN_SCORE
-      //if(cfg.router_min_score<=0.0) cfg.router_min_score = 0.55;
-      if(cfg.router_min_score < 0.0) cfg.router_min_score = 0.0;
-      if(cfg.router_min_score > 1.0) cfg.router_min_score = 1.0;
-    #endif
-    #ifdef CFG_HAS_ROUTER_MAX_STRATS
-      if(cfg.router_max_strats<=0)  cfg.router_max_strats = 12;
-    #endif
-    #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
-      if(cfg.max_positions_per_symbol < 0) cfg.max_positions_per_symbol = 0;
-    #endif
-    #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
-      if(cfg.max_positions_total < 0) cfg.max_positions_total = 0;
-    #endif
-    #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
-      if(cfg.router_eval_all_mode < 0) cfg.router_eval_all_mode = 0;
-      if(cfg.router_eval_all_mode > 1) cfg.router_eval_all_mode = 1;
-    #endif
+   // Router hint defaults (compile-safe)
+   #ifdef CFG_HAS_ROUTER_MIN_SCORE
+     if(cfg.router_min_score < 0.0) cfg.router_min_score = 0.0;
+     if(cfg.router_min_score > 1.0) cfg.router_min_score = 1.0;
+   #endif
    
-    #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-       if(cfg.router_fallback_min_score < 0.0) cfg.router_fallback_min_score = 0.0;
-       if(cfg.router_fallback_min_score > 1.0) cfg.router_fallback_min_score = 1.0;
-    #endif
+   #ifdef CFG_HAS_ROUTER_MAX_STRATS
+     if(cfg.router_max_strats <= 0) cfg.router_max_strats = 5;
+   #endif
    
-    #ifdef CFG_HAS_ROUTER_FB_MIN
-       if(cfg.router_fb_min < 0.0) cfg.router_fb_min = 0.0;
-       if(cfg.router_fb_min > 1.0) cfg.router_fb_min = 1.0;
-    #endif
+   #ifdef CFG_HAS_MAX_POSITIONS_PER_SYMBOL
+     if(cfg.max_positions_per_symbol < 0) cfg.max_positions_per_symbol = 0;
+   #endif
+   
+   #ifdef CFG_HAS_MAX_POSITIONS_TOTAL
+     if(cfg.max_positions_total < 0) cfg.max_positions_total = 0;
+   #endif
+   
+   #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+     if(cfg.router_eval_all_mode < 0) cfg.router_eval_all_mode = 0;
+     if(cfg.router_eval_all_mode > 1) cfg.router_eval_all_mode = 1;
+   #endif
+   
+   #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+     if(cfg.router_fallback_min_score < 0.0) cfg.router_fallback_min_score = 0.0;
+     if(cfg.router_fallback_min_score > 1.0) cfg.router_fallback_min_score = 1.0;
+   #endif
+   
+   #ifdef CFG_HAS_ROUTER_FB_MIN
+     if(cfg.router_fb_min < 0.0) cfg.router_fb_min = 0.0;
+     if(cfg.router_fb_min > 1.0) cfg.router_fb_min = 1.0;
+   #endif
+   
+   #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+     if(cfg.router_tester_min_score_override < 0.0) cfg.router_tester_min_score_override = 0.0;
+     if(cfg.router_tester_min_score_override > 1.0) cfg.router_tester_min_score_override = 1.0;
+   #endif
+   
+   #ifdef CFG_HAS_ROUTER_DEBUG
+     cfg.router_debug_log = (cfg.router_debug_log ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+     cfg.enable_news_block = (cfg.enable_news_block ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+     cfg.enable_regime_gate = (cfg.enable_regime_gate ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+     cfg.enable_liquidity_gate = (cfg.enable_liquidity_gate ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+     cfg.tester_disable_news_and_correlation = (cfg.tester_disable_news_and_correlation ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+     cfg.tester_enforce_killzone = (cfg.tester_enforce_killzone ? true : false);
+   #endif
 
-    #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-      if(cfg.router_tester_min_score_override < 0.0) cfg.router_tester_min_score_override = 0.0;
-      if(cfg.router_tester_min_score_override > 1.0) cfg.router_tester_min_score_override = 1.0;
-    #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+     cfg.tester_settings_enable = (cfg.tester_settings_enable ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+     cfg.tester_settings_apply_only_in_tester = (cfg.tester_settings_apply_only_in_tester ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+     if(cfg.tester_settings_preset < TESTER_PRESET_OFF)
+        cfg.tester_settings_preset = TESTER_PRESET_OFF;
+     if(cfg.tester_settings_preset > TESTER_PRESET_SMOKE)
+        cfg.tester_settings_preset = TESTER_PRESET_SMOKE;
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+     cfg.tester_settings_log_audit = (cfg.tester_settings_log_audit ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+     cfg.tester_settings_zero_all_min_scores = (cfg.tester_settings_zero_all_min_scores ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+     cfg.tester_settings_disable_news = (cfg.tester_settings_disable_news ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+     cfg.tester_settings_disable_killzones = (cfg.tester_settings_disable_killzones ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+     cfg.tester_settings_disable_session_filter = (cfg.tester_settings_disable_session_filter ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+     cfg.tester_settings_disable_correlation = (cfg.tester_settings_disable_correlation ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+     cfg.tester_settings_reduce_micro_thresholds = (cfg.tester_settings_reduce_micro_thresholds ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+     cfg.tester_settings_allow_unavailable_institutional = (cfg.tester_settings_allow_unavailable_institutional ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+     cfg.tester_settings_enable_degraded_fallback = (cfg.tester_settings_enable_degraded_fallback ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+     cfg.tester_settings_block_if_unavailable = (cfg.tester_settings_block_if_unavailable ? true : false);
+   #endif
+   
+   #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+     cfg.tester_settings_reduce_cooldowns = (cfg.tester_settings_reduce_cooldowns ? true : false);
+   #endif
+   #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+     cfg.tester_settings_enable_verbose_diagnostics = (cfg.tester_settings_enable_verbose_diagnostics ? true : false);
+   #endif
 
-    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
-      cfg.enable_news_block = (cfg.enable_news_block ? true : false);
-    #endif
-    #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
-      cfg.enable_regime_gate = (cfg.enable_regime_gate ? true : false);
-    #endif
-    #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
-      cfg.enable_liquidity_gate = (cfg.enable_liquidity_gate ? true : false);
-    #endif
-
-    if(CfgTesterDegradedModeActive(cfg))
-    {
-      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
-        cfg.enable_news_block = false;
-      #endif
-      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
-        cfg.enable_regime_gate = false;
-      #endif
-      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
-        cfg.enable_liquidity_gate = false;
-      #endif
-    }
-
-    #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
-      if(cfg.router_pool_blend_w < 0.0) cfg.router_pool_blend_w = 0.0;
-      if(cfg.router_pool_blend_w > 1.0) cfg.router_pool_blend_w = 1.0;
-    #endif
+   if(CfgTesterDegradedModeActive(cfg))
+   {
+     #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+       cfg.enable_news_block = false;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+       cfg.enable_regime_gate = false;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+       cfg.enable_liquidity_gate = false;
+     #endif
+   }
+   
+   if(CfgTesterDisableNewsAndCorrelation(cfg))
+   {
+     cfg.news_on = false;
+     cfg.newsFilterEnabled = false;
+     cfg.scan_news_enable = false;
+   
+     #ifdef CFG_HAS_EXTRA_NEWS
+       cfg.extra_news = false;
+     #endif
+     #ifdef CFG_HAS_W_NEWS
+       cfg.w_news = 0.0;
+     #endif
+     #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+       cfg.main_news_hard_veto = false;
+     #endif
+     #ifdef CFG_HAS_NEWS_BACKEND
+       cfg.news_backend_mode = 0;
+       cfg.news_mvp_no_block = true;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+       cfg.enable_news_block = false;
+     #endif
+   
+     cfg.corr_softveto_enable = false;
+   
+     #ifdef CFG_HAS_CORR_VETO
+       cfg.corr_veto_on = false;
+     #endif
+     #ifdef CFG_HAS_EXTRA_CORR
+       cfg.extra_correlation = false;
+     #endif
+     #ifdef CFG_HAS_W_CORR
+       cfg.w_correlation = 0.0;
+     #endif
+     #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+       cfg.enable_regime_gate = false;
+     #endif
+   }
+   
+   #ifdef CFG_HAS_ROUTER_POOL_BLEND_W
+     if(cfg.router_pool_blend_w < 0.0) cfg.router_pool_blend_w = 0.0;
+     if(cfg.router_pool_blend_w > 1.0) cfg.router_pool_blend_w = 1.0;
+   #endif
    
     #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
       int pu = 0;
@@ -10924,18 +11341,93 @@ namespace Config
      // default = manual so older behavior (trade_selector) remains unchanged
      cfg.direction_bias_mode = (int)DIRM_MANUAL_SELECTOR;
      
-     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-       cfg.router_fallback_min_score = 0.0;
-     #endif
-     #ifdef CFG_HAS_ROUTER_FB_MIN
-       cfg.router_fb_min = 0.0;
-     #endif
-     #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-       cfg.router_tester_min_score_override = 0.15;
-     #endif
-     #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
-      cfg.router_eval_all_mode = 0; // default: current behavior (best-of-all-symbols)
-     #endif
+      #ifdef CFG_HAS_ROUTER_MIN_SCORE
+        cfg.router_min_score = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
+        cfg.router_fallback_min_score = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_FB_MIN
+        cfg.router_fb_min = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+        cfg.router_tester_min_score_override = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_MAX_STRATS
+        cfg.router_max_strats = 5;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        cfg.router_debug_log = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        cfg.tester_disable_news_and_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        cfg.tester_enforce_killzone = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        cfg.tester_settings_enable = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        cfg.tester_settings_apply_only_in_tester = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        cfg.tester_settings_preset = TESTER_PRESET_RELAXED;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        cfg.tester_settings_log_audit = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        cfg.tester_settings_zero_all_min_scores = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        cfg.tester_settings_disable_news = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        cfg.tester_settings_disable_killzones = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        cfg.tester_settings_disable_session_filter = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        cfg.tester_settings_disable_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        cfg.tester_settings_reduce_micro_thresholds = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        cfg.tester_settings_allow_unavailable_institutional = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        cfg.tester_settings_enable_degraded_fallback = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        cfg.tester_settings_block_if_unavailable = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        cfg.tester_settings_reduce_cooldowns = false;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        cfg.tester_settings_enable_verbose_diagnostics = true;
+      #endif
+
+      cfg.mode_enforce_killzone = true;
+      
+      #ifdef CFG_HAS_ROUTER_EVAL_ALL_MODE
+        cfg.router_eval_all_mode = 0;
+      #endif
+      
      // Router profile hint fields: start clean (extras may override)
      #ifdef CFG_HAS_ROUTER_HINTS
        cfg.router_profile_alias          = "";
@@ -11396,8 +11888,74 @@ namespace Config
    {
      BuildExtras ex; BuildExtrasDefaults(ex);
      // Defaults already mirror neutral behaviour; tweak a couple of sensible baselines:
-     ex.router_min_score        = 0.55;
-     ex.router_fb_min           = 0.50;
+     ex.router_min_score = 0.0;
+     ex.router_fb_min    = 0.0;
+      
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+        ex.router_tester_min_score_override = 0.0;
+      #endif
+      
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        ex.router_debug_log = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        ex.tester_disable_news_and_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        ex.tester_enforce_killzone = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        ex.tester_settings_enable = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        ex.tester_settings_apply_only_in_tester = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        ex.tester_settings_preset = TESTER_PRESET_RELAXED;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        ex.tester_settings_log_audit = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        ex.tester_settings_zero_all_min_scores = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        ex.tester_settings_disable_news = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        ex.tester_settings_disable_killzones = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        ex.tester_settings_disable_session_filter = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        ex.tester_settings_disable_correlation = true;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        ex.tester_settings_reduce_micro_thresholds = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        ex.tester_settings_allow_unavailable_institutional = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        ex.tester_settings_enable_degraded_fallback = true;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        ex.tester_settings_block_if_unavailable = false;
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        ex.tester_settings_reduce_cooldowns = false;
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        ex.tester_settings_enable_verbose_diagnostics = true;
+      #endif
+
      ex.london_start_local      = "08:00";
      ex.london_end_local        = "17:00";
      ex.atr_period_2            = 14;
@@ -13452,6 +14010,67 @@ namespace Config
     #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
       s+=",routerMinTs="+DoubleToString(c.router_tester_min_score_override,3);
     #endif
+    #ifdef CFG_HAS_ROUTER_DEBUG
+      s+=",routerDbg="+BoolStr(c.router_debug_log);
+    #endif
+   
+    #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+      s+=",testerNC="+BoolStr(c.tester_disable_news_and_correlation);
+    #endif
+   
+    #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+      s+=",testerKZ="+BoolStr(c.tester_enforce_killzone);
+    #endif
+
+    #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+      s+=",tsEn="+BoolStr(c.tester_settings_enable);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+      s+=",tsOnly="+BoolStr(c.tester_settings_apply_only_in_tester);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+      s+=",tsPre="+IntegerToString(c.tester_settings_preset);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+      s+=",tsAudit="+BoolStr(c.tester_settings_log_audit);
+    #endif
+    
+    #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+      s+=",tsZero="+BoolStr(c.tester_settings_zero_all_min_scores);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+      s+=",tsNews="+BoolStr(c.tester_settings_disable_news);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+      s+=",tsKZ="+BoolStr(c.tester_settings_disable_killzones);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+      s+=",tsSess="+BoolStr(c.tester_settings_disable_session_filter);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+      s+=",tsCorr="+BoolStr(c.tester_settings_disable_correlation);
+    #endif
+    
+    #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+      s+=",tsMicro="+BoolStr(c.tester_settings_reduce_micro_thresholds);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+      s+=",tsUnav="+BoolStr(c.tester_settings_allow_unavailable_institutional);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+      s+=",tsDgFb="+BoolStr(c.tester_settings_enable_degraded_fallback);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+      s+=",tsBlk="+BoolStr(c.tester_settings_block_if_unavailable);
+    #endif
+    
+    #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+      s+=",tsCool="+BoolStr(c.tester_settings_reduce_cooldowns);
+    #endif
+    #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+      s+=",tsVerb="+BoolStr(c.tester_settings_enable_verbose_diagnostics);
+    #endif
+
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       s+=",routerCap="+IntegerToString(c.router_max_strats);
     #endif
@@ -13626,7 +14245,8 @@ namespace Config
 
   inline void ProfileSpecDefaults(ProfileSpec &p)
   {
-    p.min_score = 0.55; p.max_strats=12;
+    p.min_score = 0.05;
+    p.max_strats = 5;
     p.fallback_min_confluence = 0.0;
     p.fallback_max_span       = 0;
 
@@ -13653,12 +14273,13 @@ namespace Config
     ProfileSpecDefaults(out);
     if(prof==PROF_TREND)
     {
-      out.fallback_min_confluence = 0.55;
+      out.fallback_min_confluence = 0.0;
       out.fallback_max_span       = 6;
+      out.max_strats              = 5;
       out.w_trend=1.30; out.w_trend_bos=1.20;
       out.w_mr=0.70; out.w_mr_range=0.70;
       out.w_squeeze=1.10; out.w_orb=1.00;
-      out.min_score = 0.58;
+      out.min_score = 0.0;
       out.th_trend=60; out.th_trend_bos=120; out.th_mr=180; out.th_mr_range=300;
       
       // ICT: trend profile de-emphasizes reversals, keeps SB moderate
@@ -13672,12 +14293,13 @@ namespace Config
     }
     else if(prof==PROF_MR)
     {
-      out.fallback_min_confluence = 0.52;
+      out.fallback_min_confluence = 0.0;
       out.fallback_max_span       = 6;
+      out.max_strats              = 5;
       out.w_trend=0.70; out.w_trend_bos=0.70;
       out.w_mr=1.25; out.w_mr_range=1.20;
       out.w_squeeze=1.05; out.w_orb=0.70;
-      out.min_score = 0.56;
+      out.min_score = 0.05;
       out.th_trend=240; out.th_trend_bos=300; out.th_mr=60; out.th_mr_range=90;
       
       // ICT: MR profile leans into Wyckoff turns
@@ -13691,12 +14313,13 @@ namespace Config
     }
     else if(prof==PROF_SCALP)
     {
-      out.fallback_min_confluence = 0.50;
+      out.fallback_min_confluence = 0.0;
       out.fallback_max_span       = 4;
+      out.max_strats              = 5;
       out.w_trend=1.05; out.w_trend_bos=0.90;
       out.w_mr=1.10; out.w_mr_range=1.10;
       out.w_squeeze=1.10; out.w_orb=0.60;
-      out.min_score = 0.53;
+      out.min_score = 0.05;
       out.th_trend=30; out.th_trend_bos=45; out.th_mr=30; out.th_mr_range=45;
       out.th_squeeze=180; out.th_orb=900; out.th_sweepchoch=300; out.th_vsa=300;
       out.th_corrdiv=300; out.th_pairslite=300;
@@ -13783,12 +14406,12 @@ namespace Config
       if(overwrite || cfg.router_max_strats<=0)  cfg.router_max_strats=p.max_strats;
     #endif
     #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-      if(overwrite || cfg.router_fallback_min_score<=0.0)
-        cfg.router_fallback_min_score = MathMax(0.0, p.min_score - 0.05);
+      if(overwrite || cfg.router_fallback_min_score <= 0.0)
+        cfg.router_fallback_min_score = MathMax(0.0, p.min_score);
     #endif
     #ifdef CFG_HAS_ROUTER_FB_MIN
-      if(overwrite || cfg.router_fb_min<=0.0)
-        cfg.router_fb_min = MathMax(0.0, p.min_score - 0.05);
+      if(overwrite || cfg.router_fb_min <= 0.0)
+        cfg.router_fb_min = MathMax(0.0, p.min_score);
     #endif
     #ifdef CFG_HAS_ROUTER_HINTS
        if(overwrite || cfg.router_fallback_min_confluence <= 0.0)
@@ -14932,6 +15555,67 @@ namespace Config
       #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
         else if(k=="gDbg") cfg.ict_score_debug_log = ToBool(v);
       #endif
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        else if(k=="routerDbg") cfg.router_debug_log = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        else if(k=="testerNC") cfg.tester_disable_news_and_correlation = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        else if(k=="testerKZ") cfg.tester_enforce_killzone = ToBool(v);
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        else if(k=="tsEn") cfg.tester_settings_enable = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        else if(k=="tsOnly") cfg.tester_settings_apply_only_in_tester = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        else if(k=="tsPre") cfg.tester_settings_preset = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        else if(k=="tsAudit") cfg.tester_settings_log_audit = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        else if(k=="tsZero") cfg.tester_settings_zero_all_min_scores = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        else if(k=="tsNews") cfg.tester_settings_disable_news = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        else if(k=="tsKZ") cfg.tester_settings_disable_killzones = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        else if(k=="tsSess") cfg.tester_settings_disable_session_filter = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        else if(k=="tsCorr") cfg.tester_settings_disable_correlation = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        else if(k=="tsMicro") cfg.tester_settings_reduce_micro_thresholds = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        else if(k=="tsUnav") cfg.tester_settings_allow_unavailable_institutional = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        else if(k=="tsDgFb") cfg.tester_settings_enable_degraded_fallback = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        else if(k=="tsBlk") cfg.tester_settings_block_if_unavailable = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        else if(k=="tsCool") cfg.tester_settings_reduce_cooldowns = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        else if(k=="tsVerb") cfg.tester_settings_enable_verbose_diagnostics = ToBool(v);
+      #endif
+
       #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
         else if(k=="gArm") cfg.ict_arm_on_signal = ToBool(v);
       #endif
@@ -15801,6 +16485,67 @@ namespace Config
       #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
         else if(k=="routerMinTs") cfg.router_tester_min_score_override = ToDouble(v);
       #endif
+      #ifdef CFG_HAS_ROUTER_DEBUG
+        else if(k=="routerDbg") cfg.router_debug_log = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+        else if(k=="testerNC") cfg.tester_disable_news_and_correlation = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+        else if(k=="testerKZ") cfg.tester_enforce_killzone = ToBool(v);
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+        else if(k=="tsEn") cfg.tester_settings_enable = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+        else if(k=="tsOnly") cfg.tester_settings_apply_only_in_tester = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+        else if(k=="tsPre") cfg.tester_settings_preset = ToInt(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+        else if(k=="tsAudit") cfg.tester_settings_log_audit = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+        else if(k=="tsZero") cfg.tester_settings_zero_all_min_scores = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+        else if(k=="tsNews") cfg.tester_settings_disable_news = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+        else if(k=="tsKZ") cfg.tester_settings_disable_killzones = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+        else if(k=="tsSess") cfg.tester_settings_disable_session_filter = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+        else if(k=="tsCorr") cfg.tester_settings_disable_correlation = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+        else if(k=="tsMicro") cfg.tester_settings_reduce_micro_thresholds = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+        else if(k=="tsUnav") cfg.tester_settings_allow_unavailable_institutional = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+        else if(k=="tsDgFb") cfg.tester_settings_enable_degraded_fallback = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+        else if(k=="tsBlk") cfg.tester_settings_block_if_unavailable = ToBool(v);
+      #endif
+      
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+        else if(k=="tsCool") cfg.tester_settings_reduce_cooldowns = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+        else if(k=="tsVerb") cfg.tester_settings_enable_verbose_diagnostics = ToBool(v);
+      #endif
+
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
         else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
       #endif
@@ -17685,7 +18430,11 @@ struct Settings
       bool news_neutral_on_no_data;  // missing data => neutral (no block)
       bool news_allow_cached; // allow using cached broker-calendar data when fresh fetch is unavailable
   #endif
-  
+
+#ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+  bool tester_disable_news_and_correlation; // tester-only bypass for news/correlation gating + weights
+#endif
+
   // Extra: Correlation gate
   string             corr_ref_symbol;          // explicit reference symbol, if any
   int                corr_lookback;            // e.g., 120..300 bars
@@ -18388,6 +19137,55 @@ struct Settings
     double            router_tester_min_score_override;   // tester degraded runtime floor; 0.0 = use live router_min_score
   #endif
 
+  #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+    bool            tester_settings_enable;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+    bool            tester_settings_apply_only_in_tester;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+    int             tester_settings_preset;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+    bool            tester_settings_log_audit;
+  #endif
+  
+  #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+    bool            tester_settings_zero_all_min_scores;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+    bool            tester_settings_disable_news;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+    bool            tester_settings_disable_killzones;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+    bool            tester_settings_disable_session_filter;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+    bool            tester_settings_disable_correlation;
+  #endif
+  
+  #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+    bool            tester_settings_reduce_micro_thresholds;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+    bool            tester_settings_allow_unavailable_institutional;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+    bool            tester_settings_enable_degraded_fallback;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+    bool            tester_settings_block_if_unavailable;
+  #endif
+  
+  #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+    bool            tester_settings_reduce_cooldowns;
+  #endif
+  #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+    bool            tester_settings_enable_verbose_diagnostics;
+  #endif
+
   #ifdef CFG_HAS_ROUTER_HINTS
      string router_profile_alias;           // profile alias used for fallback hinting ("trend", "mr", ...)
      double router_fallback_min_confluence; // 0..1; 0 = ignore / unused
@@ -18624,6 +19422,9 @@ struct Settings
    bool mode_use_po3;
    bool mode_use_silverbullet;
    bool mode_enforce_killzone;
+#ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+  bool tester_enforce_killzone;
+#endif
    bool mode_use_ICT_bias;
    bool mode_use_continuation;
    bool mode_use_wyckoff_turn;

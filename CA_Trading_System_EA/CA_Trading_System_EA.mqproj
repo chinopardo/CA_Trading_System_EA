@@ -448,6 +448,11 @@
       "path":"CA_Trading_System_EA.mq5",
       "compile":true,
       "relative_to_project":true
+    },
+    {
+      "path":"include\\TesterSettings.mqh",
+      "compile":false,
+      "relative_to_project":true
     }
   ]
 }

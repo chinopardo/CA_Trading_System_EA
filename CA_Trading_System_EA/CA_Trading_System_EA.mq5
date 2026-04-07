@@ -19,6 +19,7 @@
 // ------------------- Engine & Infra includes ----------------------
 #include <Trade/Trade.mqh>
 #include "include/Config.mqh"
+#include "include/TesterSettings.mqh"
 #include "include/Types.mqh"
 #include "include/TimeUtils.mqh"
 #include <DebugChecklist.mqh>
@@ -157,7 +158,7 @@ void PublishMicrostructureSnapshot(const string sym);
 string CanonicalRouterSymbol();
 bool   MicrostructureGateOK(const string sym, const datetime now_srv, const datetime required_bar_time, string &detail);
 
-void ApplyTesterOnlyFeatureOverrides(Settings &cfg);
+void ApplyTesterOnlyFeatureOverrides(Settings &cfg); // legacy bridge -> TesterSettings::ApplyToConfig
 void RefreshICTContext(EAState &st);
 
 bool RuntimeMainChecklistSoftFallbackEnabled();
@@ -4098,9 +4099,11 @@ void FinalizeRuntimeSettings()
       g_cfg = S; // keep both identical after tester overlay
    }
 
-   // Final tester-only runtime overrides must run AFTER tester presets/cases
-   // and BEFORE registry/router sync so downstream gates see the final state.
-   ApplyTesterOnlyFeatureOverrides(S);
+   // 10A) Central tester-only override layer:
+   // Apply AFTER profile resolution + tester preset/case overlays
+   // and BEFORE registry/router boot so downstream gates consume
+   // the final effective runtime config.
+   TesterSettings::ApplyToConfig(S);
    g_cfg = S;
 
    #ifdef CFG_HAS_STRUCT_VETO
@@ -4865,66 +4868,10 @@ bool IsTesterRuntime()
 
 void ApplyTesterOnlyFeatureOverrides(Settings &cfg)
 {
-   if(!IsTesterRuntime())
-      return;
-
-   if(InpTester_DisableNewsAndCorrelation)
-   {
-      // Tester/optimization/visual mode often has incomplete cross-symbol and calendar/news context.
-      // Disable only runtime blocker/gate flags here; do not mutate general scoring weights.
-      cfg.cf_correlation       = false;
-      cfg.extra_correlation    = false;
-      cfg.corr_softveto_enable = false;
-
-      cfg.news_on              = false;
-      cfg.cf_news_ok           = false;
-      cfg.extra_news           = false;
-      cfg.block_pre_m          = 0;
-      cfg.block_post_m         = 0;
-      cfg.news_impact_mask     = 0;
-      cfg.cal_lookback_mins    = 0;
-      cfg.cal_hard_skip        = 0.0;
-      cfg.cal_soft_knee        = 0.0;
-      cfg.cal_min_scale        = 1.0;
-
-      #ifdef CFG_HAS_NEWS_FILTER_ENABLED
-         cfg.newsFilterEnabled = false;
-      #endif
-
-      #ifdef CFG_HAS_NEWS_BACKEND
-         cfg.news_backend_mode = 0;
-      #endif
-
-      #ifdef CFG_HAS_NEWS_MVP_NO_BLOCK
-         cfg.news_mvp_no_block = false;
-      #endif
-
-      #ifdef CFG_HAS_NEWS_FAILOVER_TO_CSV
-         cfg.news_failover_to_csv = false;
-      #endif
-
-      #ifdef CFG_HAS_NEWS_NEUTRAL_ON_NO_DATA
-         cfg.news_neutral_on_no_data = false;
-      #endif
-   }
-
-   #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-      cfg.router_tester_min_score_override =
-         (InpRouterTesterMinScoreOverride > 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
-   #endif
-
-   if(InpTester_BypassPolicyGates)
-   {
-      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
-         cfg.enable_news_block = false;
-      #endif
-      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
-         cfg.enable_regime_gate = false;
-      #endif
-      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
-         cfg.enable_liquidity_gate = false;
-      #endif
-   }
+   // Legacy bridge retained for compile-safe compatibility.
+   // Central tester override ownership now lives in:
+   // include/TesterSettings.mqh
+   TesterSettings::ApplyToConfig(cfg);
 }
 
 bool MicrostructureGateOK(const string sym, const datetime now_srv, const datetime required_bar_time, string &detail)
@@ -5526,6 +5473,7 @@ int OnInit()
    if(InpFileLog)
       LogX::InitAll();
    FinalizeRuntimeSettings();
+   TesterSettings::EmitAudit(S);
    Config::LogSettingsWithHash(S, "CFG");
 
    string news_filter_state = (S.news_on ? "ON" : "OFF");
@@ -5534,12 +5482,10 @@ int OnInit()
       news_filter_state = (S.newsFilterEnabled ? "ON" : "OFF");
    #endif
 
-   if(g_is_tester && InpTester_DisableNewsAndCorrelation)
-   {
-      Print(StringFormat("[TESTER_OVERRIDE] correlation=%s news_filter=%s",
-                         (S.cf_correlation ? "ON" : "OFF"),
-                         news_filter_state));
-   }
+   // Central tester override audit is emitted by TesterSettings::EmitAudit(S)
+   // immediately after FinalizeRuntimeSettings(). Keep the effective config
+   // log below as a generic resolved-config snapshot, not the source-of-truth
+   // tester override summary.
 
    string cfg_effective_msg = StringFormat(
       "[CFG_EFFECTIVE] cf_correlation=%s extra_correlation=%s corr_softveto_enable=%s news_on=%s cf_news_ok=%s extra_news=%s block_pre_m=%d block_post_m=%d news_impact_mask=%d",
