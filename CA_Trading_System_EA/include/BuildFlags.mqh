@@ -59,6 +59,9 @@
 #endif
 
 #ifdef BUILD_PROFILE_TESTER
+   #ifndef TESTER_BUILD
+      #define TESTER_BUILD
+   #endif
    #ifndef CONFLUENCE_TRANSPORT_IS_PRESENT
       #define CONFLUENCE_TRANSPORT_IS_PRESENT
    #endif
@@ -89,6 +92,9 @@
 
    #ifndef BUILD_ENABLE_PROXY_MICRO_FALLBACK
       #define BUILD_ENABLE_PROXY_MICRO_FALLBACK
+   #endif
+   #ifndef BUILD_ALLOW_STRUCTURE_ONLY_MODE
+      #define BUILD_ALLOW_STRUCTURE_ONLY_MODE
    #endif
 #endif
 
@@ -122,11 +128,13 @@
 //#define BUILD_ENABLE_RISK_OBSERVABILITY_SIZING
 //#define BUILD_REQUIRE_EXECUTION_POSTURE_FROM_HEADS
 // Optional fallback policy note:
-//  - BUILD_ENABLE_PROXY_MICRO_FALLBACK is OPTIONAL.
-//  - BUILD_ALLOW_STRUCTURE_ONLY_MODE is OPTIONAL and only valid when
+//  - In TESTER builds, BUILD_ENABLE_PROXY_MICRO_FALLBACK and
+//    BUILD_ALLOW_STRUCTURE_ONLY_MODE are auto-enabled by section 1.
+//  - In non-tester builds, both remain optional manual opt-ins.
+//  - BUILD_ALLOW_STRUCTURE_ONLY_MODE is only valid when
 //    BUILD_ENABLE_PROXY_MICRO_FALLBACK is enabled.
-//  - These two flags must be enabled here only (manual opt-in) or in
-//    MetaEditor project settings, not auto-declared in Router/Risk/strategies.
+//  - These flags must still be declared here only, not ad hoc in
+//    Router/Risk/strategies.
 
 // -------------------------------------------------------------------
 // 1B) Strict production institutional bundle
@@ -193,8 +201,10 @@
    #endif
 
    // Optional fallback policy is NOT auto-enabled by the strict institutional bundle.
-   // If you want proxy-mode fallback, enable BUILD_ENABLE_PROXY_MICRO_FALLBACK
-   // manually in section 1A above or in MetaEditor project settings.
+   // TESTER builds may auto-enable fallback policy in section 1.
+   // For strict production builds, if you want proxy-mode fallback, enable
+   // BUILD_ENABLE_PROXY_MICRO_FALLBACK manually in section 1A above or in
+   // MetaEditor project settings.
    // If you also want structure-only mode, enable BUILD_ALLOW_STRUCTURE_ONLY_MODE
    // explicitly as a second opt-in.
 
@@ -248,7 +258,9 @@
 //   for strategy files that still compile-gate direct-exec helper surfaces on it.
 // - Actual use must still be blocked/allowed by runtime tester checks and config.
 #ifdef BUILD_PROFILE_TESTER
-
+   #ifndef STRATREG_HAS_BUILD_CANDIDATES
+      #define STRATREG_HAS_BUILD_CANDIDATES
+   #endif
    #ifndef BUILD_DIRECT_EXEC_RUNTIME_GATED
       #define BUILD_DIRECT_EXEC_RUNTIME_GATED
    #endif
@@ -269,7 +281,6 @@
    #ifndef STRAT_DIRECT_EXEC_VERBOSE
       #define STRAT_DIRECT_EXEC_VERBOSE
    #endif
-
 #else
    // Production: hard safety. If someone tries to enable these flags, block the build.
    #ifdef BUILD_DIRECT_EXEC_RUNTIME_GATED
@@ -283,6 +294,12 @@
    #endif
    #ifdef STRAT_DIRECT_EXEC_VERBOSE
       #error "STRAT_DIRECT_EXEC_VERBOSE must not be enabled in PRODUCTION builds"
+   #endif
+   #ifdef TESTER_BUILD
+      #error "TESTER_BUILD must not be enabled in PRODUCTION builds"
+   #endif
+   #ifdef STRATREG_HAS_BUILD_CANDIDATES
+      #error "STRATREG_HAS_BUILD_CANDIDATES must not be enabled in PRODUCTION builds"
    #endif
 #endif
 
@@ -459,6 +476,18 @@ inline void BuildFlags_PrintSummary()
 #endif
    Print(BUILD_TAG, " Strategy direct execution authority: ", de_runtime);
 
+#ifdef TESTER_BUILD
+   Print(BUILD_TAG, " TESTER_BUILD=ON");
+#else
+   Print(BUILD_TAG, " TESTER_BUILD=OFF");
+#endif
+
+#ifdef STRATREG_HAS_BUILD_CANDIDATES
+   Print(BUILD_TAG, " STRATREG_HAS_BUILD_CANDIDATES=ON");
+#else
+   Print(BUILD_TAG, " STRATREG_HAS_BUILD_CANDIDATES=OFF");
+#endif
+
    string de_compat = "OFF";
 #ifdef STRAT_DIRECT_EXEC_TESTER_ONLY
    de_compat = "LEGACY_COMPAT_ON";
@@ -565,8 +594,14 @@ inline void BuildFlags_PrintSummary()
 #ifdef BUILD_ALLOW_STRUCTURE_ONLY_MODE
    structure_only = "ON";
 #endif
+
    Print(BUILD_TAG, " Structure-only mode: ", structure_only);
-   Print(BUILD_TAG, " Fallback policy source: BUILD_ENABLE_PROXY_MICRO_FALLBACK / BUILD_ALLOW_STRUCTURE_ONLY_MODE are manual opt-in only");
+#ifdef BUILD_PROFILE_TESTER
+   Print(BUILD_TAG, " Tester fallback posture: proxy micro fallback + structure-only mode auto-enabled");
+#else
+   Print(BUILD_TAG, " Tester fallback posture: n/a");
+#endif
+   Print(BUILD_TAG, " Fallback policy source: TESTER=auto-enable, non-tester=manual opt-in");
    
    string router_observability = "OFF";
 #ifdef BUILD_ENABLE_ROUTER_OBSERVABILITY_COMPARE

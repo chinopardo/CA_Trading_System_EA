@@ -39,6 +39,37 @@
 #ifndef SANITY_CHECKS_MQH
 #define SANITY_CHECKS_MQH
 
+inline bool SanityIsTesterRuntime()
+  {
+    if(MQLInfoInteger(MQL_TESTER) != 0)
+      return true;
+
+    if(MQLInfoInteger(MQL_OPTIMIZATION) != 0)
+      return true;
+
+    return false;
+  }
+
+inline int SanityRelaxedBarsNeed(const int requestedBars)
+  {
+    int need = requestedBars;
+    if(need < 1)
+      need = 1;
+
+    if(SanityIsTesterRuntime())
+    {
+      if(need > 10)
+        need = 10;
+    }
+
+    return need;
+  }
+
+inline bool SanityBypassPreflightInTester()
+  {
+    return SanityIsTesterRuntime();
+  }
+
 // Helper to check that a timeframe has been loaded and contains at least
 // `requiredBars` bars.  If `tf` is less than or equal to 0 the check is
 // skipped to allow optional HTF parameters.
@@ -49,14 +80,22 @@ bool CheckTimeframeAvailability(const string symbol,
     // Skip the check for unused timeframes
     if(tf <= PERIOD_CURRENT)
        return true;
+
+    // Tester/optimization mode: do not veto strategies on history sync alone
+    if(SanityBypassPreflightInTester())
+       return true;
+
     // Ensure the first bar time is valid
     datetime firstBarTime = iTime(symbol, tf, 0);
     if(firstBarTime <= 0)
       return false;
+
     // Ensure there are enough bars loaded for the given timeframe
     const int barsTotal = Bars(symbol, tf);
-    if(barsTotal < requiredBars)
+    const int needBars  = SanityRelaxedBarsNeed(requiredBars);
+    if(barsTotal < needBars)
       return false;
+
     return true;
   }
 
@@ -72,9 +111,15 @@ bool CheckSanityForVWAPStrategy(const string symbol,
                                        const ENUM_TIMEFRAMES htfD1,
                                        const int vwapLookback)
   {
-    // Check the entry timeframe has at least vwapLookback bars available
-    if(!CheckTimeframeAvailability(symbol, entryTF, vwapLookback))
+    if(SanityBypassPreflightInTester())
+      return true;
+
+    const int needBars = SanityRelaxedBarsNeed(vwapLookback);
+
+    // Check the entry timeframe has at least enough bars available
+    if(!CheckTimeframeAvailability(symbol, entryTF, needBars))
       return false;
+
     // Check each specified high timeframe has at least one bar
     if(!CheckTimeframeAvailability(symbol, htfH1))
       return false;
@@ -82,6 +127,7 @@ bool CheckSanityForVWAPStrategy(const string symbol,
       return false;
     if(!CheckTimeframeAvailability(symbol, htfD1))
       return false;
+
     return true;
   }
 
@@ -98,9 +144,15 @@ bool CheckSanityForNonVWAPStrategy(const string symbol,
                                           const ENUM_TIMEFRAMES htfD1,
                                           const int patternLookback)
   {
+    if(SanityBypassPreflightInTester())
+      return true;
+
+    const int needBars = SanityRelaxedBarsNeed(patternLookback);
+
     // Check the entry timeframe (patternLookback can be 1 if no pattern)
-    if(!CheckTimeframeAvailability(symbol, entryTF, patternLookback))
+    if(!CheckTimeframeAvailability(symbol, entryTF, needBars))
       return false;
+
     // Check optional high timeframes for at least one bar
     if(!CheckTimeframeAvailability(symbol, htfH1))
       return false;
@@ -108,6 +160,7 @@ bool CheckSanityForNonVWAPStrategy(const string symbol,
       return false;
     if(!CheckTimeframeAvailability(symbol, htfD1))
       return false;
+
     return true;
   }
 
@@ -142,9 +195,25 @@ namespace Sanity
                 int need,
                 const string label = "")
    {
-      if(need < 1) need = 1;
+      if(need < 1)
+         need = 1;
+
       // PERIOD_CURRENT means "not used" in our context => always OK
-      if(tf == PERIOD_CURRENT) return true;
+      if(tf == PERIOD_CURRENT)
+         return true;
+
+      if(SanityBypassPreflightInTester())
+      {
+         if(s_debug)
+            PrintFormat("[Sanity] %s %s tf=%s need=%d => TESTER_BYPASS",
+                        (label == "" ? "HasBars" : label),
+                        symbol,
+                        _TfToStr(tf),
+                        need);
+         return true;
+      }
+
+      need = SanityRelaxedBarsNeed(need);
 
       // Try to ensure series is synchronized; iTime will implicitly load
       datetime t = iTime(symbol, tf, need - 1);
@@ -189,12 +258,18 @@ namespace Sanity
                                    const int htf_count,
                                    const int htf_min_bars = 50)  // usually modest
    {
+      if(SanityBypassPreflightInTester())
+         return true;
+
+      const int needEntryBars = SanityRelaxedBarsNeed(vwap_lookback);
+      const int needHTFBars   = SanityRelaxedBarsNeed(htf_min_bars);
+
       // 1) Entry TF must have enough bars for VWAP calc
-      if(!HasBars(symbol, entry_tf, vwap_lookback, "VWAP/EntryTF"))
+      if(!HasBars(symbol, entry_tf, needEntryBars, "VWAP/EntryTF"))
          return false;
 
       // 2) Optional HTFs (only those passed in)
-      if(htf_count > 0 && !CheckHTFs(symbol, htfs, htf_count, htf_min_bars, "VWAP/HTF"))
+      if(htf_count > 0 && !CheckHTFs(symbol, htfs, htf_count, needHTFBars, "VWAP/HTF"))
          return false;
 
       return true;
@@ -209,10 +284,16 @@ namespace Sanity
                                       const int htf_count,
                                       const int htf_min_bars = 50)
    {
-      if(!HasBars(symbol, entry_tf, pattern_lookback, "NonVWAP/EntryTF"))
+      if(SanityBypassPreflightInTester())
+         return true;
+
+      const int needEntryBars = SanityRelaxedBarsNeed(pattern_lookback);
+      const int needHTFBars   = SanityRelaxedBarsNeed(htf_min_bars);
+
+      if(!HasBars(symbol, entry_tf, needEntryBars, "NonVWAP/EntryTF"))
          return false;
 
-      if(htf_count > 0 && !CheckHTFs(symbol, htfs, htf_count, htf_min_bars, "NonVWAP/HTF"))
+      if(htf_count > 0 && !CheckHTFs(symbol, htfs, htf_count, needHTFBars, "NonVWAP/HTF"))
          return false;
 
       return true;

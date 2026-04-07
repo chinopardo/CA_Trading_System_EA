@@ -32,6 +32,7 @@ namespace TesterSettings
       bool   micro_relaxation;
       bool   diagnostics_enabled;
       bool   ergonomics_relaxed;
+      bool   loose_tester;
       bool   validation_ok;
 
       int    preset;
@@ -58,6 +59,7 @@ namespace TesterSettings
       r.micro_relaxation     = false;
       r.diagnostics_enabled  = false;
       r.ergonomics_relaxed   = false;
+      r.loose_tester         = false;
       r.validation_ok        = true;
       r.preset               = TESTER_PRESET_OFF;
       r.reason               = "";
@@ -225,6 +227,15 @@ namespace TesterSettings
       #endif
    }
 
+   inline bool LooseTesterRequested(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_TESTERSETTINGS_LOOSE_TESTER
+         return (cfg.tester_settings_loose_tester ? true : false);
+      #else
+         return true;
+      #endif
+   }
+
    inline bool PresetWantsScoreRelaxation(const int preset)
    {
       return (preset == TESTER_PRESET_RELAXED ||
@@ -257,6 +268,107 @@ namespace TesterSettings
       return (preset == TESTER_PRESET_SMOKE);
    }
 
+   inline int ResolveTesterMaxStrats(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_TESTER_REGISTERED_STRATEGY_COUNT
+         if(cfg.tester_registered_strategy_count > 0)
+            return cfg.tester_registered_strategy_count;
+      #endif
+
+      #ifdef CFG_HAS_REGISTERED_STRATEGY_COUNT
+         if(cfg.registered_strategy_count > 0)
+            return cfg.registered_strategy_count;
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_MAX_STRATS
+         if(cfg.router_max_strats > 0)
+            return cfg.router_max_strats;
+      #endif
+
+      return 10;
+   }
+
+   inline void DisableKillzone(Settings &cfg, ApplyReport &r)
+   {
+      #ifdef CFG_HAS_MODE_ENFORCE_KILLZONE
+         cfg.mode_enforce_killzone = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
+         cfg.tester_enforce_killzone = false;
+      #endif
+
+      #ifdef CFG_HAS_KILLZONE_MODE
+         cfg.killzone_mode = 0;
+      #endif
+
+      r.news_session_bypass = true;
+   }
+
+   inline void DisableMicrostructureGates(Settings &cfg, ApplyReport &r)
+   {
+      ApplyMicroRelaxation(cfg, r);
+
+      #ifdef CFG_HAS_MS_BLOCK_IF_UNAVAILABLE
+         cfg.ms_block_if_unavailable = false;
+      #endif
+
+      #ifdef CFG_HAS_MS_TESTER_ALLOW_UNAVAILABLE
+         cfg.ms_tester_allow_unavailable = true;
+      #endif
+
+      #ifdef CFG_HAS_MS_TESTER_LOG_UNAVAILABLE
+         cfg.ms_tester_log_unavailable = true;
+      #endif
+
+      #ifdef CFG_HAS_MS_TESTER_DEGRADED_SCORE_POLICY_ENABLE
+         cfg.ms_tester_degraded_score_policy_enable = true;
+      #endif
+   }
+
+   inline void ApplyLooseTesterBypass(Settings &cfg, ApplyReport &r)
+   {
+      if(!IsTesterContext())
+         return;
+
+      if(!LooseTesterRequested(cfg))
+         return;
+
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+         cfg.enable_regime_gate = false;
+      #endif
+
+      #ifdef CFG_HAS_REGIME_GATE_ON
+         cfg.regime_gate_on = false;
+      #endif
+
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+         cfg.enable_liquidity_gate = false;
+      #endif
+
+      #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+         cfg.liq_hard_fail_on_invalid_metrics = false;
+      #endif
+
+      #ifdef CFG_HAS_ADR_CAP_MULT
+         cfg.adr_cap_mult = 0.0;
+      #endif
+
+      #ifdef CFG_HAS_ADR_MIN_PIPS
+         cfg.adr_min_pips = 0.0;
+      #endif
+
+      #ifdef CFG_HAS_ADR_MAX_PIPS
+         cfg.adr_max_pips = 0.0;
+      #endif
+
+      #ifdef CFG_HAS_MAIN_TESTER_LOOSE_GATE
+         cfg.main_tester_loose_gate = true;
+      #endif
+
+      r.loose_tester = true;
+   }
+
    inline bool ShouldApply(const Settings &cfg)
    {
       if(!MasterEnabled(cfg))
@@ -279,10 +391,7 @@ namespace TesterSettings
    inline void ApplyScoreRelaxation(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!PresetWantsScoreRelaxation(preset))
-         return;
-
-      if(!ZeroAllMinScoresRequested(cfg))
+      if(!IsTesterContext() && !PresetWantsScoreRelaxation(preset))
          return;
 
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
@@ -299,6 +408,12 @@ namespace TesterSettings
 
       #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
          cfg.router_tester_min_score_override = 0.0;
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_MAX_STRATS
+         const int tester_max_strats = ResolveTesterMaxStrats(cfg);
+         if(tester_max_strats > 0)
+            cfg.router_max_strats = tester_max_strats;
       #endif
 
       #ifdef CFG_HAS_EXTRA_MIN_SCORE
@@ -349,6 +464,15 @@ namespace TesterSettings
          cfg.main_tester_soften_selected_hard_gates = true;
       #endif
 
+      if(cfg.qualityThresholdHigh > 0.0)
+         cfg.qualityThresholdHigh = MathMax(0.0, cfg.qualityThresholdHigh * 0.5);
+
+      if(cfg.qualityThresholdContinuation > 0.0)
+         cfg.qualityThresholdContinuation = MathMax(0.0, cfg.qualityThresholdContinuation * 0.5);
+
+      if(cfg.qualityThresholdReversal > 0.0)
+         cfg.qualityThresholdReversal = MathMax(0.0, cfg.qualityThresholdReversal * 0.5);
+
       r.score_relaxation = true;
    }
 
@@ -359,91 +483,71 @@ namespace TesterSettings
    inline void ApplyNewsAndSessionBypass(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!PresetWantsNewsSessionBypass(preset))
+      if(!IsTesterContext() && !PresetWantsNewsSessionBypass(preset))
          return;
 
-      if(DisableNewsRequested(cfg))
-      {
-         cfg.news_on = false;
-         cfg.newsFilterEnabled = false;
-         cfg.scan_news_enable = false;
+      cfg.news_on = false;
+      cfg.newsFilterEnabled = false;
+      cfg.scan_news_enable = false;
+      cfg.cf_news_ok = false;
+      cfg.cf_correlation = false;
+      cfg.corr_softveto_enable = false;
 
-         #ifdef CFG_HAS_EXTRA_NEWS
-            cfg.extra_news = false;
-         #endif
+      #ifdef CFG_HAS_EXTRA_NEWS
+         cfg.extra_news = false;
+      #endif
 
-         #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
-            cfg.main_news_hard_veto = false;
-         #endif
+      #ifdef CFG_HAS_MAIN_NEWS_HARD_VETO
+         cfg.main_news_hard_veto = false;
+      #endif
 
-         #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
-            cfg.enable_news_block = false;
-         #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
+         cfg.enable_news_block = false;
+      #endif
 
-         #ifdef CFG_HAS_NEWS_BACKEND
-            cfg.news_backend_mode = 0;
-            cfg.news_mvp_no_block = true;
-         #endif
+      #ifdef CFG_HAS_NEWS_BACKEND
+         cfg.news_backend_mode = 0;
+         cfg.news_mvp_no_block = true;
+      #endif
 
-         #ifdef CFG_HAS_W_NEWS
-            cfg.w_news = 0.0;
-         #endif
-      }
+      #ifdef CFG_HAS_W_NEWS
+         cfg.w_news = 0.0;
+      #endif
 
       if(DisableKillzonesRequested(cfg))
-      {
-         #ifdef CFG_HAS_MODE_ENFORCE_KILLZONE
-            cfg.mode_enforce_killzone = false;
-         #endif
+         DisableKillzone(cfg, r);
 
-         #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
-            cfg.tester_enforce_killzone = false;
-         #endif
+      #ifdef CFG_HAS_SESSION_FILTER
+         cfg.session_filter = false;
+      #endif
 
-         #ifdef CFG_HAS_KILLZONE_MODE
-            cfg.killzone_mode = 0;
-         #endif
-      }
+      #ifdef CFG_HAS_ENABLE_SESSION_FILTER
+         cfg.enable_session_filter = false;
+      #endif
 
-      if(DisableSessionFilterRequested(cfg))
-      {
-         #ifdef CFG_HAS_SESSION_FILTER
-            cfg.session_filter = false;
-         #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+         cfg.enable_regime_gate = false;
+      #endif
 
-         #ifdef CFG_HAS_ENABLE_SESSION_FILTER
-            cfg.enable_session_filter = false;
-         #endif
+      #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+         cfg.enable_liquidity_gate = false;
+      #endif
 
-         #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
-            cfg.enable_regime_gate = false;
-         #endif
+      #ifdef CFG_HAS_CORR_VETO
+         cfg.corr_veto_on = false;
+      #endif
 
-         #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
-            cfg.enable_liquidity_gate = false;
-         #endif
-      }
+      #ifdef CFG_HAS_EXTRA_CORR
+         cfg.extra_correlation = false;
+      #endif
 
-      if(DisableCorrelationRequested(cfg))
-      {
-         cfg.corr_softveto_enable = false;
+      #ifdef CFG_HAS_W_CORR
+         cfg.w_correlation = 0.0;
+      #endif
 
-         #ifdef CFG_HAS_CORR_VETO
-            cfg.corr_veto_on = false;
-         #endif
-
-         #ifdef CFG_HAS_EXTRA_CORR
-            cfg.extra_correlation = false;
-         #endif
-
-         #ifdef CFG_HAS_W_CORR
-            cfg.w_correlation = 0.0;
-         #endif
-
-         #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
-            cfg.tester_disable_news_and_correlation = true;
-         #endif
-      }
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+         cfg.tester_disable_news_and_correlation = true;
+      #endif
 
       r.news_session_bypass = true;
    }
@@ -455,10 +559,7 @@ namespace TesterSettings
    inline void ApplyMicroRelaxation(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!PresetWantsMicroRelaxation(preset))
-         return;
-
-      if(!ReduceMicroThresholdsRequested(cfg))
+      if(!IsTesterContext() && !PresetWantsMicroRelaxation(preset))
          return;
 
       #ifdef CFG_HAS_MS_OFI_ABS_MIN
@@ -513,59 +614,34 @@ namespace TesterSettings
          cfg.ms_max_observability_penalty01 = 1.0;
       #endif
 
-      if(AllowUnavailableInstitutionalRequested(cfg))
-      {
-         #ifdef CFG_HAS_MS_BLOCK_IF_UNAVAILABLE
-            cfg.ms_block_if_unavailable = false;
-         #endif
+      #ifdef CFG_HAS_MS_BLOCK_IF_UNAVAILABLE
+         cfg.ms_block_if_unavailable = false;
+      #endif
 
-         #ifdef CFG_HAS_MS_TESTER_ALLOW_UNAVAILABLE
-            cfg.ms_tester_allow_unavailable = true;
-         #endif
+      #ifdef CFG_HAS_MS_TESTER_ALLOW_UNAVAILABLE
+         cfg.ms_tester_allow_unavailable = true;
+      #endif
 
-         #ifdef CFG_HAS_MS_TESTER_LOG_UNAVAILABLE
-            cfg.ms_tester_log_unavailable = true;
-         #endif
+      #ifdef CFG_HAS_MS_TESTER_LOG_UNAVAILABLE
+         cfg.ms_tester_log_unavailable = true;
+      #endif
 
-         #ifdef CFG_HAS_TESTER_DISABLE_MICRO_WEIGHTING
-            cfg.tester_disable_micro_weighting = false;
-         #endif
+      #ifdef CFG_HAS_TESTER_DISABLE_MICRO_WEIGHTING
+         cfg.tester_disable_micro_weighting = false;
+      #endif
 
-         #ifdef CFG_HAS_TESTER_MICRO_WEIGHT_SCALE
+      #ifdef CFG_HAS_TESTER_MICRO_WEIGHT_SCALE
+         if(cfg.tester_micro_weight_scale <= 0.0 || cfg.tester_micro_weight_scale > 1.0)
             cfg.tester_micro_weight_scale = 0.5;
-         #endif
-      }
+      #endif
 
-      if(EnableDegradedFallbackRequested(cfg))
-      {
-         #ifdef CFG_HAS_MS_LIVE_ALLOW_DEGRADED_INST_FALLBACK
-            cfg.ms_live_allow_degraded_inst_fallback = true;
-         #endif
+      #ifdef CFG_HAS_MS_LIVE_ALLOW_DEGRADED_INST_FALLBACK
+         cfg.ms_live_allow_degraded_inst_fallback = true;
+      #endif
 
-         #ifdef CFG_HAS_MS_TESTER_DEGRADED_SCORE_POLICY_ENABLE
-            cfg.ms_tester_degraded_score_policy_enable = true;
-         #endif
-
-         #ifdef CFG_HAS_TESTER_DISABLE_MICRO_WEIGHTING
-            cfg.tester_disable_micro_weighting = false;
-         #endif
-
-         #ifdef CFG_HAS_TESTER_MICRO_WEIGHT_SCALE
-            if(cfg.tester_micro_weight_scale <= 0.0)
-               cfg.tester_micro_weight_scale = 0.5;
-         #endif
-      }
-
-      if(BlockIfUnavailableRequested(cfg))
-      {
-         #ifdef CFG_HAS_MS_BLOCK_IF_UNAVAILABLE
-            cfg.ms_block_if_unavailable = true;
-         #endif
-
-         #ifdef CFG_HAS_MS_TESTER_ALLOW_UNAVAILABLE
-            cfg.ms_tester_allow_unavailable = false;
-         #endif
-      }
+      #ifdef CFG_HAS_MS_TESTER_DEGRADED_SCORE_POLICY_ENABLE
+         cfg.ms_tester_degraded_score_policy_enable = true;
+      #endif
 
       r.micro_relaxation = true;
    }
@@ -576,7 +652,7 @@ namespace TesterSettings
    inline void ApplyDiagnostics(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!PresetWantsDiagnostics(preset) && !EnableVerboseDiagnosticsRequested(cfg))
+      if(!IsTesterContext() && !PresetWantsDiagnostics(preset) && !EnableVerboseDiagnosticsRequested(cfg))
          return;
 
       cfg.debug = true;
@@ -607,10 +683,7 @@ namespace TesterSettings
    inline void ApplyErgonomics(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!PresetWantsErgonomics(preset))
-         return;
-
-      if(!ReduceCooldownsRequested(cfg))
+      if(!IsTesterContext() && !PresetWantsErgonomics(preset))
          return;
 
       #ifdef CFG_HAS_TESTER_THROTTLE_SEC
@@ -623,10 +696,10 @@ namespace TesterSettings
       #endif
 
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
-         if(cfg.router_max_strats <= 0 || cfg.router_max_strats > 5)
-            cfg.router_max_strats = 5;
+         const int tester_max_strats = ResolveTesterMaxStrats(cfg);
+         if(tester_max_strats > 0)
+            cfg.router_max_strats = tester_max_strats;
       #endif
-
       r.ergonomics_relaxed = true;
    }
 
@@ -665,11 +738,13 @@ namespace TesterSettings
          {
             if(cfg.news_on) err += "news_on still true; ";
             if(cfg.newsFilterEnabled) err += "newsFilterEnabled still true; ";
+            if(cfg.cf_news_ok) err += "cf_news_ok still true; ";
          }
 
          if(DisableCorrelationRequested(cfg))
          {
             if(cfg.corr_softveto_enable) err += "corr_softveto_enable still true; ";
+            if(cfg.cf_correlation) err += "cf_correlation still true; ";
          }
 
          #ifdef CFG_HAS_MODE_ENFORCE_KILLZONE
@@ -705,6 +780,39 @@ namespace TesterSettings
          #ifdef CFG_HAS_MS_MAX_IMPACT_LAMBDA01
             if(cfg.ms_max_impact_lambda01 < 0.0 || cfg.ms_max_impact_lambda01 > 1.0)
                err += "ms_max_impact_lambda01 out of range; ";
+         #endif
+      }
+
+      if(IsTesterContext() && LooseTesterRequested(cfg))
+      {
+         #ifdef CFG_HAS_POLICY_ENABLE_REGIME_GATE
+            if(cfg.enable_regime_gate)
+               err += "enable_regime_gate still true; ";
+         #endif
+
+         #ifdef CFG_HAS_REGIME_GATE_ON
+            if(cfg.regime_gate_on)
+               err += "regime_gate_on still true; ";
+         #endif
+
+         #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
+            if(cfg.enable_liquidity_gate)
+               err += "enable_liquidity_gate still true; ";
+         #endif
+
+         #ifdef CFG_HAS_ADR_CAP_MULT
+            if(cfg.adr_cap_mult > 0.0)
+               err += "adr_cap_mult still above zero; ";
+         #endif
+
+         #ifdef CFG_HAS_ADR_MIN_PIPS
+            if(cfg.adr_min_pips > 0.0)
+               err += "adr_min_pips still above zero; ";
+         #endif
+
+         #ifdef CFG_HAS_ADR_MAX_PIPS
+            if(cfg.adr_max_pips > 0.0)
+               err += "adr_max_pips still above zero; ";
          #endif
       }
 
@@ -759,6 +867,7 @@ namespace TesterSettings
       #endif
 
       s += StringFormat(" corr=%s", (cfg.corr_softveto_enable ? "on" : "off"));
+      s += StringFormat(" loose=%s", (g_last_report.loose_tester ? "on" : "off"));
       s += "}";
 
       return s;
@@ -864,13 +973,6 @@ namespace TesterSettings
 
       g_last_report.preset = ActivePreset(cfg);
 
-      if(!MasterEnabled(cfg))
-      {
-         g_last_report.reason = "master_disabled";
-         EmitSkipAudit(cfg, g_last_report.reason);
-         return false;
-      }
-
       if(ApplyOnlyInTester(cfg) && !IsTesterContext())
       {
          g_last_report.reason = "not_tester_context";
@@ -878,16 +980,33 @@ namespace TesterSettings
          return false;
       }
 
-      if(g_last_report.preset == TESTER_PRESET_OFF)
+      if(!IsTesterContext())
       {
-         g_last_report.reason = "preset_off";
-         EmitSkipAudit(cfg, g_last_report.reason);
-         return false;
+         if(!MasterEnabled(cfg))
+         {
+            g_last_report.reason = "master_disabled";
+            EmitSkipAudit(cfg, g_last_report.reason);
+            return false;
+         }
+
+         if(g_last_report.preset == TESTER_PRESET_OFF)
+         {
+            g_last_report.reason = "preset_off";
+            EmitSkipAudit(cfg, g_last_report.reason);
+            return false;
+         }
       }
 
       ApplyScoreRelaxation(cfg, g_last_report);
+
+      if(IsTesterContext())
+      {
+         DisableMicrostructureGates(cfg, g_last_report);
+         DisableKillzone(cfg, g_last_report);
+      }
+
       ApplyNewsAndSessionBypass(cfg, g_last_report);
-      ApplyMicroRelaxation(cfg, g_last_report);
+      ApplyLooseTesterBypass(cfg, g_last_report);
       ApplyDiagnostics(cfg, g_last_report);
       ApplyErgonomics(cfg, g_last_report);
 

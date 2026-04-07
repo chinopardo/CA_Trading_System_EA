@@ -388,11 +388,10 @@ input bool InpEnable_PO3Mode              = true;    // "enable_PO3"
 
 // --- Quality thresholds ---
 // Global "this setup is good enough to touch real money"
-input double InpQualityThresholdHigh      = 0.72;
-
 // Fine-tuned thresholds for specialized strategies
-input double InpQualityThresholdCont      = 0.60;    // continuation / pullback (OB+FVG+OTE)
-input double InpQualityThresholdReversal  = 0.65;    // Wyckoff Spring / UTAD style reversals
+input double InpQualityThresholdHigh      = 0.25;
+input double InpQualityThresholdCont      = 0.20;    // continuation / pullback (OB+FVG+OTE)
+input double InpQualityThresholdReversal  = 0.20;    // Wyckoff Spring / UTAD style reversals
 
 // --- Fibonacci / OTE configuration (ICT/Wyckoff) ---
 input int    InpFibDepth              = 5;      // Fib: pivot depth for leg detection
@@ -491,14 +490,14 @@ input int              InpBigLossReset_Mins       = 120;   // Reset window minut
 // -------- Registry Router & Strategy knobs --------
 input int              InpRouterMode            = 0;    // Registry Router & Strategy: Mode - 0=MAX,1=WEIGHTED,2=AB
 input int              InpAB_Bucket             = 0;    // Registry Router & Strategy: AB_Bucket - 0=OFF,1=A,2=B
-input double           InpRouterMinScore        = 0.15; // Registry Router & Strategy: Min Score
+input double           InpRouterMinScore        = 0.0;  // Registry Router & Strategy: Min Score (0.0 is now a valid explicit tester floor)
 input int              InpRouterMaxStrats       = 10;   // Registry Router & Strategy: Max Strat
 input int              InpRouterThresholdPrecedence   = -1;   // Router threshold precedence: -1=legacy bool fallback, 0=manual, 1=profile
 input bool             InpRouterTesterPreferManualThresholds = true; // Tester legacy precedence: true=force manual when precedence=-1, false=allow legacy/profile hints
 input bool             InpRouterTesterClampProfileMin = true; // Tester safety: clamp profile-sourced min_score against manual
 input double           InpRouterTesterClampMaxDelta   = 0.05; // Tester safety: max allowed profile overshoot above manual
 input bool             InpRouterTesterAllowWideProfileMin = false; // Tester safety: allow profile min_score above manual + delta
-input double           InpRouterTesterMinScoreOverride     = 0.15; // Tester: effective router min score override when tester degraded mode is active; <=0 uses InpRouterMinScore
+input double           InpRouterTesterMinScoreOverride     = 0.0;  // Tester: effective router min score override when tester degraded mode is active; 0.0 is allowed explicitly
 
 // Position management
 input int              InpPMMode                = 2;     // Position Mgnt: PM Mode - 0=Off 1=Basic 2=Full
@@ -576,9 +575,9 @@ input bool InpEnable_ICT_SilverBullet     = true;
 input bool InpSB_Require_OTE          = false;  // SB: require OTE confluence
 input bool InpSB_Require_VWAPStretch  = false;  // SB: require VWAP stretch condition
 
-input bool InpEnable_ICT_PO3              = true;
-input bool InpEnable_ICT_Continuation     = true;
-input bool InpEnable_ICT_WyckoffTurn      = false;
+input bool InpEnable_ICT_PO3              = true; // Enable ICT Po3
+input bool InpEnable_ICT_Continuation     = true; // Enable ICT Cont
+input bool InpEnable_ICT_WyckoffTurn      = true; // Enable ICT Wyckoff Turn
 
 // --- Per-strategy magic bases (unique magic ranges for bookkeeping/PnL) ---
 input int  InpMagic_MainBase              = 11000;
@@ -597,7 +596,7 @@ input double InpRiskMult_WyckoffTurn      = 0.40;
 // ================= Confluence Gate (base) =================
 // ---- Main confluence gates
 input int    InpConf_MinCount       = 0;       // Confluence Gate: Min Count
-input double InpConf_MinScore       = 0.20;    // Confluence Gate: Min Score
+input double InpConf_MinScore       = 0.0;     // Confluence Gate: Min Score (tester-relaxed)
 input bool   InpMain_SequentialGate = false;   // Confluence Gate: Seq Gate
 input bool   InpMain_RequireChecklist = false; // Main: require checklist (disabled by default to reduce starvation)
 input int    InpMain_ChecklistSoftFallbackMode = 0; // Main: checklist soft fallback policy (0=auto tester ON/live OFF, 1=force OFF, 2=force ON)
@@ -646,32 +645,32 @@ input double InpCorr_MaxPen       = 0.20;       // Confluence Gate: Correlation 
 input double InpW_Correlation     = 0.10;       // Confluence Gate: Correlation Weight
 input double InpW_CorrPen         = 1.0;        // Confluence Gate: Correlation Penalty Weight
 
-input bool   InpExtra_DOMImbalance = false;      // Confluence Gate: DOM Imbalance (MarketBook)
+input bool   InpExtra_DOMImbalance = true;     // Confluence Gate: DOM Imbalance (MarketBook)
 input bool   InpExtra_News = true;              // Confluence Gate: News Filter
 input double InpW_News     = 1.00;              // Confluence Gate: News Filter Weight
 
-input bool   InpExtra_SilverBulletTZ = false;
+input bool   InpExtra_SilverBulletTZ = true;
 input double InpW_SilverBulletTZ     = 0.06;
 
-input bool   InpExtra_AMD_HTF        = false;
+input bool   InpExtra_AMD_HTF        = true;
 input double InpW_AMD_H1             = 0.06;
 input double InpW_AMD_H4             = 0.08;
 
-input bool   InpExtra_PO3_HTF       = false;
+input bool   InpExtra_PO3_HTF       = true;
 input double InpW_PO3_H1            = 0.05;
 input double InpW_PO3_H4            = 0.07;
 
-input bool   InpExtra_Wyckoff_Turn  = false;
+input bool   InpExtra_Wyckoff_Turn  = true;
 input double InpW_Wyckoff_Turn      = 0.05;
 
-input bool   InpExtra_MTF_Zones     = false;
+input bool   InpExtra_MTF_Zones     = true;
 input double InpW_MTFZone_H1        = 0.05;
 input double InpW_MTFZone_H4        = 0.07;
 input double Inp_MTFZone_MaxDistATR = 1.25;
 
 // — Router/Confluence thresholds —
 input bool   Inp_EnableHardGate            = false;  // Router/Confluence Threshold: Hard Gate
-input double Inp_RouterFallbackMin         = 0.50;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
+input double Inp_RouterFallbackMin         = 0.10;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
 input int    Inp_MinFeaturesMet            = 1;     // Router/Confluence Threshold: Min Feat. Met exclude NewsOK from count
 
 // Hard-gate recipe: Trend + ADX + (Struct || Candle || OB_Prox)
@@ -717,14 +716,14 @@ input bool InpCF_Correlation           = false; // Cross-pair confirmation
 input bool InpCF_News                  = true; // News calendar filter (soft/pass as confluence)
 
 // ===== Autochartist-style internal scanner =====
-input bool   InpAuto_Enable             = false; // Auto: master enable
+input bool   InpAuto_Enable             = true; // Auto: master enable
 input int    InpAuto_ScanIntervalSec    = 60;    // Auto: rescan cadence (sec)
 input int    InpAuto_ScanLookbackBars   = 320;   // Auto: lookback bars
 
-input bool   InpCF_AutoChart            = false; // Auto: chart patterns confluence
-input bool   InpCF_AutoFib              = false; // Auto: harmonic/fib confluence
-input bool   InpCF_AutoKeyLevels        = false; // Auto: key levels confluence
-input bool   InpCF_AutoVolatility       = false; // Auto: volatility/range confluence
+input bool   InpCF_AutoChart            = true; // Auto: chart patterns confluence
+input bool   InpCF_AutoFib              = true; // Auto: harmonic/fib confluence
+input bool   InpCF_AutoKeyLevels        = true; // Auto: key levels confluence
+input bool   InpCF_AutoVolatility       = true; // Auto: volatility/range confluence
 
 input double InpW_AutoChart             = 0.70;
 input double InpW_AutoFib               = 0.65;
@@ -751,7 +750,7 @@ input int InpAutoVol_CacheHours       = 24; // 24 = daily aligned to closed D1; 
 input int InpAutoVol_ADRLookbackDays  = 20; // ADR range distribution lookback (days)
 input int InpAutoVol_RetLookbackD1    = 60; // D1 return sigma lookback (bars)
 
-input bool   InpAuto_RiskScale_Enable   = false;
+input bool   InpAuto_RiskScale_Enable   = true;
 input double InpAuto_RiskScale_Floor    = 0.70;
 input double InpAuto_RiskScale_Cap      = 1.20;
 
@@ -782,8 +781,8 @@ input int    InpMACD_SlowEMA           = 26; // MACD: Slow EMA
 
 // News hard-block window & surprise scaling
 input bool             InpNewsOn                = false;  // News: Enable
-input int              InpNewsBlockPreMins      = 10;     // News: Block PreMins
-input int              InpNewsBlockPostMins     = 10;     // News: Block PostMins
+input int              InpNewsBlockPreMins      = 5;     // News: Block PreMins
+input int              InpNewsBlockPostMins     = 5;     // News: Block PostMins
 input int              InpNewsImpactMask        = 6;     // News: Impact Mask
 input int              InpNewsBackendMode       = 1;     // 0=DISABLED, 1=BROKER, 2=CSV
 input bool             InpNewsMVP_NoBlock       = false; // if true: never hard-block trades (even if news_on)
@@ -1042,6 +1041,8 @@ input bool            InpTester_DisableNewsAndCorrelation = true; // Tester / Op
 input string          InpTesterNote     = ""; // Tester / Optimization: Note
 input string          InpTestCase      = "none";  // see TesterCases::ScenarioList()
 input string          InpTesterPreset  = "";
+input bool            InpLooseMode                  = false; // Runtime override: relaxed gating mode
+input bool            InpDisableMicrostructureGates = false; // Runtime override: bypass microstructure gate
 
 bool SR_Input_TesterMainOnlyAllowSelectedNonCoreOrderables()
 {
@@ -1064,6 +1065,54 @@ static bool g_calm_mode      = false;
 static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 static bool g_use_registry = false; // explicit tester-only legacy ProcessSymbol compatibility mode
+
+static bool gTesterLooseGateMode = false;
+static bool gDisableMicrostructureGatesRuntime = false;
+
+bool EA_LooseModeActive()
+{
+   return gTesterLooseGateMode;
+}
+
+bool EA_MicrostructureGateDisabled()
+{
+   if(gDisableMicrostructureGatesRuntime)
+      return true;
+
+   return false;
+}
+
+bool EA_EffectiveEnforceKillzone()
+{
+   if(EA_LooseModeActive())
+      return false;
+
+   return InpEnforceKillzone;
+}
+
+bool EA_EffectiveNewsOn()
+{
+   if(EA_LooseModeActive())
+      return false;
+
+   return InpNewsOn;
+}
+
+bool EA_EffectiveCFCorrelation()
+{
+   if(EA_LooseModeActive())
+      return false;
+
+   return InpCF_Correlation;
+}
+
+bool EA_EffectiveExtraCorrelation()
+{
+   if(EA_LooseModeActive())
+      return false;
+
+   return InpExtra_Correlation;
+}
 
 // ---- Router threshold resolution telemetry/state ----
 static bool   g_router_resolve_logged       = false;
@@ -1745,7 +1794,7 @@ void HintTradeDisabledOnce(const Exec::Outcome &ex)
 // ================== Helpers ==================
 double EA_RouterManualMinScore()
 {
-   if(InpRouterMinScore > 0.0)
+   if(InpRouterMinScore >= 0.0)
       return InpRouterMinScore;
    return Const::SCORE_ELIGIBILITY_MIN;
 }
@@ -2424,7 +2473,7 @@ void MirrorInputsToSettings(Settings &cfg)
     cfg.mode_use_po3 = (InpEnable_PO3Mode ? 1 : 0);
   #endif
   #ifdef CFG_HAS_MODE_ENFORCE_KILLZONE
-    cfg.mode_enforce_killzone = (InpEnforceKillzone ? 1 : 0);
+    cfg.mode_enforce_killzone = (EA_EffectiveEnforceKillzone() ? 1 : 0);
   #endif
   #ifdef CFG_HAS_MODE_USE_ICT_BIAS
     cfg.mode_use_ICT_bias = (InpUseICTBias ? 1 : 0);
@@ -2510,7 +2559,7 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.tokyo_close_utc = InpTokyoCloseUTC; cfg.sydney_open_utc = InpSydneyOpenUTC;
 
   // ---- News block + calendar scaling ----
-  cfg.news_on = InpNewsOn; cfg.block_pre_m = InpNewsBlockPreMins; cfg.block_post_m = InpNewsBlockPostMins;
+  cfg.news_on = EA_EffectiveNewsOn(); cfg.block_pre_m = InpNewsBlockPreMins; cfg.block_post_m = InpNewsBlockPostMins;
   cfg.news_impact_mask = InpNewsImpactMask;
   #ifdef CFG_HAS_NEWS_BACKEND
       int nbm = InpNewsBackendMode;
@@ -2572,6 +2621,12 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.cf_min_needed = MathMax(0, InpConf_MinCount);
   cfg.cf_min_score  = MathMax(0.0, InpConf_MinScore);
 
+  if(IsTesterRuntime())
+  {
+     cfg.cf_min_needed = 0;
+     cfg.cf_min_score  = 0.0;
+  }
+
   // ---- Base Confluence toggles ----
   cfg.cf_inst_zones       = InpCF_InstZones;
   cfg.cf_orderflow_delta  = InpCF_OrderFlowDelta;
@@ -2582,7 +2637,7 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.cf_trend_regime     = InpCF_TrendRegime;
   cfg.cf_stochrsi         = InpCF_StochRSI;
   cfg.cf_macd             = InpCF_MACD;
-  cfg.cf_correlation      = InpCF_Correlation;
+  cfg.cf_correlation      = EA_EffectiveCFCorrelation();
   cfg.cf_news_ok          = InpCF_News;
 
   // --- Autochartist-style confluence ---
@@ -2652,7 +2707,7 @@ void MirrorInputsToSettings(Settings &cfg)
   cfg.extra_stochrsi     = InpExtra_StochRSI;   // weight reuses base
   cfg.extra_macd         = InpExtra_MACD;       // weight reuses base
   cfg.extra_adx_regime   = InpExtra_ADXRegime;  cfg.w_adx_regime = InpW_ADXRegime;
-  cfg.extra_correlation  = InpExtra_Correlation;// weight reuses base
+  cfg.extra_correlation  = EA_EffectiveExtraCorrelation();// weight reuses base
   cfg.extra_dom_imbalance = InpExtra_DOMImbalance;
   cfg.extra_news         = InpExtra_News;       // weight reuses base
 
@@ -3054,7 +3109,11 @@ bool PickPassesIntentGate(const string sym,
    if(pick.bd.veto)
       why_out = "veto";
    else if(!pick.ss.eligible)
+   {
+      if(IsTesterRuntime() && pick.ss.score > 0.0)
+         return true;
       why_out = "ineligible";
+   }
    else if(pick.ss.score < min_sc)
       why_out = "below_min_score";
    else
@@ -3702,7 +3761,7 @@ void BuildSettingsFromInputs(Settings &cfg)
       cfg.risk_per_trade = InpRiskPerTradePct;     // ICT risk slider
    #endif
    #ifdef CFG_HAS_NEWS_FILTER_ENABLED
-      cfg.newsFilterEnabled = InpNewsOn;        // reuse NewsOn input
+      cfg.newsFilterEnabled = EA_EffectiveNewsOn();        // reuse effective NewsOn runtime flag
    #endif
    #ifdef CFG_HAS_TRADE_DIRECTION_SELECTOR
       cfg.trade_direction_selector = InpTradeDirectionSelector;
@@ -3855,7 +3914,7 @@ void BuildSettingsFromInputs(Settings &cfg)
 
    #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
       cfg.router_tester_min_score_override =
-         (InpRouterTesterMinScoreOverride > 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
+         (InpRouterTesterMinScoreOverride >= 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
    #endif
 
    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
@@ -3886,7 +3945,7 @@ void BuildSettingsFromInputs(Settings &cfg)
       (InpEnable_SilverBulletMode && cfg.enable_strat_ict_silverbullet);
    cfg.mode_use_po3          =
       (InpEnable_PO3Mode && cfg.enable_strat_ict_po3);
-   cfg.mode_enforce_killzone = InpEnforceKillzone;
+   cfg.mode_enforce_killzone = EA_EffectiveEnforceKillzone();
    cfg.mode_use_ICT_bias     = InpUseICTBias;
 }
 
@@ -4878,6 +4937,13 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
 {
    detail = "";
 
+   if(EA_MicrostructureGateDisabled())
+   {
+      detail = "microstructure_gate_disabled_runtime";
+      PublishTesterDegradedFallbackRuntimeState(sym, true, "runtime_disabled", detail);
+      return true;
+   }
+
    if(!InpMS_EnableRuntimeGate)
    {
       PublishTesterDegradedFallbackRuntimeState(sym, false, "off", "gate_disabled");
@@ -4887,6 +4953,13 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
    if(sym == "")
    {
       PublishTesterDegradedFallbackRuntimeState(sym, false, "off", "sym_empty");
+      return true;
+   }
+
+   if(IsTesterRuntime() && InpTester_BypassPolicyGates)
+   {
+      detail = "tester_bypass_policy_gates";
+      PublishTesterDegradedFallbackRuntimeState(sym, true, "tester_bypass", detail);
       return true;
    }
 
@@ -5464,7 +5537,22 @@ int OnInit()
    g_show_breakdown = true;
    g_calm_mode      = false;
    g_ml_on          = InpML_Enable;
-   g_is_tester = IsTesterRuntime();
+   g_is_tester      = IsTesterRuntime();
+   
+   gTesterLooseGateMode = false;
+   gDisableMicrostructureGatesRuntime = false;
+   
+   if(InpLooseMode)
+      gTesterLooseGateMode = true;
+   
+   if(g_is_tester)
+      gTesterLooseGateMode = true;
+   
+   if(InpDisableMicrostructureGates)
+      gDisableMicrostructureGatesRuntime = true;
+   
+   if(g_is_tester && gTesterLooseGateMode)
+      gDisableMicrostructureGatesRuntime = true;
 
    Sanity::SetDebug(InpDebug);
    LogX::SetMinLevel(InpDebug ? LogX::LVL_DEBUG : LogX::LVL_INFO);
@@ -5473,6 +5561,18 @@ int OnInit()
    if(InpFileLog)
       LogX::InitAll();
    FinalizeRuntimeSettings();
+
+   if(gTesterLooseGateMode)
+   {
+      LogX::Warn(StringFormat("[OnInit] LooseMode active | tester=%s killzone=%s news=%s cf_corr=%s extra_corr=%s micro_bypass=%s",
+                              (g_is_tester ? "true" : "false"),
+                              (EA_EffectiveEnforceKillzone() ? "ON" : "OFF"),
+                              (EA_EffectiveNewsOn() ? "ON" : "OFF"),
+                              (EA_EffectiveCFCorrelation() ? "ON" : "OFF"),
+                              (EA_EffectiveExtraCorrelation() ? "ON" : "OFF"),
+                              (EA_MicrostructureGateDisabled() ? "ON" : "OFF")));
+   }
+
    TesterSettings::EmitAudit(S);
    Config::LogSettingsWithHash(S, "CFG");
 
@@ -6459,7 +6559,7 @@ void SyncRuntimeCfgFlags(Settings &cfg)
 {
    cfg.mode_use_silverbullet = (InpEnable_SilverBulletMode && cfg.enable_strat_ict_silverbullet);
    cfg.mode_use_po3          = (InpEnable_PO3Mode && cfg.enable_strat_ict_po3);
-   cfg.mode_enforce_killzone = InpEnforceKillzone;
+   cfg.mode_enforce_killzone = EA_EffectiveEnforceKillzone();
    cfg.mode_use_ICT_bias     = InpUseICTBias;
 
    #ifdef CFG_HAS_DIRECTION_BIAS_MODE
@@ -6586,66 +6686,74 @@ bool RouterGateOK_Global(const string log_sym,
       return false;
 
    string ms_detail = "";
-   const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(log_sym);
-   const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_required_bar_time, ms_detail);
-   if(ms_ok)
+   const bool tester_policy_bypass = (IsTesterRuntime() && InpTester_BypassPolicyGates);
+
+   if(!tester_policy_bypass)
    {
-      if(StringLen(ms_detail) <= 0)
-         ms_detail = "pass";
+      const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(log_sym);
+      const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_required_bar_time, ms_detail);
+      if(ms_ok)
+      {
+         if(StringLen(ms_detail) <= 0)
+            ms_detail = "pass";
+      }
+      else
+      {
+         gate_reason_out = GATE_POLICIES;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlockedEx("router_gate_global",
+                           log_sym,
+                           gate_reason_out,
+                           "Microstructure gate blocked",
+                           "MICROSTRUCTURE",
+                           0,
+                           "",
+                           ms_detail);
+
+         TraceNoTrade(log_sym,
+                      TS_GATE,
+                      gate_reason_out,
+                      _MergeGateBlockedDetail("Microstructure gate blocked",
+                                              0,
+                                              "",
+                                              ms_detail));
+         return false;
+      }
+
+      Policies::PolicyResult pol_eval;
+      if(!Policies::EvaluateFull(cfg, log_sym, pol_eval))
+      {
+         const int pol_reason = pol_eval.primary_reason;
+         const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
+
+         Policies::PolicyVetoLog(pol_eval);
+
+         gate_reason_out = GATE_POLICIES;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlockedEx("router_gate_global",
+                           log_sym,
+                           gate_reason_out,
+                           "Policies::EvaluateFull failed",
+                           "",
+                           pol_reason,
+                           pol_detail,
+                           ms_detail);
+
+         TraceNoTrade(log_sym,
+                      TS_GATE,
+                      gate_reason_out,
+                      _MergeGateBlockedDetail("Policies::EvaluateFull failed",
+                                              pol_reason,
+                                              pol_detail,
+                                              ms_detail));
+         return false;
+      }
    }
    else
    {
-      gate_reason_out = GATE_POLICIES;
-      UI_SetGate(gate_reason_out);
-
-      _LogGateBlockedEx("router_gate_global",
-                        log_sym,
-                        gate_reason_out,
-                        "Microstructure gate blocked",
-                        "MICROSTRUCTURE",
-                        0,
-                        "",
-                        ms_detail);
-
-      TraceNoTrade(log_sym,
-                   TS_GATE,
-                   gate_reason_out,
-                   _MergeGateBlockedDetail("Microstructure gate blocked",
-                                           0,
-                                           "",
-                                           ms_detail));
-      return false;
-   }
-
-   // 1) Global policy/risk guard (DD, cooldown, etc.)
-   Policies::PolicyResult pol_eval;
-   if(!Policies::EvaluateFull(cfg, log_sym, pol_eval))
-   {
-      const int pol_reason = pol_eval.primary_reason;
-      const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
-
-      Policies::PolicyVetoLog(pol_eval);
-
-      gate_reason_out = GATE_POLICIES;
-      UI_SetGate(gate_reason_out);
-
-      _LogGateBlockedEx("router_gate_global",
-                        log_sym,
-                        gate_reason_out,
-                        "Policies::EvaluateFull failed",
-                        "",
-                        pol_reason,
-                        pol_detail,
-                        ms_detail);
-
-      TraceNoTrade(log_sym,
-                   TS_GATE,
-                   gate_reason_out,
-                   _MergeGateBlockedDetail("Policies::EvaluateFull failed",
-                                           pol_reason,
-                                           pol_detail,
-                                           ms_detail));
-      return false;
+      ms_detail = "tester_bypass_policy_gates";
    }
 
    // 2) Hard time window (start/expiry)
@@ -6705,68 +6813,76 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
       return false;
 
    string ms_detail = "";
-   const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
-   const bool ms_ok = MicrostructureGateOK(sym, now_srv, ms_required_bar_time, ms_detail);
-   if(ms_ok)
+   const bool tester_policy_bypass = (IsTesterRuntime() && InpTester_BypassPolicyGates);
+
+   if(!tester_policy_bypass)
    {
-      if(StringLen(ms_detail) <= 0)
-         ms_detail = "pass";
+      const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
+      const bool ms_ok = MicrostructureGateOK(sym, now_srv, ms_required_bar_time, ms_detail);
+      if(ms_ok)
+      {
+         if(StringLen(ms_detail) <= 0)
+            ms_detail = "pass";
+      }
+      else
+      {
+         gate_reason_out = GATE_POLICIES;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlockedEx("router_gate",
+                           sym,
+                           gate_reason_out,
+                           "Microstructure gate blocked",
+                           "MICROSTRUCTURE",
+                           0,
+                           "",
+                           ms_detail);
+
+         TraceNoTrade(sym,
+                      TS_GATE,
+                      gate_reason_out,
+                      _MergeGateBlockedDetail("Microstructure gate blocked",
+                                              0,
+                                              "",
+                                              ms_detail));
+         return false;
+      }
+
+      Policies::PolicyResult pol_eval;
+      if(!Policies::EvaluateFull(cfg, sym, pol_eval))
+      {
+         const int pol_reason = pol_eval.primary_reason;
+         const int mapped = (_IsKnownGateReason(pol_reason) ? pol_reason : GATE_POLICIES);
+         const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
+
+         Policies::PolicyVetoLog(pol_eval);
+
+         gate_reason_out = mapped;
+         UI_SetGate(gate_reason_out);
+
+         _LogGateBlockedEx("router_gate",
+                           sym,
+                           gate_reason_out,
+                           "Policies::EvaluateFull failed",
+                           "",
+                           pol_reason,
+                           pol_detail,
+                           ms_detail);
+
+         TraceNoTrade(sym,
+                      TS_GATE,
+                      gate_reason_out,
+                      _MergeGateBlockedDetail("Policies::EvaluateFull failed",
+                                              pol_reason,
+                                              pol_detail,
+                                              ms_detail));
+
+         return false;
+      }
    }
    else
    {
-      gate_reason_out = GATE_POLICIES;
-      UI_SetGate(gate_reason_out);
-
-      _LogGateBlockedEx("router_gate",
-                        sym,
-                        gate_reason_out,
-                        "Microstructure gate blocked",
-                        "MICROSTRUCTURE",
-                        0,
-                        "",
-                        ms_detail);
-
-      TraceNoTrade(sym,
-                   TS_GATE,
-                   gate_reason_out,
-                   _MergeGateBlockedDetail("Microstructure gate blocked",
-                                           0,
-                                           "",
-                                           ms_detail));
-      return false;
-   }
-
-   // 1) Policy / risk guard (DD, spread, cooldown, etc.)
-   Policies::PolicyResult pol_eval;
-   if(!Policies::EvaluateFull(cfg, sym, pol_eval))
-   {
-      const int pol_reason = pol_eval.primary_reason;
-      const int mapped = (_IsKnownGateReason(pol_reason) ? pol_reason : GATE_POLICIES);
-      const string pol_detail = Policies::FormatPrimaryVetoDetail(pol_eval);
-
-      Policies::PolicyVetoLog(pol_eval);
-
-      gate_reason_out = mapped;
-      UI_SetGate(gate_reason_out);
-
-      _LogGateBlockedEx("router_gate",
-                        sym,
-                        gate_reason_out,
-                        "Policies::EvaluateFull failed",
-                        "",
-                        pol_reason,
-                        pol_detail,
-                        ms_detail);
-
-      TraceNoTrade(sym,
-                   TS_GATE,
-                   gate_reason_out,
-                   _MergeGateBlockedDetail("Policies::EvaluateFull failed",
-                                           pol_reason,
-                                           pol_detail,
-                                           ms_detail));
-
-      return false;
+      ms_detail = "tester_bypass_policy_gates";
    }
 
    // 2) Session gate (legacy preset + TimeUtils)

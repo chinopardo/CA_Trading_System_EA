@@ -9,7 +9,8 @@
 //|  - Enforce veto-tag and alpha/execution/risk head gating before   |
 //|    any direct execution surface is allowed to continue.           |
 //|                                                                  |
-//| Compile-time switches (set in BuildFlags.mqh or project defines): |
+//| Compile-time switches (normally set in BuildFlags.mqh or project  |
+//| defines; tester builds may auto-bridge them in this header):      |
 //|  - STRAT_DIRECT_EXEC_TESTER_ONLY  : compile direct-exec surfaces  |
 //|  - STRAT_DIRECT_EXEC_ALLOW        : explicit opt-in to USE them   |
 //|  - STRAT_DIRECT_EXEC_VERBOSE      : optional logging on blocks    |
@@ -22,6 +23,16 @@
 //+------------------------------------------------------------------+
 #ifndef __STRATEGY_DIRECT_EXEC_GUARDS_MQH__
 #define __STRATEGY_DIRECT_EXEC_GUARDS_MQH__
+
+#ifdef BUILD_PROFILE_TESTER
+   #ifndef STRAT_DIRECT_EXEC_TESTER_ONLY
+      #define STRAT_DIRECT_EXEC_TESTER_ONLY
+   #endif
+
+   #ifndef STRAT_DIRECT_EXEC_ALLOW
+      #define STRAT_DIRECT_EXEC_ALLOW
+   #endif
+#endif
 
 namespace StrategyDirectExec
 {
@@ -82,14 +93,25 @@ namespace StrategyDirectExec
       return InTesterEnv();
    }
 
+   inline bool ConfigTesterDirectExecActive(const Settings &cfg)
+   {
+      if(InTesterEnv())
+         return(true);
+
+      if(Config::CfgTesterDegradedModeActive(cfg))
+         return(true);
+
+      return(false);
+   }
+
    inline void SyncTesterBypassFromConfig(const Settings &cfg)
    {
-      SetTesterBypass(Config::CfgTesterDegradedModeActive(cfg));
+      SetTesterBypass(ConfigTesterDirectExecActive(cfg));
    }
 
    inline bool ConfigTesterOverrideActive(const Settings &cfg)
    {
-      if(Config::CfgTesterDegradedModeActive(cfg))
+      if(ConfigTesterDirectExecActive(cfg))
          return(true);
 
       return(false);
@@ -193,7 +215,11 @@ namespace StrategyDirectExec
 
       if(ConfigTesterOverrideActive(cfg))
       {
-         why_out = Msg_TesterOverride(strategy_name);
+         if(Config::CfgTesterDegradedModeActive(cfg))
+            why_out = Msg_TesterOverride(strategy_name);
+         else
+            why_out = Msg_TesterBypass(strategy_name);
+
          return(true);
       }
 
@@ -441,6 +467,9 @@ namespace StrategyDirectExec
 //    // This bypass is tester-only at runtime and does not weaken live mode.
 //
 // 1) Guard the Execution include in EACH strategy file:
+//
+//    // Preferred source of truth remains BuildFlags.mqh.
+//    // In tester builds, this header also provides a defensive macro bridge.
 //
 //    #ifdef STRAT_DIRECT_EXEC_TESTER_ONLY
 //    #ifdef STRAT_DIRECT_EXEC_ALLOW

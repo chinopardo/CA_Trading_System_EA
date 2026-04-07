@@ -851,6 +851,52 @@ namespace Policies
    }
 
   // ----------------------------------------------------------------------------
+  // Tester loose-mode / micro-disable mirrors
+  // Mirror the EA-level tester flags through setters from OnInit().
+  // ----------------------------------------------------------------------------
+  static bool s_tester_loose_gate_mode = false;
+  static bool s_disable_microstructure_gates = false;
+
+  inline void SetTesterLooseGateMode(const bool on)
+  {
+    s_tester_loose_gate_mode = on;
+  }
+
+  inline void SetDisableMicrostructureGates(const bool on)
+  {
+    s_disable_microstructure_gates = on;
+  }
+
+  inline bool PolicyTesterLooseModeActive(const Settings &cfg)
+  {
+    if(s_tester_loose_gate_mode)
+      return true;
+
+    #ifdef CFG_HAS_TESTER_LOOSE_GATE_MODE
+      if(cfg.tester_loose_gate_mode)
+        return true;
+    #endif
+
+    return false;
+  }
+
+  inline bool PolicyDisableMicrostructureGatesActive(const Settings &cfg)
+  {
+    if(s_disable_microstructure_gates)
+      return true;
+
+    #ifdef CFG_HAS_DISABLE_MICROSTRUCTURE_GATES
+      if(cfg.disable_microstructure_gates)
+        return true;
+    #endif
+
+    if(PolicyTesterLooseModeActive(cfg))
+      return true;
+
+    return false;
+  }
+
+  // ----------------------------------------------------------------------------
   // Structured policy decision result (single source of truth)
   // ----------------------------------------------------------------------------
 
@@ -1184,6 +1230,9 @@ namespace Policies
   // ----------------------------------------------------------------------------
   inline bool PolicyTesterRelaxActive()
   {
+    if(s_tester_loose_gate_mode)
+      return true;
+
     if(POLICY_TESTER_RELAX == 0)
       return false;
 
@@ -1196,10 +1245,21 @@ namespace Policies
     return false;
   }
 
+  inline bool PolicyTesterRuntime()
+  {
+    if(MQLInfoInteger(MQL_TESTER) != 0)
+      return true;
+
+    if(MQLInfoInteger(MQL_OPTIMIZATION) != 0)
+      return true;
+
+    return false;
+  }
+
   inline double PolicyStateQualityMin01()
   {
     if(PolicyTesterRelaxActive())
-      return 0.30;
+      return 0.0;
 
     return (double)POLICIES_INST_MIN_STATE_QUALITY01;
   }
@@ -1247,10 +1307,50 @@ namespace Policies
 
   inline bool PolicyTesterDegradedActive(const Settings &cfg)
   {
+    if(PolicyTesterRuntime())
+      return true;
+
     if(Config::CfgTesterDegradedModeActive(cfg))
       return true;
 
     return false;
+  }
+
+  inline bool PolicyMicroRelaxActive(const Settings &cfg)
+  {
+    if(PolicyDisableMicrostructureGatesActive(cfg))
+      return true;
+
+    if(PolicyTesterDegradedActive(cfg))
+      return true;
+
+    return false;
+  }
+
+  inline double PolicyRelaxMinThreshold01(const double base_value)
+  {
+    return Clamp01(base_value * 0.5);
+  }
+
+  inline double PolicyRelaxMaxThreshold01(const double base_value)
+  {
+    return Clamp01(base_value + (1.0 - base_value) * 0.5);
+  }
+
+  inline double PolicyHalfMinThreshold(const double base_value)
+  {
+    if(base_value <= 0.0)
+      return 0.0;
+
+    return base_value * 0.5;
+  }
+
+  inline double PolicyLooseCapThreshold(const double base_value)
+  {
+    if(base_value <= 0.0)
+      return 0.0;
+
+    return base_value * 2.0;
   }
 
   inline bool PolicySessionBypassActive(const Settings &cfg)
@@ -1486,20 +1586,34 @@ namespace Policies
   
   inline double CfgCalmMinATRPips(const Settings &cfg)
   {
+    double threshold = 0.0;
+
     #ifdef CFG_HAS_CALM_MIN_ATR_PIPS
-      return (cfg.calm_min_atr_pips>0.0 ? cfg.calm_min_atr_pips : 0.0);
+      threshold = (cfg.calm_min_atr_pips > 0.0 ? cfg.calm_min_atr_pips : 0.0);
     #else
-      return 0.0;
+      threshold = 0.0;
     #endif
+
+    if(PolicyTesterRelaxActive())
+      threshold = PolicyHalfMinThreshold(threshold);
+
+    return threshold;
   }
   
   inline double CfgCalmMinATRtoSpread(const Settings &cfg)
   {
+    double threshold = 0.0;
+
     #ifdef CFG_HAS_CALM_MIN_ATR_TO_SPREAD
-      return (cfg.calm_min_atr_to_spread>0.0 ? cfg.calm_min_atr_to_spread : 0.0);
+      threshold = (cfg.calm_min_atr_to_spread > 0.0 ? cfg.calm_min_atr_to_spread : 0.0);
     #else
-      return 0.0;
+      threshold = 0.0;
     #endif
+
+    if(PolicyTesterRelaxActive())
+      threshold = PolicyHalfMinThreshold(threshold);
+
+    return threshold;
   }
   
   // --- Weekly-open ramp (compile-safe) -----------------------------------------
@@ -1751,15 +1865,22 @@ namespace Policies
 
   inline double CfgMicroVPINMax01(const Settings &cfg)
   {
+    double threshold = 1.0;
+
     #ifdef CFG_HAS_MS_VPIN_THRESHOLD
-      return Clamp01(cfg.ms_vpin_threshold);
+      threshold = Clamp01(cfg.ms_vpin_threshold);
     #else
       #ifdef CFG_HAS_VPIN_THRESHOLD
-        return Clamp01(cfg.vpin_threshold);
+        threshold = Clamp01(cfg.vpin_threshold);
       #else
-        return 1.0;
+        threshold = 1.0;
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgMicroToxicityGateOn(const Settings &cfg)
@@ -1781,19 +1902,26 @@ namespace Policies
 
   inline double CfgMicroToxicityMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MAX_TOXICITY01;
+
     #ifdef CFG_HAS_MS_TOXICITY_THRESHOLD
-      return Clamp01(cfg.ms_toxicity_threshold);
+      threshold = Clamp01(cfg.ms_toxicity_threshold);
     #else
       #ifdef CFG_HAS_INST_MAX_TOXICITY01
-        return Clamp01(cfg.inst_max_toxicity01);
+        threshold = Clamp01(cfg.inst_max_toxicity01);
       #else
         #ifdef CFG_HAS_TOXICITY_THRESHOLD
-          return Clamp01(cfg.toxicity_threshold);
+          threshold = Clamp01(cfg.toxicity_threshold);
         #else
-          return (double)POLICIES_INST_MAX_TOXICITY01;
+          threshold = (double)POLICIES_INST_MAX_TOXICITY01;
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgMicroSpreadStressGateOn(const Settings &cfg)
@@ -1815,19 +1943,26 @@ namespace Policies
 
   inline double CfgMicroSpreadStressMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MAX_SPREAD_STRESS01;
+
     #ifdef CFG_HAS_MS_MAX_SPREAD_STRESS01
-      return Clamp01(cfg.ms_max_spread_stress01);
+      threshold = Clamp01(cfg.ms_max_spread_stress01);
     #else
       #ifdef CFG_HAS_INST_SPREAD_STRESS_MAX01
-        return Clamp01(cfg.inst_spread_stress_max01);
+        threshold = Clamp01(cfg.inst_spread_stress_max01);
       #else
         #ifdef CFG_HAS_SPREAD_STRESS_MAX01
-          return Clamp01(cfg.spread_stress_max01);
+          threshold = Clamp01(cfg.spread_stress_max01);
         #else
-          return (double)POLICIES_INST_MAX_SPREAD_STRESS01;
+          threshold = (double)POLICIES_INST_MAX_SPREAD_STRESS01;
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgMicroResiliencyGateOn(const Settings &cfg)
@@ -1849,74 +1984,102 @@ namespace Policies
 
   inline double CfgMicroResiliencyMin01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MIN_RESILIENCY01;
+
     #ifdef CFG_HAS_MS_RESILIENCY_THRESHOLD
-      return Clamp01(cfg.ms_resiliency_threshold);
+      threshold = Clamp01(cfg.ms_resiliency_threshold);
     #else
       #ifdef CFG_HAS_MS_RESIL_THRESHOLD
-        return Clamp01(cfg.ms_resil_threshold);
+        threshold = Clamp01(cfg.ms_resil_threshold);
       #else
         #ifdef CFG_HAS_RESILIENCY_THRESHOLD
-          return Clamp01(cfg.resiliency_threshold);
+          threshold = Clamp01(cfg.resiliency_threshold);
         #else
-          return (double)POLICIES_INST_MIN_RESILIENCY01;
+          threshold = (double)POLICIES_INST_MIN_RESILIENCY01;
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMinThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline double CfgMicroObservabilityMin01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MIN_OBSERVABILITY01;
+
     #ifdef CFG_HAS_MS_MIN_OBSERVABILITY01
-      return Clamp01(cfg.ms_min_observability01);
+      threshold = Clamp01(cfg.ms_min_observability01);
     #else
       #ifdef CFG_HAS_INST_MIN_OBSERVABILITY01
-        return Clamp01(cfg.inst_min_observability01);
+        threshold = Clamp01(cfg.inst_min_observability01);
       #else
         #ifdef CFG_HAS_MIN_OBSERVABILITY01
-          return Clamp01(cfg.min_observability01);
+          threshold = Clamp01(cfg.min_observability01);
         #else
-          return (double)POLICIES_INST_MIN_OBSERVABILITY01;
+          threshold = (double)POLICIES_INST_MIN_OBSERVABILITY01;
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMinThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline double CfgMicroVenueCoverageMin01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
+
     #ifdef CFG_HAS_MS_MIN_VENUE_COVERAGE01
-      return Clamp01(cfg.ms_min_venue_coverage01);
+      threshold = Clamp01(cfg.ms_min_venue_coverage01);
     #else
       #ifdef CFG_HAS_INST_MIN_VENUE_COVERAGE01
-        return Clamp01(cfg.inst_min_venue_coverage01);
+        threshold = Clamp01(cfg.inst_min_venue_coverage01);
       #else
         #ifdef CFG_HAS_MIN_VENUE_COVERAGE01
-          return Clamp01(cfg.min_venue_coverage01);
+          threshold = Clamp01(cfg.min_venue_coverage01);
         #else
-          return (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
+          threshold = (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMinThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline double CfgMicroXVenueDislocationMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01;
+
     #ifdef CFG_HAS_MS_MAX_XVENUE_DISLOCATION01
-      return Clamp01(cfg.ms_max_xvenue_dislocation01);
+      threshold = Clamp01(cfg.ms_max_xvenue_dislocation01);
     #else
       #ifdef CFG_HAS_INST_MAX_XVENUE_DISLOCATION01
-        return Clamp01(cfg.inst_max_xvenue_dislocation01);
+        threshold = Clamp01(cfg.inst_max_xvenue_dislocation01);
       #else
         #ifdef CFG_HAS_XVENUE_DISLOCATION_MAX01
-          return Clamp01(cfg.xvenue_dislocation_max01);
+          threshold = Clamp01(cfg.xvenue_dislocation_max01);
         #else
           #ifdef CFG_HAS_MAX_XVENUE_DISLOCATION01
-            return Clamp01(cfg.max_xvenue_dislocation01);
+            threshold = Clamp01(cfg.max_xvenue_dislocation01);
           #else
-            return (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01;
+            threshold = (double)POLICIES_INST_VETO_XVENUE_DISLOCATION01;
           #endif
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgMicroImpactGateOn(const Settings &cfg)
@@ -1938,44 +2101,58 @@ namespace Policies
 
   inline double CfgMicroImpactBetaMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MAX_IMPACT_BETA01;
+
     #ifdef CFG_HAS_MS_MAX_IMPACT_BETA01
-      return Clamp01(cfg.ms_max_impact_beta01);
+      threshold = Clamp01(cfg.ms_max_impact_beta01);
     #else
       #ifdef CFG_HAS_INST_IMPACT_BETA_MAX01
-        return Clamp01(cfg.inst_impact_beta_max01);
+        threshold = Clamp01(cfg.inst_impact_beta_max01);
       #else
         #ifdef CFG_HAS_IMPACT_BETA_MAX01
-          return Clamp01(cfg.impact_beta_max01);
+          threshold = Clamp01(cfg.impact_beta_max01);
         #else
           #ifdef CFG_HAS_MAX_IMPACT_BETA01
-            return Clamp01(cfg.max_impact_beta01);
+            threshold = Clamp01(cfg.max_impact_beta01);
           #else
-            return (double)POLICIES_INST_MAX_IMPACT_BETA01;
+            threshold = (double)POLICIES_INST_MAX_IMPACT_BETA01;
           #endif
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline double CfgMicroImpactLambdaMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MAX_IMPACT_LAMBDA01;
+
     #ifdef CFG_HAS_MS_MAX_IMPACT_LAMBDA01
-      return Clamp01(cfg.ms_max_impact_lambda01);
+      threshold = Clamp01(cfg.ms_max_impact_lambda01);
     #else
       #ifdef CFG_HAS_INST_IMPACT_LAMBDA_MAX01
-        return Clamp01(cfg.inst_impact_lambda_max01);
+        threshold = Clamp01(cfg.inst_impact_lambda_max01);
       #else
         #ifdef CFG_HAS_IMPACT_LAMBDA_MAX01
-          return Clamp01(cfg.impact_lambda_max01);
+          threshold = Clamp01(cfg.impact_lambda_max01);
         #else
           #ifdef CFG_HAS_MAX_IMPACT_LAMBDA01
-            return Clamp01(cfg.max_impact_lambda01);
+            threshold = Clamp01(cfg.max_impact_lambda01);
           #else
-            return (double)POLICIES_INST_MAX_IMPACT_LAMBDA01;
+            threshold = (double)POLICIES_INST_MAX_IMPACT_LAMBDA01;
           #endif
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgMicroDarkPoolGateOn(const Settings &cfg)
@@ -2001,44 +2178,58 @@ namespace Policies
 
   inline double CfgMicroDarkPoolMin01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MIN_DARKPOOL01;
+
     #ifdef CFG_HAS_MS_MIN_DARKPOOL01
-      return Clamp01(cfg.ms_min_darkpool01);
+      threshold = Clamp01(cfg.ms_min_darkpool01);
     #else
       #ifdef CFG_HAS_INST_DARKPOOL_MIN01
-        return Clamp01(cfg.inst_darkpool_min01);
+        threshold = Clamp01(cfg.inst_darkpool_min01);
       #else
         #ifdef CFG_HAS_DARKPOOL_MIN01
-          return Clamp01(cfg.darkpool_min01);
+          threshold = Clamp01(cfg.darkpool_min01);
         #else
           #ifdef CFG_HAS_DARK_POOL_CONFIDENCE_MIN01
-            return Clamp01(cfg.dark_pool_confidence_min01);
+            threshold = Clamp01(cfg.dark_pool_confidence_min01);
           #else
-            return (double)POLICIES_INST_MIN_DARKPOOL01;
+            threshold = (double)POLICIES_INST_MIN_DARKPOOL01;
           #endif
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMinThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline double CfgMicroDarkPoolContradictionMax01(const Settings &cfg)
   {
+    double threshold = (double)POLICIES_INST_MAX_DARKPOOL_CONTRADICTION01;
+
     #ifdef CFG_HAS_MS_MAX_DARKPOOL_CONTRADICTION01
-      return Clamp01(cfg.ms_max_darkpool_contradiction01);
+      threshold = Clamp01(cfg.ms_max_darkpool_contradiction01);
     #else
       #ifdef CFG_HAS_INST_DARKPOOL_CONTRADICTION_MAX01
-        return Clamp01(cfg.inst_darkpool_contradiction_max01);
+        threshold = Clamp01(cfg.inst_darkpool_contradiction_max01);
       #else
         #ifdef CFG_HAS_DARKPOOL_CONTRADICTION_MAX01
-          return Clamp01(cfg.darkpool_contradiction_max01);
+          threshold = Clamp01(cfg.darkpool_contradiction_max01);
         #else
           #ifdef CFG_HAS_DARK_POOL_CONTRADICTION_MAX01
-            return Clamp01(cfg.dark_pool_contradiction_max01);
+            threshold = Clamp01(cfg.dark_pool_contradiction_max01);
           #else
-            return (double)POLICIES_INST_MAX_DARKPOOL_CONTRADICTION01;
+            threshold = (double)POLICIES_INST_MAX_DARKPOOL_CONTRADICTION01;
           #endif
         #endif
       #endif
     #endif
+
+    if(PolicyMicroRelaxActive(cfg))
+      threshold = PolicyRelaxMaxThreshold01(threshold);
+
+    return Clamp01(threshold);
   }
 
   inline bool CfgSmartMoneyInvalidationGateOn(const Settings &cfg)
@@ -2210,30 +2401,50 @@ namespace Policies
        return 20;
      #endif
    }
-   inline double CfgADRCapMult(const Settings &cfg)
-   {
-     #ifdef CFG_HAS_ADR_CAP_MULT
-       return (cfg.adr_cap_mult>0.0 ? cfg.adr_cap_mult : 0.0); // 0 => disabled
-     #else
-       return 0.0;
-     #endif
-   }
+  inline double CfgADRCapMult(const Settings &cfg)
+  {
+    double threshold = 0.0;
 
+    #ifdef CFG_HAS_ADR_CAP_MULT
+      threshold = (cfg.adr_cap_mult > 0.0 ? cfg.adr_cap_mult : 0.0);
+    #else
+      threshold = 0.0;
+    #endif
+
+    if(PolicyTesterRelaxActive())
+      threshold = PolicyLooseCapThreshold(threshold);
+
+    return threshold;
+  }
   inline double CfgADRMinPips(const Settings &cfg)
   {
+    double threshold = 0.0;
+
     #ifdef CFG_HAS_ADR_MIN_PIPS
-      return (cfg.adr_min_pips>0.0? cfg.adr_min_pips : 0.0);
+      threshold = (cfg.adr_min_pips > 0.0 ? cfg.adr_min_pips : 0.0);
     #else
-      return 0.0;
+      threshold = 0.0;
     #endif
+
+    if(PolicyTesterRelaxActive())
+      threshold = PolicyHalfMinThreshold(threshold);
+
+    return threshold;
   }
   inline double CfgADRMaxPips(const Settings &cfg)
   {
+    double threshold = 0.0;
+
     #ifdef CFG_HAS_ADR_MAX_PIPS
-      return (cfg.adr_max_pips>0.0? cfg.adr_max_pips : 0.0);
+      threshold = (cfg.adr_max_pips > 0.0 ? cfg.adr_max_pips : 0.0);
     #else
-      return 0.0;
+      threshold = 0.0;
     #endif
+
+    if(PolicyTesterRelaxActive())
+      threshold = PolicyLooseCapThreshold(threshold);
+
+    return threshold;
   }
 
   // --- Cooldown knobs --------------------------------------------------------
@@ -4582,9 +4793,10 @@ inline void NotifyTradeResult(const double r_multiple)
 
     _PolicyReset(out);
     _ApplyRuntimeKnobsFromCfg(cfg);
+    const bool tester_loose_mode = PolicyTesterLooseModeActive(cfg);
 
-    out.session_filter_on = EffSessionFilter(cfg, sym);
-    out.in_session_window = TimeUtils::InTradingWindow(cfg, TimeCurrent());
+    out.session_filter_on = (tester_loose_mode ? false : EffSessionFilter(cfg, sym));
+    out.in_session_window = (tester_loose_mode ? true  : TimeUtils::InTradingWindow(cfg, TimeCurrent()));
 
     out.trade_cd_sec      = s_trade_cd_sec;
     out.loss_cd_min       = s_cooldown_min;
@@ -4721,6 +4933,7 @@ inline void NotifyTradeResult(const double r_multiple)
    }
 
     // 9) ADR cap
+    if(!tester_loose_mode)
     {
       double adr_pts=0.0; int adr_reason=GATE_OK;
       if(!ADRCapOK(cfg, sym, adr_reason, adr_pts))
@@ -4733,6 +4946,7 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     // 10) Calm
+    if(!tester_loose_mode)
     {
       int calm_reason=GATE_OK;
       if(!CalmModeOK(cfg, sym, calm_reason))
@@ -4744,20 +4958,23 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     // 11) Regime
-    EnableRegimeGate(CfgRegimeGateOn(cfg));
-    SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
-    if(!RegimeConsensusOK(cfg, sym))
+    if(!tester_loose_mode)
     {
-      // Capture exact values for guaranteed veto logs (NOT debug gated)
-      out.regime_tq_min = s_reg_tq_min;
-      out.regime_sg_min = s_reg_sg_min;
+      EnableRegimeGate(CfgRegimeGateOn(cfg));
+      SetRegimeThresholds(CfgRegimeTQMin(cfg), CfgRegimeSGMin(cfg));
+      if(!RegimeConsensusOK(cfg, sym))
+      {
+        // Capture exact values for guaranteed veto logs (NOT debug gated)
+        out.regime_tq_min = s_reg_tq_min;
+        out.regime_sg_min = s_reg_sg_min;
 
-      const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
-      out.regime_tq = RegimeX::TrendQuality(sym, tf, 60);
-      out.regime_sg = Corr::HysteresisSlopeGuard(sym, tf, 14, 23.0, 15.0);
+        const ENUM_TIMEFRAMES tf = CfgTFEntry(cfg);
+        out.regime_tq = RegimeX::TrendQuality(sym, tf, 60);
+        out.regime_sg = Corr::HysteresisSlopeGuard(sym, tf, 14, 23.0, 15.0);
 
-      _PolicyVeto(out, GATE_REGIME, CA_POLMASK_REGIME);
-      if(!audit) return false;
+        _PolicyVeto(out, GATE_REGIME, CA_POLMASK_REGIME);
+        if(!audit) return false;
+      }
     }
 
     return out.allowed;
@@ -4767,7 +4984,9 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     const bool ok_core = _EvaluateCoreEx(cfg, sym, out, audit);
     if(!audit && !ok_core) return false;
-    
+
+    const bool tester_loose_mode = PolicyTesterLooseModeActive(cfg);
+
     // A) Day max-losses
     if(MaxLossesReachedToday(cfg, sym))
     {
@@ -4809,7 +5028,7 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     // C) Session veto (full)
-    if(out.session_filter_on && !out.in_session_window)
+    if(!tester_loose_mode && out.session_filter_on && !out.in_session_window)
     {
       _PolicyVeto(out, GATE_SESSION, CA_POLMASK_SESSION);
       if(!audit) return false;
@@ -4822,7 +5041,7 @@ inline void NotifyTradeResult(const double r_multiple)
     out.news_pre_mins    = 0;
     out.news_post_mins   = 0;
 
-    if(CfgNewsPolicyEnabled(cfg))
+    if(!tester_loose_mode && CfgNewsPolicyEnabled(cfg))
     {
       out.news_impact_mask = EffNewsImpactMask(cfg, sym);
       out.news_pre_mins    = CfgNewsBlockPreMins(cfg);
@@ -5175,6 +5394,9 @@ inline void NotifyTradeResult(const double r_multiple)
    {
      mins_left = 0;
 
+     if(!CfgNewsOn(cfg))
+       return false;
+
      if(PolicyNewsBypassActive(cfg))
      {
        _GateDetail(cfg, GATE_NEWS, sym, "tester_bypass=1 news_gate_relaxed=1");
@@ -5232,6 +5454,12 @@ inline void NotifyTradeResult(const double r_multiple)
                                       StratScore &ss, ConfluenceBreakdown &bd, bool &skip_out)
   {
     skip_out = false;
+
+    if(PolicyTesterRuntime())
+    {
+      bd.score_final = ss.score;
+      return;
+    }
 
     // 1) News remains a veto / risk modifier only.
     ApplyNewsScaling(cfg, sym, ss, bd, skip_out);
@@ -5381,6 +5609,66 @@ inline void NotifyTradeResult(const double r_multiple)
     v.confluence_veto_mask          = 0;
     v.route_reason                  = "";
     v.veto_reason                   = "none";
+  }
+
+  inline void ApplyNeutralInstitutionalStatePolicyView(InstitutionalStatePolicyView &v,
+                                                       const string reason_text)
+  {
+    ResetInstitutionalStatePolicyView(v);
+
+    v.valid               = true;
+    v.trade_gate_pass     = true;
+    v.delay_recommended   = false;
+    v.derisk_recommended  = false;
+
+    v.alpha_score         = 0.5;
+    v.execution_score     = 0.5;
+    v.risk_score          = 0.5;
+    v.state_quality01     = 0.5;
+
+    v.observability_confidence01 = 0.5;
+    v.venue_coverage01           = 0.5;
+    v.cross_venue_dislocation01  = 0.0;
+    v.observability_penalty01    = 0.5;
+
+    v.vpin01                     = 0.5;
+    v.resiliency01               = 0.5;
+    v.toxicity01                 = 0.5;
+    v.spread_stress01            = 0.5;
+    v.impact_beta01              = 0.5;
+    v.impact_lambda01            = 0.5;
+    v.truth_tier01               = 0.5;
+
+    v.darkpool01                     = 0.5;
+    v.darkpool_contradiction01       = 0.0;
+    v.sd_ob_invalidation_proximity01 = 0.0;
+    v.liquidity_vacuum01             = 0.0;
+    v.liquidity_hunt01               = 0.0;
+
+    v.execution_posture_mode     = 0;
+    v.reduced_only               = false;
+    v.invalidation_event01       = false;
+    v.liquidity_trap_event01     = false;
+
+    v.direct_micro_available     = false;
+    v.proxy_micro_available      = true;
+    v.flow_mode                  = POLICIES_INST_FLOW_MODE_PROXY;
+
+    v.inst_ofi01                 = 0.5;
+    v.inst_obi01                 = 0.5;
+    v.inst_cvd01                 = 0.5;
+    v.inst_delta_proxy01         = 0.5;
+    v.inst_footprint01           = 0.5;
+    v.inst_profile01             = 0.5;
+    v.inst_absorption01          = 0.5;
+    v.inst_replenishment01       = 0.5;
+    v.inst_vwap_location01       = 0.5;
+    v.inst_liquidity_reject01    = 0.5;
+
+    v.gate_reason                = GATE_OK;
+    v.confluence_veto_mask       = 0;
+    v.route_reason               = reason_text;
+    v.veto_reason                = reason_text;
   }
 
   inline double InstitutionalQuoteInstability01(const InstitutionalStatePolicyView &v)
@@ -6276,8 +6564,28 @@ inline void NotifyTradeResult(const double r_multiple)
 
     ResetInstitutionalStatePolicyView(inst_view);
 
+    if(PolicyDisableMicrostructureGatesActive(cfg))
+    {
+      ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_disabled");
+      _PolicyMergeInstitutionalView(cfg, inst_view, out);
+      out.allowed = true;
+      out.primary_reason = GATE_OK;
+      out.veto_mask = 0;
+      return true;
+    }
+
     if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
     {
+      if(PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg))
+      {
+        ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_relaxed");
+        _PolicyMergeInstitutionalView(cfg, inst_view, out);
+        out.allowed = true;
+        out.primary_reason = GATE_OK;
+        out.veto_mask = 0;
+        return true;
+      }
+
       _PolicyMergeInstitutionalView(cfg, inst_view, out);
 
       int gr = inst_view.gate_reason;
@@ -6290,6 +6598,9 @@ inline void NotifyTradeResult(const double r_multiple)
       if(!audit)
         return false;
     }
+
+    if(!inst_view.valid)
+      ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_unavailable");
 
     _PolicyMergeInstitutionalView(cfg, inst_view, out);
     return out.allowed;
@@ -6342,8 +6653,28 @@ inline void NotifyTradeResult(const double r_multiple)
     _PolicyReset(out);
     ResetInstitutionalStatePolicyView(inst_view);
 
+    if(PolicyDisableMicrostructureGatesActive(cfg))
+    {
+      ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_disabled");
+      _PolicyMergeInstitutionalView(cfg, inst_view, out);
+      out.allowed = true;
+      out.primary_reason = GATE_OK;
+      out.veto_mask = 0;
+      return true;
+    }
+
     if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
     {
+      if(PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg))
+      {
+        ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_relaxed");
+        _PolicyMergeInstitutionalView(cfg, inst_view, out);
+        out.allowed = true;
+        out.primary_reason = GATE_OK;
+        out.veto_mask = 0;
+        return true;
+      }
+
       _PolicyMergeInstitutionalView(cfg, inst_view, out);
 
       int gr = inst_view.gate_reason;
@@ -6354,6 +6685,9 @@ inline void NotifyTradeResult(const double r_multiple)
       if(!audit)
         return false;
     }
+
+    if(!inst_view.valid)
+      ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_unavailable");
 
     _PolicyMergeInstitutionalView(cfg, inst_view, out);
     return out.allowed;
