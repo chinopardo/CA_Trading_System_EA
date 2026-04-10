@@ -5449,6 +5449,11 @@ namespace Config
       cfg.scan_ofx_impact_depth_adjust_enable     = true;
       cfg.scan_ofx_impact_smoothing_period        = 5;
 
+      cfg.scan_ofx_impact_weight_mode              = 1;     // linear-recency
+      cfg.scan_ofx_impact_weight_decay            = 0.90;  // used only in exp mode
+      cfg.scan_ofx_impact_concave_enable          = false;
+      cfg.scan_ofx_impact_concavity_psi           = 0.50;
+
       cfg.scan_ofx_weight_toxicity                = 0.20;
       cfg.scan_ofx_weight_resiliency              = 0.20;
       cfg.scan_ofx_weight_microprice              = 0.15;
@@ -5670,6 +5675,47 @@ namespace Config
       cfg.ms_exec_allow_vwap           = true;
       cfg.ms_exec_allow_twap           = true;
       cfg.ms_exec_allow_urgency        = true;
+
+      cfg.ms_alpha_w_flow01             = 0.24;
+      cfg.ms_alpha_w_absorption01       = 0.16;
+      cfg.ms_alpha_w_replenishment01    = 0.14;
+      cfg.ms_alpha_w_profile01          = 0.18;
+      cfg.ms_alpha_w_benchmark01        = 0.12;
+      cfg.ms_alpha_w_resiliency01       = 0.16;
+
+      cfg.ms_exec_w_flow01              = 0.20;
+      cfg.ms_exec_w_impact_inv01        = 0.20;
+      cfg.ms_exec_w_resiliency01        = 0.16;
+      cfg.ms_exec_w_observability01     = 0.16;
+      cfg.ms_exec_w_liquidity_inv01     = 0.14;
+      cfg.ms_exec_w_benchmark01         = 0.14;
+      cfg.ms_exec_logistic_bias         = -0.15;
+      cfg.ms_exec_logistic_k            = 6.00;
+
+      cfg.ms_risk_w_toxicity01              = 0.24;
+      cfg.ms_risk_w_impact01                = 0.18;
+      cfg.ms_risk_w_volatility01            = 0.16;
+      cfg.ms_risk_w_liquidity01             = 0.18;
+      cfg.ms_risk_w_observability_penalty01 = 0.12;
+      cfg.ms_risk_w_adverse_selection01     = 0.12;
+
+      // FOREX-first
+      cfg.ms_fx_alpha_gate_min01        = 0.55;
+      cfg.ms_fx_risk_gate_max01         = 0.62;
+      cfg.ms_fx_vpin_gate_max01         = 0.80;
+      cfg.ms_fx_resil_gate_min01        = 0.18;
+
+      // XAUUSD / GOLD
+      cfg.ms_xau_alpha_gate_min01       = 0.58;
+      cfg.ms_xau_risk_gate_max01        = 0.58;
+      cfg.ms_xau_vpin_gate_max01        = 0.74;
+      cfg.ms_xau_resil_gate_min01       = 0.24;
+
+      // Others
+      cfg.ms_other_alpha_gate_min01     = 0.60;
+      cfg.ms_other_risk_gate_max01      = 0.54;
+      cfg.ms_other_vpin_gate_max01      = 0.70;
+      cfg.ms_other_resil_gate_min01     = 0.28;
 #endif
 
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
@@ -6824,6 +6870,60 @@ namespace Config
       if(cfg.ms_volatility_breakout_min01 < cfg.ms_volatility_trend_min01)
          cfg.ms_volatility_breakout_min01 = cfg.ms_volatility_trend_min01;
 
+      _NormalizeWeightPack6(cfg.ms_alpha_w_flow01,
+                            cfg.ms_alpha_w_absorption01,
+                            cfg.ms_alpha_w_replenishment01,
+                            cfg.ms_alpha_w_profile01,
+                            cfg.ms_alpha_w_benchmark01,
+                            cfg.ms_alpha_w_resiliency01);
+
+      _NormalizeWeightPack6(cfg.ms_exec_w_flow01,
+                            cfg.ms_exec_w_impact_inv01,
+                            cfg.ms_exec_w_resiliency01,
+                            cfg.ms_exec_w_observability01,
+                            cfg.ms_exec_w_liquidity_inv01,
+                            cfg.ms_exec_w_benchmark01);
+
+      _NormalizeWeightPack6(cfg.ms_risk_w_toxicity01,
+                            cfg.ms_risk_w_impact01,
+                            cfg.ms_risk_w_volatility01,
+                            cfg.ms_risk_w_liquidity01,
+                            cfg.ms_risk_w_observability_penalty01,
+                            cfg.ms_risk_w_adverse_selection01);
+
+      if(cfg.ms_exec_logistic_bias < -4.0) cfg.ms_exec_logistic_bias = -4.0;
+      if(cfg.ms_exec_logistic_bias >  4.0) cfg.ms_exec_logistic_bias =  4.0;
+
+      if(cfg.ms_exec_logistic_k < 0.25) cfg.ms_exec_logistic_k = 0.25;
+      if(cfg.ms_exec_logistic_k > 12.0) cfg.ms_exec_logistic_k = 12.0;
+
+      if(cfg.ms_fx_alpha_gate_min01 < 0.0) cfg.ms_fx_alpha_gate_min01 = 0.0;
+      if(cfg.ms_fx_alpha_gate_min01 > 1.0) cfg.ms_fx_alpha_gate_min01 = 1.0;
+      if(cfg.ms_fx_risk_gate_max01 < 0.0)  cfg.ms_fx_risk_gate_max01 = 0.0;
+      if(cfg.ms_fx_risk_gate_max01 > 1.0)  cfg.ms_fx_risk_gate_max01 = 1.0;
+      if(cfg.ms_fx_vpin_gate_max01 < 0.0)  cfg.ms_fx_vpin_gate_max01 = 0.0;
+      if(cfg.ms_fx_vpin_gate_max01 > 1.0)  cfg.ms_fx_vpin_gate_max01 = 1.0;
+      if(cfg.ms_fx_resil_gate_min01 < 0.0) cfg.ms_fx_resil_gate_min01 = 0.0;
+      if(cfg.ms_fx_resil_gate_min01 > 1.0) cfg.ms_fx_resil_gate_min01 = 1.0;
+
+      if(cfg.ms_xau_alpha_gate_min01 < 0.0) cfg.ms_xau_alpha_gate_min01 = 0.0;
+      if(cfg.ms_xau_alpha_gate_min01 > 1.0) cfg.ms_xau_alpha_gate_min01 = 1.0;
+      if(cfg.ms_xau_risk_gate_max01 < 0.0)  cfg.ms_xau_risk_gate_max01 = 0.0;
+      if(cfg.ms_xau_risk_gate_max01 > 1.0)  cfg.ms_xau_risk_gate_max01 = 1.0;
+      if(cfg.ms_xau_vpin_gate_max01 < 0.0)  cfg.ms_xau_vpin_gate_max01 = 0.0;
+      if(cfg.ms_xau_vpin_gate_max01 > 1.0)  cfg.ms_xau_vpin_gate_max01 = 1.0;
+      if(cfg.ms_xau_resil_gate_min01 < 0.0) cfg.ms_xau_resil_gate_min01 = 0.0;
+      if(cfg.ms_xau_resil_gate_min01 > 1.0) cfg.ms_xau_resil_gate_min01 = 1.0;
+
+      if(cfg.ms_other_alpha_gate_min01 < 0.0) cfg.ms_other_alpha_gate_min01 = 0.0;
+      if(cfg.ms_other_alpha_gate_min01 > 1.0) cfg.ms_other_alpha_gate_min01 = 1.0;
+      if(cfg.ms_other_risk_gate_max01 < 0.0)  cfg.ms_other_risk_gate_max01 = 0.0;
+      if(cfg.ms_other_risk_gate_max01 > 1.0)  cfg.ms_other_risk_gate_max01 = 1.0;
+      if(cfg.ms_other_vpin_gate_max01 < 0.0)  cfg.ms_other_vpin_gate_max01 = 0.0;
+      if(cfg.ms_other_vpin_gate_max01 > 1.0)  cfg.ms_other_vpin_gate_max01 = 1.0;
+      if(cfg.ms_other_resil_gate_min01 < 0.0) cfg.ms_other_resil_gate_min01 = 0.0;
+      if(cfg.ms_other_resil_gate_min01 > 1.0) cfg.ms_other_resil_gate_min01 = 1.0;
+
 #ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
       if(cfg.ms_observability_direct_min01 < 0.0) cfg.ms_observability_direct_min01 = 0.0;
       if(cfg.ms_observability_direct_min01 > 1.0) cfg.ms_observability_direct_min01 = 1.0;
@@ -7339,6 +7439,17 @@ namespace Config
       else if(cfg.scan_ofx_impact_smoothing_period == 1)
          cfg.scan_ofx_impact_smoothing_period = 2;
 
+      if(cfg.scan_ofx_impact_weight_mode < 0)
+         cfg.scan_ofx_impact_weight_mode = 0;
+      if(cfg.scan_ofx_impact_weight_mode > 2)
+         cfg.scan_ofx_impact_weight_mode = 2;
+
+      if(cfg.scan_ofx_impact_weight_decay <= 0.0 || cfg.scan_ofx_impact_weight_decay >= 1.0)
+         cfg.scan_ofx_impact_weight_decay = 0.90;
+
+      if(cfg.scan_ofx_impact_concavity_psi <= 0.0 || cfg.scan_ofx_impact_concavity_psi > 1.0)
+         cfg.scan_ofx_impact_concavity_psi = 0.50;
+
       // ------------------------------------------------------------------------
       // 5g) Scanner fusion weights / backend quality gate
       //     Keep non-live contributors at zero so config toggles never imply
@@ -7670,6 +7781,63 @@ namespace Config
 
       if(cfg.ms_max_toxicity01 < 0.0 || cfg.ms_max_toxicity01 > 1.0)
          warns += "ms_max_toxicity01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
+
+      const double alpha_w_sum =
+         cfg.ms_alpha_w_flow01 +
+         cfg.ms_alpha_w_absorption01 +
+         cfg.ms_alpha_w_replenishment01 +
+         cfg.ms_alpha_w_profile01 +
+         cfg.ms_alpha_w_benchmark01 +
+         cfg.ms_alpha_w_resiliency01;
+
+      const double exec_w_sum =
+         cfg.ms_exec_w_flow01 +
+         cfg.ms_exec_w_impact_inv01 +
+         cfg.ms_exec_w_resiliency01 +
+         cfg.ms_exec_w_observability01 +
+         cfg.ms_exec_w_liquidity_inv01 +
+         cfg.ms_exec_w_benchmark01;
+
+      const double risk_w_sum =
+         cfg.ms_risk_w_toxicity01 +
+         cfg.ms_risk_w_impact01 +
+         cfg.ms_risk_w_volatility01 +
+         cfg.ms_risk_w_liquidity01 +
+         cfg.ms_risk_w_observability_penalty01 +
+         cfg.ms_risk_w_adverse_selection01;
+
+      if(alpha_w_sum <= 0.0)
+         warns += "Explicit S_t alpha-head weights sum <= 0; NormalizeMicrostructureFamily() restores a valid pack.\n";
+
+      if(exec_w_sum <= 0.0)
+         warns += "Explicit S_t exec-head weights sum <= 0; NormalizeMicrostructureFamily() restores a valid pack.\n";
+
+      if(risk_w_sum <= 0.0)
+         warns += "Explicit S_t risk-head weights sum <= 0; NormalizeMicrostructureFamily() restores a valid pack.\n";
+
+      if(cfg.ms_exec_logistic_bias < -4.0 || cfg.ms_exec_logistic_bias > 4.0)
+         warns += "ms_exec_logistic_bias out of range; NormalizeMicrostructureFamily() clamps it to -4..4.\n";
+
+      if(cfg.ms_exec_logistic_k < 0.25 || cfg.ms_exec_logistic_k > 12.0)
+         warns += "ms_exec_logistic_k out of range; NormalizeMicrostructureFamily() clamps it to 0.25..12.\n";
+
+      if(cfg.ms_fx_alpha_gate_min01 < 0.0 || cfg.ms_fx_alpha_gate_min01 > 1.0 ||
+         cfg.ms_fx_risk_gate_max01  < 0.0 || cfg.ms_fx_risk_gate_max01  > 1.0 ||
+         cfg.ms_fx_vpin_gate_max01  < 0.0 || cfg.ms_fx_vpin_gate_max01  > 1.0 ||
+         cfg.ms_fx_resil_gate_min01 < 0.0 || cfg.ms_fx_resil_gate_min01 > 1.0)
+         warns += "FX explicit S_t gate thresholds out of range; NormalizeMicrostructureFamily() clamps them to 0..1.\n";
+
+      if(cfg.ms_xau_alpha_gate_min01 < 0.0 || cfg.ms_xau_alpha_gate_min01 > 1.0 ||
+         cfg.ms_xau_risk_gate_max01  < 0.0 || cfg.ms_xau_risk_gate_max01  > 1.0 ||
+         cfg.ms_xau_vpin_gate_max01  < 0.0 || cfg.ms_xau_vpin_gate_max01  > 1.0 ||
+         cfg.ms_xau_resil_gate_min01 < 0.0 || cfg.ms_xau_resil_gate_min01 > 1.0)
+         warns += "XAU/GOLD explicit S_t gate thresholds out of range; NormalizeMicrostructureFamily() clamps them to 0..1.\n";
+
+      if(cfg.ms_other_alpha_gate_min01 < 0.0 || cfg.ms_other_alpha_gate_min01 > 1.0 ||
+         cfg.ms_other_risk_gate_max01  < 0.0 || cfg.ms_other_risk_gate_max01  > 1.0 ||
+         cfg.ms_other_vpin_gate_max01  < 0.0 || cfg.ms_other_vpin_gate_max01  > 1.0 ||
+         cfg.ms_other_resil_gate_min01 < 0.0 || cfg.ms_other_resil_gate_min01 > 1.0)
+         warns += "OTHER explicit S_t gate thresholds out of range; NormalizeMicrostructureFamily() clamps them to 0..1.\n";
 
       if(cfg.ms_max_observability_penalty01 < 0.0 || cfg.ms_max_observability_penalty01 > 1.0)
          warns += "ms_max_observability_penalty01 out of range; NormalizeMicrostructureFamily() clamps it to 0..1.\n";
@@ -12160,6 +12328,108 @@ namespace Config
     }
   }
 
+  enum MicroThresholdSymbolClass
+  {
+    CFG_MS_SYMBOL_FOREX = 0,
+    CFG_MS_SYMBOL_XAU   = 1,
+    CFG_MS_SYMBOL_OTHER = 2
+  };
+
+  inline void _NormalizeWeightPack6(double &w1, double &w2, double &w3,
+                                    double &w4, double &w5, double &w6)
+  {
+    if(w1 < 0.0) w1 = 0.0;
+    if(w2 < 0.0) w2 = 0.0;
+    if(w3 < 0.0) w3 = 0.0;
+    if(w4 < 0.0) w4 = 0.0;
+    if(w5 < 0.0) w5 = 0.0;
+    if(w6 < 0.0) w6 = 0.0;
+
+    double sum = w1 + w2 + w3 + w4 + w5 + w6;
+    if(sum <= 0.0)
+    {
+      w1 = 1.0;
+      w2 = 0.0;
+      w3 = 0.0;
+      w4 = 0.0;
+      w5 = 0.0;
+      w6 = 0.0;
+      return;
+    }
+
+    w1 /= sum;
+    w2 /= sum;
+    w3 /= sum;
+    w4 /= sum;
+    w5 /= sum;
+    w6 /= sum;
+  }
+
+  inline bool CfgIsFXCurrency3(const string ccy)
+  {
+    return (ccy=="USD" || ccy=="EUR" || ccy=="GBP" || ccy=="JPY" ||
+            ccy=="AUD" || ccy=="NZD" || ccy=="CAD" || ccy=="CHF");
+  }
+
+  inline bool CfgLooksLikeForexPair(const string sym)
+  {
+    string u = sym;
+    StringToUpper(u);
+
+    if(StringLen(u) < 6)
+      return false;
+
+    string base  = StringSubstr(u, 0, 3);
+    string quote = StringSubstr(u, 3, 3);
+    return (CfgIsFXCurrency3(base) && CfgIsFXCurrency3(quote));
+  }
+
+  inline int CfgMicroThresholdSymbolClass(const Settings &cfg, const string sym)
+  {
+    string u = sym;
+    StringToUpper(u);
+
+    if(StringFind(u, "XAUUSD", 0) >= 0 || StringFind(u, "GOLD", 0) >= 0 || StringSubstr(u, 0, 3) == "XAU")
+      return CFG_MS_SYMBOL_XAU;
+
+    if(CfgLooksLikeForexPair(u))
+      return CFG_MS_SYMBOL_FOREX;
+
+    return CFG_MS_SYMBOL_OTHER;
+  }
+
+  inline double CfgMSAlphaGateMin(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_alpha_gate_min01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_alpha_gate_min01;
+    return cfg.ms_other_alpha_gate_min01;
+  }
+
+  inline double CfgMSRiskGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_risk_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_risk_gate_max01;
+    return cfg.ms_other_risk_gate_max01;
+  }
+
+  inline double CfgMSVPINGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_vpin_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_vpin_gate_max01;
+    return cfg.ms_other_vpin_gate_max01;
+  }
+
+  inline double CfgMSResilGateMin(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_resil_gate_min01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_resil_gate_min01;
+    return cfg.ms_other_resil_gate_min01;
+  }
+
   inline void _ForceVPVisibleRangeOff_NoNormalize(Settings &cfg)
   {
     if(cfg.scan_vp_profile_mode == 4)
@@ -13431,6 +13701,44 @@ namespace Config
       s+=",scOBIAEp="+DoubleToString(c.scan_obi_absorption_price_eps_points,4);
       s+=",scOBIAZc="+DoubleToString(c.scan_obi_absorption_z_clamp_abs,4);
 
+      s+=",msAWF="+DoubleToString(c.ms_alpha_w_flow01,4);
+      s+=",msAWA="+DoubleToString(c.ms_alpha_w_absorption01,4);
+      s+=",msAWR="+DoubleToString(c.ms_alpha_w_replenishment01,4);
+      s+=",msAWP="+DoubleToString(c.ms_alpha_w_profile01,4);
+      s+=",msAWB="+DoubleToString(c.ms_alpha_w_benchmark01,4);
+      s+=",msAWS="+DoubleToString(c.ms_alpha_w_resiliency01,4);
+
+      s+=",msEWF="+DoubleToString(c.ms_exec_w_flow01,4);
+      s+=",msEWI="+DoubleToString(c.ms_exec_w_impact_inv01,4);
+      s+=",msEWR="+DoubleToString(c.ms_exec_w_resiliency01,4);
+      s+=",msEWO="+DoubleToString(c.ms_exec_w_observability01,4);
+      s+=",msEWL="+DoubleToString(c.ms_exec_w_liquidity_inv01,4);
+      s+=",msEWB="+DoubleToString(c.ms_exec_w_benchmark01,4);
+      s+=",msELb="+DoubleToString(c.ms_exec_logistic_bias,4);
+      s+=",msELk="+DoubleToString(c.ms_exec_logistic_k,4);
+
+      s+=",msRWT="+DoubleToString(c.ms_risk_w_toxicity01,4);
+      s+=",msRWI="+DoubleToString(c.ms_risk_w_impact01,4);
+      s+=",msRWV="+DoubleToString(c.ms_risk_w_volatility01,4);
+      s+=",msRWL="+DoubleToString(c.ms_risk_w_liquidity01,4);
+      s+=",msRWO="+DoubleToString(c.ms_risk_w_observability_penalty01,4);
+      s+=",msRWA="+DoubleToString(c.ms_risk_w_adverse_selection01,4);
+
+      s+=",msFxA="+DoubleToString(c.ms_fx_alpha_gate_min01,4);
+      s+=",msFxR="+DoubleToString(c.ms_fx_risk_gate_max01,4);
+      s+=",msFxV="+DoubleToString(c.ms_fx_vpin_gate_max01,4);
+      s+=",msFxRe="+DoubleToString(c.ms_fx_resil_gate_min01,4);
+
+      s+=",msXaA="+DoubleToString(c.ms_xau_alpha_gate_min01,4);
+      s+=",msXaR="+DoubleToString(c.ms_xau_risk_gate_max01,4);
+      s+=",msXaV="+DoubleToString(c.ms_xau_vpin_gate_max01,4);
+      s+=",msXaRe="+DoubleToString(c.ms_xau_resil_gate_min01,4);
+
+      s+=",msOtA="+DoubleToString(c.ms_other_alpha_gate_min01,4);
+      s+=",msOtR="+DoubleToString(c.ms_other_risk_gate_max01,4);
+      s+=",msOtV="+DoubleToString(c.ms_other_vpin_gate_max01,4);
+      s+=",msOtRe="+DoubleToString(c.ms_other_resil_gate_min01,4);
+
       s+=",scOBIScOn="+BoolStr(c.scan_obi_score_enable);
       s+=",scOBIS1="+DoubleToString(c.scan_obi_score_w1_zobi,4);
       s+=",scOBIS2="+DoubleToString(c.scan_obi_score_w2_ndelta,4);
@@ -13491,6 +13799,11 @@ namespace Config
       s+=",scOFXImN="+IntegerToString(c.scan_ofx_impact_min_samples);
       s+=",scOFXImD="+BoolStr(c.scan_ofx_impact_depth_adjust_enable);
       s+=",scOFXImS="+IntegerToString(c.scan_ofx_impact_smoothing_period);
+
+      s+=",scOFXImWM="+IntegerToString(c.scan_ofx_impact_weight_mode);
+      s+=",scOFXImWD="+DoubleToString(c.scan_ofx_impact_weight_decay,4);
+      s+=",scOFXImCc="+BoolStr(c.scan_ofx_impact_concave_enable);
+      s+=",scOFXImPs="+DoubleToString(c.scan_ofx_impact_concavity_psi,4);
 
       s+=",scOFXWTx="+DoubleToString(c.scan_ofx_weight_toxicity,4);
       s+=",scOFXWRe="+DoubleToString(c.scan_ofx_weight_resiliency,4);
@@ -15925,6 +16238,11 @@ namespace Config
         else if(k=="scOFXImD")  cfg.scan_ofx_impact_depth_adjust_enable = ToBool(v);
         else if(k=="scOFXImS")  cfg.scan_ofx_impact_smoothing_period = ToInt(v);
 
+        else if(k=="scOFXImWM") cfg.scan_ofx_impact_weight_mode = ToInt(v);
+        else if(k=="scOFXImWD") cfg.scan_ofx_impact_weight_decay = ToDouble(v);
+        else if(k=="scOFXImCc") cfg.scan_ofx_impact_concave_enable = ToBool(v);
+        else if(k=="scOFXImPs") cfg.scan_ofx_impact_concavity_psi = ToDouble(v);
+
         else if(k=="scOFXWTx")  cfg.scan_ofx_weight_toxicity = ToDouble(v);
         else if(k=="scOFXWRe")  cfg.scan_ofx_weight_resiliency = ToDouble(v);
         else if(k=="scOFXWMp")  cfg.scan_ofx_weight_microprice = ToDouble(v);
@@ -16062,6 +16380,43 @@ namespace Config
         else if(k=="msExPs") cfg.ms_exec_posture_passive_max01 = ToDouble(v);
         else if(k=="msExSt") cfg.ms_exec_posture_standard_min01 = ToDouble(v);
         else if(k=="msExAg") cfg.ms_exec_posture_aggressive_min01 = ToDouble(v);
+        else if(k=="msAWF") cfg.ms_alpha_w_flow01 = ToDouble(v);
+        else if(k=="msAWA") cfg.ms_alpha_w_absorption01 = ToDouble(v);
+        else if(k=="msAWR") cfg.ms_alpha_w_replenishment01 = ToDouble(v);
+        else if(k=="msAWP") cfg.ms_alpha_w_profile01 = ToDouble(v);
+        else if(k=="msAWB") cfg.ms_alpha_w_benchmark01 = ToDouble(v);
+        else if(k=="msAWS") cfg.ms_alpha_w_resiliency01 = ToDouble(v);
+
+        else if(k=="msEWF") cfg.ms_exec_w_flow01 = ToDouble(v);
+        else if(k=="msEWI") cfg.ms_exec_w_impact_inv01 = ToDouble(v);
+        else if(k=="msEWR") cfg.ms_exec_w_resiliency01 = ToDouble(v);
+        else if(k=="msEWO") cfg.ms_exec_w_observability01 = ToDouble(v);
+        else if(k=="msEWL") cfg.ms_exec_w_liquidity_inv01 = ToDouble(v);
+        else if(k=="msEWB") cfg.ms_exec_w_benchmark01 = ToDouble(v);
+        else if(k=="msELb") cfg.ms_exec_logistic_bias = ToDouble(v);
+        else if(k=="msELk") cfg.ms_exec_logistic_k = ToDouble(v);
+
+        else if(k=="msRWT") cfg.ms_risk_w_toxicity01 = ToDouble(v);
+        else if(k=="msRWI") cfg.ms_risk_w_impact01 = ToDouble(v);
+        else if(k=="msRWV") cfg.ms_risk_w_volatility01 = ToDouble(v);
+        else if(k=="msRWL") cfg.ms_risk_w_liquidity01 = ToDouble(v);
+        else if(k=="msRWO") cfg.ms_risk_w_observability_penalty01 = ToDouble(v);
+        else if(k=="msRWA") cfg.ms_risk_w_adverse_selection01 = ToDouble(v);
+
+        else if(k=="msFxA") cfg.ms_fx_alpha_gate_min01 = ToDouble(v);
+        else if(k=="msFxR") cfg.ms_fx_risk_gate_max01 = ToDouble(v);
+        else if(k=="msFxV") cfg.ms_fx_vpin_gate_max01 = ToDouble(v);
+        else if(k=="msFxRe") cfg.ms_fx_resil_gate_min01 = ToDouble(v);
+
+        else if(k=="msXaA") cfg.ms_xau_alpha_gate_min01 = ToDouble(v);
+        else if(k=="msXaR") cfg.ms_xau_risk_gate_max01 = ToDouble(v);
+        else if(k=="msXaV") cfg.ms_xau_vpin_gate_max01 = ToDouble(v);
+        else if(k=="msXaRe") cfg.ms_xau_resil_gate_min01 = ToDouble(v);
+
+        else if(k=="msOtA") cfg.ms_other_alpha_gate_min01 = ToDouble(v);
+        else if(k=="msOtR") cfg.ms_other_risk_gate_max01 = ToDouble(v);
+        else if(k=="msOtV") cfg.ms_other_vpin_gate_max01 = ToDouble(v);
+        else if(k=="msOtRe") cfg.ms_other_resil_gate_min01 = ToDouble(v);
 #endif
 #endif
 
@@ -17675,13 +18030,23 @@ struct Settings
     int    scan_obi_resiliency_depth_recovery_mode; // 0=touch, 1=full-depth, 2=best-effort
     double scan_obi_resiliency_spread_recovery_weight; // blend weight for spread-healing contribution
 
-    // Advanced OFX impact extensions (scanner-only; execution analytics intentionally omitted)
+    // Advanced OFX impact extensions
+    // Shared owner for:
+    //  - OBI DOM-side rolling beta_t
+    //  - DeltaProxy executed-flow rolling lambda_t
+    //  - optional concave regressor transform sign(Q)*|Q|^psi
+    // Existing scan_ofx_impact_window is the regression window L.
     bool   scan_ofx_impact_enable;                  // enable local impact coefficient family (lambda / beta)
-    int    scan_ofx_impact_window;                  // rolling window for impact estimation
+    int    scan_ofx_impact_window;                  // weighted regression window L
     double scan_ofx_impact_ew_alpha;               // EW alpha for faster regime adaptation
     int    scan_ofx_impact_min_samples;             // minimum samples before impact estimates are valid
     bool   scan_ofx_impact_depth_adjust_enable;     // enable depth-adjusted impact scaling when depth exists
     int    scan_ofx_impact_smoothing_period;        // optional output smoothing period (0/1 = off)
+
+    int    scan_ofx_impact_weight_mode;             // 0=uniform, 1=linear-recency, 2=exp-recency
+    double scan_ofx_impact_weight_decay;            // exp decay in (0,1) when weight_mode==2
+    bool   scan_ofx_impact_concave_enable;          // apply sign(Q)*|Q|^psi to impact regressor
+    double scan_ofx_impact_concavity_psi;           // psi in (0,1]; 1.0 = linear
 
     // Scanner fusion weights for advanced OFX state families
     double scan_ofx_weight_toxicity;                // fusion weight for toxicity penalty
@@ -17752,6 +18117,46 @@ struct Settings
     double ms_volatility_trend_min01;    // minimum volatility regime confidence for trend archetypes
     double ms_volatility_mr_max01;       // maximum volatility regime level for mean-reversion archetypes
     double ms_volatility_breakout_min01; // minimum volatility regime confidence for breakout archetypes
+
+    // Explicit S_t head weights (normalized in NormalizeMicrostructureFamily)
+    double ms_alpha_w_flow01;             // alpha head: flow family weight
+    double ms_alpha_w_absorption01;       // alpha head: absorption family weight
+    double ms_alpha_w_replenishment01;    // alpha head: replenishment family weight
+    double ms_alpha_w_profile01;          // alpha head: profile / location family weight
+    double ms_alpha_w_benchmark01;        // alpha head: benchmark alignment family weight
+    double ms_alpha_w_resiliency01;       // alpha head: resiliency family weight
+
+    double ms_exec_w_flow01;              // exec logistic head: flow family weight
+    double ms_exec_w_impact_inv01;        // exec logistic head: inverse impact family weight
+    double ms_exec_w_resiliency01;        // exec logistic head: resiliency family weight
+    double ms_exec_w_observability01;     // exec logistic head: observability family weight
+    double ms_exec_w_liquidity_inv01;     // exec logistic head: inverse liquidity stress family weight
+    double ms_exec_w_benchmark01;         // exec logistic head: benchmark alignment family weight
+    double ms_exec_logistic_bias;         // exec logistic head: intercept / bias
+    double ms_exec_logistic_k;            // exec logistic head: slope / temperature
+
+    double ms_risk_w_toxicity01;              // risk head: toxicity family weight
+    double ms_risk_w_impact01;                // risk head: impact family weight
+    double ms_risk_w_volatility01;            // risk head: volatility family weight
+    double ms_risk_w_liquidity01;             // risk head: liquidity family weight
+    double ms_risk_w_observability_penalty01; // risk head: observability penalty family weight
+    double ms_risk_w_adverse_selection01;     // risk head: adverse-selection family weight
+
+    // Symbol-class-aware explicit TradeGate_t thresholds
+    double ms_fx_alpha_gate_min01;
+    double ms_fx_risk_gate_max01;
+    double ms_fx_vpin_gate_max01;
+    double ms_fx_resil_gate_min01;
+
+    double ms_xau_alpha_gate_min01;
+    double ms_xau_risk_gate_max01;
+    double ms_xau_vpin_gate_max01;
+    double ms_xau_resil_gate_min01;
+
+    double ms_other_alpha_gate_min01;
+    double ms_other_risk_gate_max01;
+    double ms_other_vpin_gate_max01;
+    double ms_other_resil_gate_min01;
 
 #ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
     double ms_observability_direct_min01;         // direct-micro mode observability cutoff
@@ -19431,6 +19836,15 @@ struct Settings
 }; // END Struct Settings
 
 extern Settings g_cfg;
+
+namespace Config
+{
+   inline Settings Get()
+   {
+      return g_cfg;
+   }
+}
+
 // ---------------------------------------------------------------------
 // Router alias sync (global wrapper).
 // For external callers, forward to the canonical implementation in

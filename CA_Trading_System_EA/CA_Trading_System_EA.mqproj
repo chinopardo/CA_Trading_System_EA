@@ -440,17 +440,22 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Router.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"CA_Trading_System_EA.mq5",
       "compile":true,
       "relative_to_project":true
     },
     {
       "path":"include\\TesterSettings.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\InstitutionalStateVector.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Router.mqh",
       "compile":false,
       "relative_to_project":true
     }

@@ -170,6 +170,10 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
 void LogCanonicalInstitutionalGateDiag(const string sym,
                                        const datetime required_bar_time,
                                        const string origin_tag);
+bool PreseedRuntimeSymbolStateAtStartup(const string sym,
+                                        const Settings &cfg,
+                                        string &diag_out);
+void PreseedRuntimeSymbolPoolAtStartup(const Settings &cfg);
 
 // ------------------------------------------------------------------
 // Provide ONE global, guarded helper used by strategies.
@@ -4890,6 +4894,9 @@ void Inst_BuildTransportStamp(const string sym)
 
 void Inst_CommitTransportStampToState(EAState &st)
 {
+   if(StateInstitutionalStateFresh(st) || StateInstitutionalDegradedTransportUsable(st))
+      return;
+
    double observability01 = Inst_Clamp01(g_inst_transport.observability01);
    int truth_tier = Inst_DiagOrdinalFrom01(g_inst_transport.truth_tier01, STATE_DIAG_TRUTHTIER_MAX);
    int venue_scope = Inst_DiagOrdinalFrom01(g_inst_transport.venue_scope01, STATE_DIAG_VENUESCOPE_MAX);
@@ -5247,7 +5254,12 @@ void PublishMicrostructureSnapshot(const string sym)
    // No canonical institutional state promotion here.
    // No scanner/confluence recomputation here.
    Inst_BuildTransportStamp(sym);
-   Inst_CommitTransportStampToState(g_state);
+
+   if(!StateInstitutionalStateFresh(g_state) &&
+      !StateInstitutionalDegradedTransportUsable(g_state))
+   {
+      Inst_CommitTransportStampToState(g_state);
+   }
 
    if(sym == "")
       return;
@@ -5313,6 +5325,158 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    // Publish canonical runtime transport only.
    // Do NOT add confluence scoring, strategy math, or direct order-routing logic here.
    PublishMicrostructureSnapshot(sym);
+}
+
+bool PreseedRuntimeSymbolStateAtStartup(const string sym,
+                                        const Settings &cfg,
+                                        string &diag_out)
+{
+   diag_out = "";
+
+   const string use_sym = (sym == "" ? _Symbol : sym);
+   const ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)cfg.tf_entry;
+
+   if(use_sym == "" || tf <= PERIOD_CURRENT)
+   {
+      diag_out = "invalid_symbol_or_tf";
+      return false;
+   }
+
+   // Step 1: create / hydrate the runtime symbol slot even if promotion is not ready yet.
+   EAState st_sym;
+   if(!State::TryGetRuntimeStateBySymbol(cfg, use_sym, st_sym, false))
+   {
+      diag_out = "runtime_slot_seed_failed";
+      return false;
+   }
+
+   State::UpsertRuntimeSymbolState(use_sym, st_sym);
+
+   // Step 2: make sure the entry-TF inputs are available before trying promotion.
+   const int bars_need = MathMax(100, MathMin(600, Warmup::NeededBars(cfg)));
+   if(!MarketData::EnsureRuntimeStateInputsReady(use_sym, tf, bars_need))
+   {
+      diag_out = "runtime_slot_seeded_inputs_pending";
+      return false;
+   }
+
+   // Step 3: prefer snapshot-driven canonical promotion when startup already has one.
+   datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(use_sym);
+   if(required_bar_time <= 0)
+      required_bar_time = iTime(use_sym, tf, 1);
+   if(required_bar_time <= 0)
+      required_bar_time = iTime(use_sym, tf, 0);
+
+   bool promoted_from_snapshot =
+      Scan::PromoteRuntimeSymbolStateFromSnapshot(cfg,
+                                                  use_sym,
+                                                  tf,
+                                                  required_bar_time);
+
+   // Step 4: if no current snapshot is available yet, fall back to local State promotion.
+   if(!promoted_from_snapshot)
+   {
+      StateOnTickUpdate(st_sym);
+      RefreshICTContext(st_sym);
+
+      string promote_why = "";
+      StateTryPromoteCanonicalInstitutionalState(st_sym,
+                                                 cfg,
+                                                 required_bar_time,
+                                                 promote_why);
+
+      State::UpsertRuntimeSymbolState(use_sym, st_sym);
+
+      if(promote_why != "")
+         diag_out = "promotion=" + promote_why;
+      else
+         diag_out = "runtime_slot_seeded_local_promotion";
+   }
+   else
+   {
+      diag_out = "snapshot_promoted";
+   }
+
+   // Step 5: reload the symbol slot and confirm readiness.
+   EAState st_chk;
+   if(State::TryGetRuntimeStateBySymbol(cfg, use_sym, st_chk, false) &&
+      StateInstitutionalStrategyReady(st_chk, required_bar_time))
+   {
+      return true;
+   }
+
+   if(diag_out == "")
+      diag_out = "runtime_slot_seeded_not_ready";
+
+   return false;
+}
+
+void PreseedRuntimeSymbolPoolAtStartup(const Settings &cfg)
+{
+   int attempted = 0;
+   int seeded    = 0;
+   int ready     = 0;
+
+   const string router_sym = CanonicalRouterSymbol();
+
+   // Seed the canonical router symbol first so the first route pass is less cold.
+   if(router_sym != "")
+   {
+      attempted++;
+
+      string diag0 = "";
+      const bool ok0 = PreseedRuntimeSymbolStateAtStartup(router_sym, cfg, diag0);
+
+      EAState tmp0;
+      if(State::TryGetRuntimeStateBySymbol(cfg, router_sym, tmp0, false))
+         seeded++;
+
+      if(ok0)
+         ready++;
+
+      if(InpDebug || !ok0)
+      {
+         LogX::Info(StringFormat("[StatePoolBootstrap] sym=%s ready=%d detail=%s",
+                                 router_sym,
+                                 (ok0 ? 1 : 0),
+                                 diag0));
+      }
+   }
+
+   // Seed the remainder of the watchlist once.
+   for(int i = 0; i < g_symCount; i++)
+   {
+      const string sym = g_symbols[i];
+      if(sym == "" || sym == router_sym)
+         continue;
+
+      attempted++;
+
+      string diag = "";
+      const bool ok = PreseedRuntimeSymbolStateAtStartup(sym, cfg, diag);
+
+      EAState tmp;
+      if(State::TryGetRuntimeStateBySymbol(cfg, sym, tmp, false))
+         seeded++;
+
+      if(ok)
+         ready++;
+
+      if(InpDebug || !ok)
+      {
+         LogX::Info(StringFormat("[StatePoolBootstrap] sym=%s ready=%d detail=%s",
+                                 sym,
+                                 (ok ? 1 : 0),
+                                 diag));
+      }
+   }
+
+   LogX::Info(StringFormat("[StatePoolBootstrap] seeded=%d ready=%d attempted=%d entry_tf=%d router_sym=%s",
+                           seeded,
+                           ready,
+                           attempted,
+                           (int)cfg.tf_entry,
+                           (router_sym == "" ? "-" : router_sym)));
 }
 
 void DecisionTelemetry_ResetTimerNotNewBarThrottle(const string sym,
@@ -5878,7 +6042,11 @@ int OnInit()
    if(!MSH::InitWithSymbols(S, hub_opt, g_symbols, g_symCount))
       return(INIT_FAILED);
 
-   // 4. Prime cached runtime context AFTER Hub init.
+   // 4. One-shot startup pre-seed of the runtime symbol-owned State pool.
+   // This reduces first-timer catch-up by creating / hydrating each symbol slot once now.
+   PreseedRuntimeSymbolPoolAtStartup(S);
+
+   // 5. Prime cached runtime context for the canonical router symbol AFTER hub init.
    // RefreshRuntimeContextFromHub() already refreshes lightweight State/ICT context,
    // so do not duplicate RefreshICTContext() here.
    {

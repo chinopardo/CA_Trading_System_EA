@@ -40,6 +40,7 @@
 
 // ---------- Includes ----------
 #include "Config.mqh"
+#include "State.mqh"
 #include "MarketData.mqh"
 #include "Indicators.mqh"
 #include "TimeUtils.mqh"
@@ -5751,6 +5752,175 @@ inline void NotifyTradeResult(const double r_multiple)
     #endif
   }
 
+   inline bool LoadInstitutionalStateFromStateCache(const string sym,
+                                                    const ENUM_TIMEFRAMES tf,
+                                                    InstitutionalStatePolicyView &out_view)
+   {
+      ResetInstitutionalStatePolicyView(out_view);
+   
+   #ifdef CA_STATE_MQH
+      if(g_state.symbol != sym)
+         return false;
+   
+      datetime required_bar_time = iTime(sym, tf, 1);
+      if(required_bar_time <= 0)
+         required_bar_time = iTime(sym, tf, 0);
+   
+      if(!StateInstitutionalStrategyReady(g_state, required_bar_time))
+         return false;
+   
+   #ifdef STATE_HAS_INSTITUTIONAL_TRANSPORT_DIAG_CACHE
+      StateInstitutionalTransportDiagCache sdc;
+      StateGetInstitutionalTransportDiagCache(g_state, sdc);
+   
+      if(!sdc.valid)
+         return false;
+   
+      out_view.valid                       = true;
+      out_view.trade_gate_pass             = (sdc.confluence_veto_mask == 0);
+      out_view.alpha_score                 = Clamp01(sdc.alpha01);
+      out_view.execution_score             = Clamp01(sdc.execution01);
+      out_view.risk_score                  = Clamp01(sdc.risk01);
+      out_view.state_quality01             = Clamp01(StateInstitutionalStateQuality01(g_state));
+   
+      out_view.observability_confidence01  = Clamp01(sdc.observability01);
+      out_view.venue_coverage01            = Clamp01(sdc.venue_scope01);
+      out_view.cross_venue_dislocation01   = Clamp01(StateInstitutionalCrossVenueDislocation01(g_state));
+   
+      out_view.impact_beta01               = Clamp01(StateInstitutionalImpactBeta01(g_state));
+      out_view.impact_lambda01             = Clamp01(StateInstitutionalImpactLambda01(g_state));
+   
+      out_view.truth_tier01                = Clamp01(sdc.truth_tier01);
+      out_view.execution_posture_mode      = sdc.execution_posture_mode;
+      out_view.reduced_only                = StateInstitutionalReducedOnly(g_state);
+   
+      out_view.darkpool01                  = Clamp01(StateInstitutionalDarkpool01(g_state));
+      out_view.darkpool_contradiction01    = 0.0;
+   
+      out_view.sd_ob_invalidation_proximity01 = 0.0;
+   
+      out_view.liquidity_vacuum01          = Clamp01(StateInstitutionalLiquidityStress01(g_state));
+      out_view.liquidity_hunt01            = Clamp01(StateInstitutionalLiquidityEventScore01(g_state));
+   
+      out_view.vpin01                      = Clamp01(StateInstitutionalVPIN01(g_state));
+      out_view.resiliency01                = Clamp01(StateInstitutionalResiliency01(g_state));
+   
+      out_view.toxicity01                  = Clamp01(sdc.toxicity01);
+      out_view.spread_stress01             = Clamp01(StateInstitutionalVolatilityStress01(g_state));
+   
+      out_view.invalidation_event01        = false;
+      out_view.liquidity_trap_event01      = false;
+   
+      out_view.observability_penalty01     = Clamp01(sdc.observability_penalty01);
+   
+      out_view.direct_micro_available      = sdc.direct_micro_available;
+      out_view.proxy_micro_available       = sdc.proxy_micro_available;
+      out_view.flow_mode                   = sdc.micro_mode;
+   
+      out_view.inst_ofi01                  = Clamp01(sdc.ofi01);
+      out_view.inst_obi01                  = Clamp01(sdc.obi01);
+      out_view.inst_cvd01                  = Clamp01(sdc.cvd01);
+   
+      out_view.inst_delta_proxy01          = Clamp01(sdc.delta_proxy01);
+      out_view.inst_footprint01            = Clamp01(sdc.footprint01);
+      out_view.inst_profile01              = Clamp01(sdc.profile01);
+      out_view.inst_absorption01           = Clamp01(sdc.absorption01);
+      out_view.inst_replenishment01        = Clamp01(sdc.replenishment01);
+      out_view.inst_vwap_location01        = Clamp01(sdc.vwap_location01);
+      out_view.inst_liquidity_reject01     = Clamp01(sdc.liquidity_reject01);
+   
+      out_view.confluence_veto_mask        = sdc.confluence_veto_mask;
+      out_view.route_reason                = StateInstitutionalFreshnessSourceTag(g_state, required_bar_time);
+      out_view.veto_reason                 = (sdc.confluence_veto_mask != 0 ? "state_confluence_veto" : "none");
+   
+      if(out_view.flow_mode != POLICIES_INST_FLOW_MODE_DIRECT &&
+         out_view.flow_mode != POLICIES_INST_FLOW_MODE_PROXY &&
+         out_view.flow_mode != POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+      {
+         out_view.flow_mode = InstitutionalFlowModeFromObservability01(out_view.observability_confidence01);
+      }
+   
+      if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_DIRECT)
+         out_view.direct_micro_available = true;
+   
+      if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_PROXY)
+         out_view.proxy_micro_available = true;
+   
+      if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
+         out_view.reduced_only = true;
+   
+      return true;
+   #endif
+   #endif
+   
+      return false;
+   }
+
+  inline bool LoadInstitutionalStateFromSymbolState(const Settings &cfg,
+                                                    const string sym,
+                                                    const ENUM_TIMEFRAMES tf,
+                                                    InstitutionalStatePolicyView &out_view)
+  {
+    ResetInstitutionalStatePolicyView(out_view);
+
+    datetime required_bar_time = iTime(sym, tf, 1);
+    if(required_bar_time <= 0)
+       required_bar_time = iTime(sym, tf, 0);
+
+    StateInstitutionalSymbolView sv;
+    sv.Reset();
+
+    if(!State::GetInstitutionalSymbolViewBySymbol(cfg, sym, sv, required_bar_time))
+      return false;
+
+    out_view.valid                       = true;
+    out_view.trade_gate_pass             = sv.trade_gate_pass;
+    out_view.alpha_score                 = Clamp01(sv.alpha01);
+    out_view.execution_score             = Clamp01(sv.execution01);
+    out_view.risk_score                  = Clamp01(sv.risk01);
+    out_view.state_quality01             = Clamp01(sv.state_quality01);
+
+    out_view.observability_confidence01  = Clamp01(sv.observability01);
+    out_view.observability_penalty01     = Clamp01(sv.observability_penalty01);
+    out_view.truth_tier01                = Clamp01(sv.truth_tier01);
+    out_view.venue_coverage01            = Clamp01(sv.venue_scope01);
+
+    out_view.vpin01                      = Clamp01(sv.vpin01);
+    out_view.resiliency01                = Clamp01(sv.resiliency01);
+    out_view.impact_beta01               = Clamp01(sv.impact_beta01);
+    out_view.impact_lambda01             = Clamp01(sv.impact_lambda01);
+
+    out_view.execution_posture_mode      = sv.execution_posture_mode;
+    out_view.execution_posture_mode      = sv.execution_posture_mode;
+    out_view.reduced_only                = sv.reduced_only;
+    out_view.flow_mode                   = sv.micro_mode;
+    out_view.direct_micro_available      = sv.direct_micro_available;
+    out_view.proxy_micro_available       = sv.proxy_micro_available;
+
+    out_view.darkpool01                  = Clamp01(sv.darkpool01);
+    out_view.liquidity_hunt01            = Clamp01(sv.liquidity_hunt01);
+    out_view.toxicity01                  = Clamp01(sv.toxicity01);
+    out_view.spread_stress01             = Clamp01(sv.volatility_stress01);
+
+    out_view.inst_ofi01                  = Clamp01(sv.ofi01);
+    out_view.inst_obi01                  = Clamp01(sv.obi01);
+    out_view.inst_cvd01                  = Clamp01(sv.cvd01);
+
+    out_view.inst_delta_proxy01          = Clamp01(sv.delta_proxy01);
+    out_view.inst_footprint01            = Clamp01(sv.footprint01);
+    out_view.inst_profile01              = Clamp01(sv.profile01);
+    out_view.inst_absorption01           = Clamp01(sv.absorption01);
+    out_view.inst_replenishment01        = Clamp01(sv.replenishment01);
+    out_view.inst_vwap_location01        = Clamp01(sv.vwap_location01);
+    out_view.inst_liquidity_reject01     = Clamp01(sv.liquidity_reject01);
+
+    out_view.confluence_veto_mask        = sv.confluence_veto_mask;
+    out_view.route_reason                = sv.source_tag;
+    out_view.veto_reason                 = (sv.confluence_veto_mask != 0 ? "state_confluence_veto" : "none");
+
+    return true;
+  }
+
   inline bool LoadInstitutionalStateFromConfluence(const string sym,
                                                    const ENUM_TIMEFRAMES tf,
                                                    InstitutionalStatePolicyView &out_view)
@@ -6123,7 +6293,8 @@ inline void NotifyTradeResult(const double r_multiple)
           out_view.reduced_only = true;
 
         if(StringLen(out_view.route_reason) <= 0)
-          out_view.route_reason = InstitutionalFlowModeText(out_view.flow_mode);
+          out_view.route_reason = StringFormat("confluence_fallback:%s",
+                                               InstitutionalFlowModeText(out_view.flow_mode));
 
         if(StringLen(out_view.veto_reason) <= 0)
           out_view.veto_reason = "none";
@@ -6221,8 +6392,11 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     ResetInstitutionalStatePolicyView(out_view);
 
-    if(!LoadInstitutionalStateFromConfluence(sym, CfgTFEntry(cfg), out_view))
-      return true; // no canonical transport yet => do not invent pseudo-state here
+    if(!LoadInstitutionalStateFromSymbolState(cfg, sym, CfgTFEntry(cfg), out_view))
+    {
+      if(!LoadInstitutionalStateFromConfluence(sym, CfgTFEntry(cfg), out_view))
+        return true; // no canonical transport yet => do not invent pseudo-state here
+    }
 
     out_view.gate_reason = GATE_OK;
     // Canonical fused veto from Confluence transport beats any local optimism.
