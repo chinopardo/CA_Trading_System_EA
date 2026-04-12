@@ -21,6 +21,9 @@
 // OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
 // Leave commented out for all normal builds.
 // #define CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY
+// DEPRECATED tester-only harness for legacy ProcessSymbol() diagnostics.
+// Diagnostic builds only. Leave commented out for all normal builds.
+// #define CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
 // ------------------- Engine & Infra includes ----------------------
 #include <Trade/Trade.mqh>
 #include "include/Config.mqh"
@@ -456,6 +459,7 @@ input bool             InpMain_OnlyNewBar       = true; // Timer routing: requir
 input int              InpTimerMS               = 150; // Loop controls / heartbeat: Timer MS
 input int              InpTester_TimerSec                  = 60;    // Tester: OnTimer / Hub heartbeat in seconds
 input bool             InpTester_ForceTimerEveryHeartbeat  = false; // Tester: bypass EA-level timer new-bar gate and evaluate every timer heartbeat
+input int              InpTimer_MinForcedRouterEvalSec     = 0;     // Timer routing: minimum forced canonical evaluation cadence when no dirty symbols; 0=auto from hub_timer_sec * idle_fallback_after_n
 input int              InpServerOffsetMinutes   = 0; // Loop controls / heartbeat: Server Offset Mins
 
 // -------- Session windows (UTC minutes) — legacy union (London/NY) --------
@@ -1032,6 +1036,17 @@ input bool                           InpMS_TesterDegradedScorePolicyEnable = fal
 input TesterDegradedScorePolicyMode  InpMS_TesterDegradedScorePolicyMode = TESTER_DEGRADED_SCORE_POLICY_AUTO;
 input TesterDegradedScorePolicyType  InpMS_TesterDegradedScorePolicyType = TESTER_DEGRADED_SCORE_POLICY_RELAX_MIN_SCORE;
 input double                         InpMS_TesterDegradedScorePolicyMagnitude = 0.04;
+
+enum TesterRouterGateMode
+{
+   TESTER_ROUTER_GATE_MODE_AUTO = 0,                 // backward-compatible: maps to legacy bypass bool
+   TESTER_ROUTER_GATE_MODE_STRICT = 1,               // full strict tester gating
+   TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS = 2, // keep core policy checks; soften freshness-only micro failures
+   TESTER_ROUTER_GATE_MODE_BYPASS = 3                // full bypass (legacy tester behavior)
+};
+
+input TesterRouterGateMode InpTester_RouterGateMode = TESTER_ROUTER_GATE_MODE_AUTO;
+
 input bool                           InpTester_BypassPolicyGates         = true;  // Tester: bypass news/regime/liquidity hard gates in degraded tester mode
 
 // Reserved thresholds for downstream State/RiskEngine/Execution passes.
@@ -1167,6 +1182,9 @@ static int      g_msh_dirty_tf[MSH_DIRTY_MAX];
 static datetime g_msh_dirty_ts[MSH_DIRTY_MAX];
 static int      g_msh_idle_heartbeat_streak = 0; // consecutive timer heartbeats with no dirty symbols
 static int      g_msh_idle_fallback_after_n = 3; // throttled canonical fallback cadence
+static datetime g_msh_last_forced_router_eval_ts = 0;
+static int      g_msh_eval_dirty_trigger_n = 0;
+static int      g_msh_eval_cadence_trigger_n = 0;
 
 // ================== Backend-only microstructure cache ==================
 // Requires MicrostructureStats in Types.mqh
@@ -1920,6 +1938,88 @@ int EA_ResolveHubTimerSec(const Settings &cfg)
    return MathMax(1, (cfg.timer_ms <= 1000 ? 1 : cfg.timer_ms / 1000));
 }
 
+int EA_ResolveMinForcedRouterEvalSec(const Settings &cfg)
+{
+   if(InpTimer_MinForcedRouterEvalSec > 0)
+      return InpTimer_MinForcedRouterEvalSec;
+
+   return MathMax(1, EA_ResolveHubTimerSec(cfg) * MathMax(1, g_msh_idle_fallback_after_n));
+}
+
+int ResolveTesterRouterGateMode()
+{
+   if(!IsTesterRuntime())
+      return TESTER_ROUTER_GATE_MODE_STRICT;
+
+   if(InpTester_RouterGateMode == TESTER_ROUTER_GATE_MODE_AUTO)
+   {
+      if(InpTester_BypassPolicyGates)
+         return TESTER_ROUTER_GATE_MODE_BYPASS;
+
+      return TESTER_ROUTER_GATE_MODE_STRICT;
+   }
+
+   return (int)InpTester_RouterGateMode;
+}
+
+string TesterRouterGateModeName(const int mode)
+{
+   if(mode == TESTER_ROUTER_GATE_MODE_STRICT)
+      return "strict";
+   if(mode == TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS)
+      return "soft_micro_freshness";
+   if(mode == TESTER_ROUTER_GATE_MODE_BYPASS)
+      return "bypass";
+
+   return "auto";
+}
+
+bool TesterSoftMicroFreshnessFailure(const string detail)
+{
+   if(StringLen(detail) <= 0)
+      return false;
+
+   if(StringFind(detail, "canonical micro stale") >= 0)
+      return true;
+   if(StringFind(detail, "state_invalid_canonical") >= 0)
+      return true;
+   if(StringFind(detail, "bar_misaligned_hard") >= 0)
+      return true;
+   if(StringFind(detail, "tester_fallback:") >= 0)
+      return true;
+
+   return false;
+}
+
+void LogTesterRouterGateModeDiagOncePerBar(const string sym,
+                                           const datetime bar_time,
+                                           const string detail)
+{
+   if(!IsTesterRuntime())
+      return;
+
+   static string last_key = "";
+
+   const int mode = ResolveTesterRouterGateMode();
+   const string key =
+      sym + "|" +
+      IntegerToString((int)bar_time) + "|" +
+      IntegerToString(mode) + "|" +
+      detail;
+
+   if(last_key == key)
+      return;
+
+   last_key = key;
+
+   LogX::Info(StringFormat(
+      "[TesterGate] sym=%s bar=%s mode=%s detail=%s",
+      sym,
+      InstDiagTimeStr(bar_time),
+      TesterRouterGateModeName(mode),
+      detail));
+}
+
 string EA_RuntimeGateJsonFragment(const Settings &cfg)
 {
    bool degraded_policy_active = false;
@@ -1937,7 +2037,9 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
    j += ",\"news_gate\":" + (Config::CfgNewsBlockEnabled(cfg) ? "true" : "false");
    j += ",\"regime_gate\":" + (Config::CfgRegimeGateEnabled(cfg) ? "true" : "false");
    j += ",\"liquidity_gate\":" + (Config::CfgLiquidityGateEnabled(cfg) ? "true" : "false");
-   j += ",\"tester_policy_bypass\":" + ((IsTesterRuntime() && InpTester_BypassPolicyGates) ? "true" : "false");
+   j += ",\"tester_policy_bypass\":" + ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS) ? "true" : "false");
+   j += ",\"tester_gate_mode\":" + Telemetry::JsonStringOrNull(IsTesterRuntime(), TesterRouterGateModeName(ResolveTesterRouterGateMode()));
+   j += ",\"tester_gate_soft_micro\":" + ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS) ? "true" : "false");
    j += ",\"degraded_score_policy_active\":" + (degraded_policy_active ? "true" : "false");
    j += ",\"degraded_score_policy_type\":" + Telemetry::JsonStringOrNull(StringLen(degraded_policy_type) > 0, degraded_policy_type);
    j += ",\"degraded_score_policy_mag\":" + DoubleToString(degraded_policy_mag, 3);
@@ -1958,7 +2060,7 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
                                             degraded_policy_mag);
 
    LogX::Info(StringFormat(
-      "%s runtime_gates tester=%d degraded=%d router_min=%.3f news_gate=%d regime_gate=%d liquidity_gate=%d tester_policy_bypass=%d degraded_score_policy=%d degraded_score_type=%s degraded_score_mag=%.3f timer_sec=%d force_timer_every_heartbeat=%d",
+      "%s runtime_gates tester=%d degraded=%d router_min=%.3f news_gate=%d regime_gate=%d liquidity_gate=%d tester_policy_bypass=%d tester_gate_mode=%s tester_gate_soft_micro=%d degraded_score_policy=%d degraded_score_type=%s degraded_score_mag=%.3f timer_sec=%d force_timer_every_heartbeat=%d",
       where,
       (IsTesterRuntime() ? 1 : 0),
       (Config::CfgTesterDegradedModeActive(cfg) ? 1 : 0),
@@ -1966,7 +2068,9 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
       (Config::CfgNewsBlockEnabled(cfg) ? 1 : 0),
       (Config::CfgRegimeGateEnabled(cfg) ? 1 : 0),
       (Config::CfgLiquidityGateEnabled(cfg) ? 1 : 0),
-      ((IsTesterRuntime() && InpTester_BypassPolicyGates) ? 1 : 0),
+      ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS) ? 1 : 0),
+      TesterRouterGateModeName(ResolveTesterRouterGateMode()),
+      ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS) ? 1 : 0),
       (degraded_policy_active ? 1 : 0),
       degraded_policy_type,
       degraded_policy_mag,
@@ -2268,6 +2372,36 @@ bool EvaluateOneSymbolCompileTimeEnabled()
 #else
    return false;
 #endif
+}
+
+bool LegacyProcessSymbolCompileTimeEnabled()
+{
+#ifdef CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
+   return true;
+#else
+   return false;
+#endif
+}
+
+bool LegacyProcessSymbolRuntimeRequested()
+{
+   return (IsTesterRuntime() &&
+           InpUseRegistryRouting &&
+           InpLegacyProcessSymbolTester);
+}
+
+void WarnLegacyProcessSymbolCompileTimeBlocked(const string origin_tag)
+{
+   static datetime last_emit = 0;
+   const datetime now = TimeCurrent();
+   if(now == last_emit)
+      return;
+
+   last_emit = now;
+
+   LogX::Warn(StringFormat(
+      "[LEGACY][COMPILETIME-OFF] origin=%s requested legacy ProcessSymbol compatibility mode, but CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL is OFF. Canonical RunCachedRouterPass() remains active.",
+      origin_tag));
 }
 
 void WarnEvaluateOneSymbolCompileTimeBlockedOnce(const string sym)
@@ -3710,12 +3844,14 @@ void RunIndicatorBenchmarks()
 
 inline void UpdateRegistryRoutingFlag()
 {
-   // Legacy ProcessSymbol harness is tester-only and requires BOTH:
-   // 1) historical registry-routing input
-   // 2) explicit legacy compatibility opt-in
-   g_use_registry = (g_is_tester &&
-                     InpUseRegistryRouting &&
-                     InpLegacyProcessSymbolTester);
+   // Legacy ProcessSymbol harness is tester-only and requires:
+   // 1) diagnostic compile-time enable
+   // 2) historical registry-routing input
+   // 3) explicit legacy compatibility opt-in
+   g_use_registry = false;
+
+   if(LegacyProcessSymbolCompileTimeEnabled())
+      g_use_registry = LegacyProcessSymbolRuntimeRequested();
 
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
@@ -3724,7 +3860,9 @@ inline void UpdateRegistryRoutingFlag()
 
 bool UseLegacyProcessSymbolEngine()
 {
-   return (g_is_tester && g_use_registry);
+   return (LegacyProcessSymbolCompileTimeEnabled() &&
+           g_is_tester &&
+           g_use_registry);
 }
 
 string ActiveRoutingEngineName()
@@ -4055,7 +4193,7 @@ void BuildSettingsFromInputs(Settings &cfg)
       cfg.enable_liquidity_gate = true;
    #endif
 
-   if(g_is_tester && InpTester_BypassPolicyGates)
+   if(g_is_tester && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS)
    {
       #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
          cfg.enable_news_block = false;
@@ -5087,7 +5225,7 @@ bool MicrostructureGateOK(const string sym, const datetime now_srv, const dateti
       return true;
    }
 
-   if(IsTesterRuntime() && InpTester_BypassPolicyGates)
+   if(IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS)
    {
       detail = "tester_bypass_policy_gates";
       PublishTesterDegradedFallbackRuntimeState(sym, true, "tester_bypass", detail);
@@ -5919,11 +6057,13 @@ int OnInit()
    if(!g_is_tester)
       g_use_registry = false;
 
-   LogX::Info(StringFormat("[Routing] engine=%s tester=%s registry_input=%s legacy_tester_mode=%s",
+   LogX::Info(StringFormat("[Routing] engine=%s tester=%s registry_input=%s legacy_tester_mode=%s legacy_compiletime=%s tester_gate_mode=%s",
                            ActiveRoutingEngineName(),
                            (g_is_tester ? "true" : "false"),
                            (InpUseRegistryRouting ? "true" : "false"),
-                           (InpLegacyProcessSymbolTester ? "true" : "false")));
+                           (InpLegacyProcessSymbolTester ? "true" : "false"),
+                           (LegacyProcessSymbolCompileTimeEnabled() ? "ON" : "OFF"),
+                           TesterRouterGateModeName(ResolveTesterRouterGateMode())));
                         
    #ifdef CA_USE_HANDLE_REGISTRY
       HR::Init();
@@ -6387,6 +6527,7 @@ void OnTimer()
    datetime now_srv = TimeUtils::NowServer();
    const string router_sym = CanonicalRouterSymbol();
    const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));
+   const bool legacy_runtime_requested = LegacyProcessSymbolRuntimeRequested();
 
    // Canonical timer-owned orchestration (single source of truth):
    // 1) OnTimer() -> MSH::HubTimerTick(S)
@@ -6475,6 +6616,7 @@ void OnTimer()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
       g_use_registry = false;
 
+#ifdef CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
    // Optional tester-only legacy compatibility harness. Default OFF.
    // Canonical router remains the primary path for tester and live.
    if(UseLegacyProcessSymbolEngine())
@@ -6485,7 +6627,7 @@ void OnTimer()
          PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
       }
-      
+
       if(timer_require_new_bar && g_msh_dirty_n <= 0)
       {
          const bool nb0 = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
@@ -6509,6 +6651,10 @@ void OnTimer()
       PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
       return;
    }
+#else
+   if(legacy_runtime_requested)
+      WarnLegacyProcessSymbolCompileTimeBlocked("OnTimer");
+#endif
 
    // Legacy centralized router eval on timer – disabled.
    // if(!g_use_registry)
@@ -6516,30 +6662,53 @@ void OnTimer()
    
    // Canonical router pass (timer-only, cached-context only).
    // Do not call RunCachedRouterPass() from OnTick() or any alternate helper path.
-   if(g_msh_dirty_n <= 0)
+   const bool dirty_triggered = (g_msh_dirty_n > 0);
+   const int min_forced_eval_sec = EA_ResolveMinForcedRouterEvalSec(g_cfg);
+
+   if(!dirty_triggered)
    {
       g_msh_idle_heartbeat_streak++;
 
-      if(g_msh_idle_heartbeat_streak < g_msh_idle_fallback_after_n)
+      const bool cadence_triggered =
+         (g_msh_last_forced_router_eval_ts <= 0 ||
+          (now_srv - g_msh_last_forced_router_eval_ts) >= min_forced_eval_sec);
+
+      if(!cadence_triggered)
       {
          DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
          PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
          return;
       }
 
+      g_msh_eval_cadence_trigger_n++;
+
       LogX::Info(StringFormat(
-         "[ROUTER-FALLBACK] Timer idle fallback engaged: sym=%s dirty_n=%d idle_heartbeats=%d mode=%s -> RunCachedRouterPass()",
+         "[ROUTER-CADENCE] trigger=cadence sym=%s dirty_n=%d dirty_runs=%d cadence_runs=%d min_eval_sec=%d idle_heartbeats=%d",
          router_sym,
          g_msh_dirty_n,
-         g_msh_idle_heartbeat_streak,
-         StrategyModeNameLocal(g_cfg.strat_mode)));
+         g_msh_eval_dirty_trigger_n,
+         g_msh_eval_cadence_trigger_n,
+         min_forced_eval_sec,
+         g_msh_idle_heartbeat_streak));
 
       g_msh_idle_heartbeat_streak = 0;
    }
    else
    {
       g_msh_idle_heartbeat_streak = 0;
+      g_msh_eval_dirty_trigger_n++;
+
+      LogX::Info(StringFormat(
+         "[ROUTER-CADENCE] trigger=dirty sym=%s dirty_n=%d dirty_runs=%d cadence_runs=%d min_eval_sec=%d idle_heartbeats=%d",
+         router_sym,
+         g_msh_dirty_n,
+         g_msh_eval_dirty_trigger_n,
+         g_msh_eval_cadence_trigger_n,
+         min_forced_eval_sec,
+         g_msh_idle_heartbeat_streak));
    }
+
+   g_msh_last_forced_router_eval_ts = now_srv;
 
    RunCachedRouterPass(router_sym, now_srv, "Timer");
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
@@ -7016,11 +7185,18 @@ bool RouterGateOK_Global(const string log_sym,
       return false;
 
    string ms_detail = "";
-   const bool tester_policy_bypass = (IsTesterRuntime() && InpTester_BypassPolicyGates);
+   const int tester_gate_mode = ResolveTesterRouterGateMode();
+   const bool tester_policy_bypass =
+      (IsTesterRuntime() && tester_gate_mode == TESTER_ROUTER_GATE_MODE_BYPASS);
+   const bool tester_soft_micro_freshness =
+      (IsTesterRuntime() && tester_gate_mode == TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS);
+   const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(log_sym);
+
+   if(IsTesterRuntime())
+      LogTesterRouterGateModeDiagOncePerBar(log_sym, ms_required_bar_time, "enter");
 
    if(!tester_policy_bypass)
    {
-      const datetime ms_required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(log_sym);
       const bool ms_ok = MicrostructureGateOK(log_sym, now_srv, ms_required_bar_time, ms_detail);
       if(ms_ok)
       {
@@ -7029,26 +7205,41 @@ bool RouterGateOK_Global(const string log_sym,
       }
       else
       {
-         gate_reason_out = GATE_POLICIES;
-         UI_SetGate(gate_reason_out);
+         if(tester_soft_micro_freshness &&
+            TesterSoftMicroFreshnessFailure(ms_detail))
+         {
+            ms_detail = "[TESTER_SOFT_MICRO_FRESHNESS] " + ms_detail;
 
-         _LogGateBlockedEx("router_gate_global",
-                           log_sym,
-                           gate_reason_out,
-                           "Microstructure gate blocked",
-                           "MICROSTRUCTURE",
-                           0,
-                           "",
-                           ms_detail);
+            PublishTesterDegradedFallbackRuntimeState(log_sym,
+                                                      true,
+                                                      "tester_soft_micro_freshness",
+                                                      ms_detail);
 
-         TraceNoTrade(log_sym,
-                      TS_GATE,
-                      gate_reason_out,
-                      _MergeGateBlockedDetail("Microstructure gate blocked",
-                                              0,
-                                              "",
-                                              ms_detail));
-         return false;
+            LogTesterRouterGateModeDiagOncePerBar(log_sym, ms_required_bar_time, ms_detail);
+         }
+         else
+         {
+            gate_reason_out = GATE_POLICIES;
+            UI_SetGate(gate_reason_out);
+
+            _LogGateBlockedEx("router_gate_global",
+                              log_sym,
+                              gate_reason_out,
+                              "Microstructure gate blocked",
+                              "MICROSTRUCTURE",
+                              0,
+                              "",
+                              ms_detail);
+
+            TraceNoTrade(log_sym,
+                         TS_GATE,
+                         gate_reason_out,
+                         _MergeGateBlockedDetail("Microstructure gate blocked",
+                                                 0,
+                                                 "",
+                                                 ms_detail));
+            return false;
+         }
       }
 
       Policies::PolicyResult pol_eval;
@@ -7084,6 +7275,7 @@ bool RouterGateOK_Global(const string log_sym,
    else
    {
       ms_detail = "tester_bypass_policy_gates";
+      LogTesterRouterGateModeDiagOncePerBar(log_sym, ms_required_bar_time, ms_detail);
    }
 
    // 2) Hard time window (start/expiry)
@@ -7283,6 +7475,15 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
 // Live/canonical orchestration remains OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
+#ifndef CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
+   if(LegacyProcessSymbolRuntimeRequested())
+   {
+      WarnLegacyProcessSymbolCompileTimeBlocked(StringFormat("ProcessSymbol(%s)", sym));
+      DecisionTelemetry_MarkPassiveSkip("legacy_compiletime_off");
+   }
+   return;
+#else
+
    // Legacy harness is tester-only. Live must never enter ProcessSymbol().
    if(!g_is_tester)
       return;
@@ -7493,6 +7694,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    #endif
 
    UI_Render(S);
+#endif
   }
 
 // Helper to detect new bar on entry TF (for DebugChecklist cadence)

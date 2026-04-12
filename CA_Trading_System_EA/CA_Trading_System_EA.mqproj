@@ -458,6 +458,31 @@
       "path":"include\\Tester.mqh",
       "compile":false,
       "relative_to_project":true
+    },
+    {
+      "path":"include\\Trade\\Trade.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Trade\\OrderInfo.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Trade\\HistoryOrderInfo.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Trade\\PositionInfo.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Trade\\DealInfo.mqh",
+      "compile":false,
+      "relative_to_project":true
     }
   ]
 }
