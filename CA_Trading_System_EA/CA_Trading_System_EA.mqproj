@@ -105,11 +105,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Tester.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\Logging.mqh",
       "compile":false,
       "relative_to_project":true
@@ -456,6 +451,11 @@
     },
     {
       "path":"include\\Router.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Tester.mqh",
       "compile":false,
       "relative_to_project":true
     }

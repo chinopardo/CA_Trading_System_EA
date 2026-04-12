@@ -15,7 +15,9 @@
 // Uncomment to enable handle caching for indicators.
 // #define CA_USE_HANDLE_REGISTRY
 // ==================================================================
-
+// Dedicated tester-only utility switch for EvaluateOneSymbol().
+// Leave commented out for all normal builds.
+// #define CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY
 // ------------------- Engine & Infra includes ----------------------
 #include <Trade/Trade.mqh>
 #include "include/Config.mqh"
@@ -162,6 +164,7 @@ void ApplyTesterOnlyFeatureOverrides(Settings &cfg); // legacy bridge -> TesterS
 void RefreshICTContext(EAState &st);
 
 bool RuntimeMainChecklistSoftFallbackEnabled();
+bool UseLegacyProcessSymbolEngine();
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym);
 datetime ResolveCanonicalInstitutionalClosedBarAnchorTime(const string sym);
 bool EnsureCanonicalInstitutionalStateReady(const string sym,
@@ -2251,19 +2254,65 @@ inline bool NewsDefensiveStateAtBarClose(const Settings &cfg,
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
+bool EvaluateOneSymbolUtilityModeEnabled()
+{
+#ifdef CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY
+   return (MQLInfoInteger(MQL_TESTER) != 0);
+#else
+   return false;
+#endif
+}
+
+void WarnEvaluateOneSymbolUtilityDisabledOnce(const string sym)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[TEST-UTILITY] EvaluateOneSymbol(%s) ignored: path is disabled outside explicit tester utility mode.",
+      sym));
+}
+
+void WarnEvaluateOneSymbolLegacyBlockedOnce(const string sym)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[TEST-UTILITY] EvaluateOneSymbol(%s) blocked: UseLegacyProcessSymbolEngine()=false. Enable explicit legacy tester compatibility mode to use this harness.",
+      sym));
+}
+
 void EvaluateOneSymbol(const string sym)
   {
-    Settings cur = S; // per-symbol snapshot if you later need overrides
-    if(!g_is_tester) return;
-   
-    // --- Hardening: prevent this path from bypassing the canonical gates ---
-    if(!WarmupGateOK())
-       return;
+   // Strict tester/debug utility only.
+   // Never part of normal live or canonical tester orchestration.
+   if(!EvaluateOneSymbolUtilityModeEnabled())
+     {
+      WarnEvaluateOneSymbolUtilityDisabledOnce(sym);
+      return;
+     }
 
-    int gate_reason = 0;
-    // Use same session/policy gate used by Router pipeline (prevents “side door” trading)
-    if(!RouterGateOK(sym, cur, TimeUtils::NowServer(), gate_reason))
-       return;
+   if(!UseLegacyProcessSymbolEngine())
+     {
+      WarnEvaluateOneSymbolLegacyBlockedOnce(sym);
+      return;
+     }
+
+   Settings cur = S; // per-symbol snapshot if you later need overrides
+
+   // --- Hardening: prevent this path from bypassing the canonical gates ---
+   if(!WarmupGateOK())
+      return;
+
+   int gate_reason = 0;
+   // Use same session/policy gate used by Router pipeline (prevents “side door” trading)
+   if(!RouterGateOK(sym, cur, TimeUtils::NowServer(), gate_reason))
+      return;
 
 // 1) Intent (registry router or manual fallback)
    StratReg::RoutedPick pick;
@@ -6481,8 +6530,8 @@ void OnTimer()
       }
    }
    
-   // Allowlist should be enforced ONLY in StrategyRegistry + Router + Execution.
-   // If we ever see a disallowed/invalid sid here, it is a wiring leak; log loudly.
+   // Allowlist containment must happen here first.
+   // Downstream Execution mode enforcement remains as defense-in-depth only.
    if(okRoute)
    {
       const StrategyID sid = (StrategyID)pick_out.id;
@@ -6492,7 +6541,7 @@ void OnTimer()
          if(InpDebug)
             LogX::Warn(StringFormat("[ALLOWLIST_LEAK] mode=%s sid=%d pick_id=%d (should be filtered upstream; Execution will hard-reject)",
                                     StrategyModeNameLocal(cfg.strat_mode), (int)sid, (int)pick_out.id));
-         // Do NOT return false here.
+         return false;
       }
    }
 
