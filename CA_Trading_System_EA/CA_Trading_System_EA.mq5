@@ -15,7 +15,10 @@
 // Uncomment to enable handle caching for indicators.
 // #define CA_USE_HANDLE_REGISTRY
 // ==================================================================
-// Dedicated tester-only utility switch for EvaluateOneSymbol().
+// DEPRECATED tester-only harness for EvaluateOneSymbol().
+// This helper is non-canonical and retained only for explicit legacy tester compatibility checks.
+// Canonical new-order routing ownership is:
+// OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
 // Leave commented out for all normal builds.
 // #define CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY
 // ------------------- Engine & Infra includes ----------------------
@@ -1245,8 +1248,10 @@ void MSH_RouteEvent(const Scan::ScanEvent &e)
 
    // IMPORTANT:
    // MarketScannerHub / Scan remain the upstream scan owners.
-   // Do NOT publish microstructure directly from the event callback here.
-   // The EA publishes one canonical router/state snapshot on OnTimer()/OnTick().
+   // Do NOT publish microstructure or trigger routing directly from this callback.
+   // Canonical new-order routing ownership is OnTimer() only:
+   // OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
+   // OnTick() may consume cached state for management, telemetry, and diagnostics only.
 }
 
 // Price/time gates state
@@ -2254,16 +2259,16 @@ inline bool NewsDefensiveStateAtBarClose(const Settings &cfg,
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool EvaluateOneSymbolUtilityModeEnabled()
+bool EvaluateOneSymbolCompileTimeEnabled()
 {
 #ifdef CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY
-   return (MQLInfoInteger(MQL_TESTER) != 0);
+   return true;
 #else
    return false;
 #endif
 }
 
-void WarnEvaluateOneSymbolUtilityDisabledOnce(const string sym)
+void WarnEvaluateOneSymbolCompileTimeBlockedOnce(const string sym)
 {
    static bool warned = false;
    if(warned)
@@ -2271,7 +2276,19 @@ void WarnEvaluateOneSymbolUtilityDisabledOnce(const string sym)
 
    warned = true;
    LogX::Warn(StringFormat(
-      "[TEST-UTILITY] EvaluateOneSymbol(%s) ignored: path is disabled outside explicit tester utility mode.",
+      "[TEST-UTILITY] EvaluateOneSymbol(%s) blocked: CA_ENABLE_EVALUATE_ONE_SYMBOL_TEST_UTILITY is OFF. This harness is compile-time disabled for operational safety.",
+      sym));
+}
+
+void WarnEvaluateOneSymbolTesterBlockedOnce(const string sym)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[TEST-UTILITY] EvaluateOneSymbol(%s) blocked: g_is_tester=false. This harness is tester-only and must not run in live/manual operation.",
       sym));
 }
 
@@ -2287,13 +2304,44 @@ void WarnEvaluateOneSymbolLegacyBlockedOnce(const string sym)
       sym));
 }
 
+void WarnEvaluateOneSymbolDeprecatedOnce(const string sym)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[DEPRECATED] EvaluateOneSymbol(%s) is a non-canonical legacy tester helper. Canonical routing ownership is OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().",
+      sym));
+}
+
+void WarnEvaluateOneSymbolMainOnlyBlockedOnce(const string sym)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[TEST-UTILITY] EvaluateOneSymbol(%s) blocked: STRAT_MAIN_ONLY must use canonical OnTimer-owned routing only. Direct helper evaluation is not allowed for MAIN_ONLY.",
+      sym));
+}
+
 void EvaluateOneSymbol(const string sym)
   {
-   // Strict tester/debug utility only.
-   // Never part of normal live or canonical tester orchestration.
-   if(!EvaluateOneSymbolUtilityModeEnabled())
+   // DEPRECATED non-canonical helper.
+   // Retained only for explicit tester-side legacy compatibility checks.
+   // It must never become an alternate owner of live/canonical routing.
+   if(!EvaluateOneSymbolCompileTimeEnabled())
      {
-      WarnEvaluateOneSymbolUtilityDisabledOnce(sym);
+      WarnEvaluateOneSymbolCompileTimeBlockedOnce(sym);
+      return;
+     }
+
+   if(!g_is_tester)
+     {
+      WarnEvaluateOneSymbolTesterBlockedOnce(sym);
       return;
      }
 
@@ -2302,6 +2350,14 @@ void EvaluateOneSymbol(const string sym)
       WarnEvaluateOneSymbolLegacyBlockedOnce(sym);
       return;
      }
+
+   WarnEvaluateOneSymbolDeprecatedOnce(sym);
+
+   if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+   {
+      WarnEvaluateOneSymbolMainOnlyBlockedOnce(sym);
+      return;
+   }
 
    Settings cur = S; // per-symbol snapshot if you later need overrides
 
@@ -3677,9 +3733,26 @@ string ActiveRoutingEngineName()
    return "canonical_router";
 }
 
-// --- One-eval-per-bar compatibility dispatcher (tester-only RouterX path) ---
+void WarnMaybeEvaluateDeprecatedOnce()
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(
+      "[DEPRECATED] MaybeEvaluate() is a non-canonical compatibility helper. New-order routing ownership is OnTimer() only via RunCachedRouterPass(); MaybeEvaluate() is fail-closed.");
+}
+
+// DEPRECATED compatibility helper.
+// Historically associated with alternate routing experiments.
+// Keep fail-closed: canonical new-order routing ownership is OnTimer() only.
 void MaybeEvaluate()
   {
+   WarnMaybeEvaluateDeprecatedOnce();
+   DecisionTelemetry_MarkPassiveSkip("deprecated_maybeevaluate");
+   return;
+
    // Backend-only live build: alternate dispatcher is tester-only.
    if(!g_is_tester)
       return;
@@ -5642,6 +5715,18 @@ void DecisionTelemetry_RecordPassFromRouterSnapshot(const string source)
    g_decision_tel.pick_score          = Telemetry::RouterDecisionPickScore();
 }
 
+void WarnRunCachedRouterPassOriginBlockedOnce(const string origin_tag)
+{
+   static bool warned = false;
+   if(warned)
+      return;
+
+   warned = true;
+   LogX::Warn(StringFormat(
+      "[ROUTER-OWNERSHIP] RunCachedRouterPass(%s) blocked: canonical new-order routing ownership is OnTimer() only. Non-timer origins are deprecated and not allowed.",
+      origin_tag));
+}
+
 bool RunCachedRouterPass(const string router_sym,
                          const datetime now_srv,
                          const string origin_tag)
@@ -5652,9 +5737,16 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
-   // Live/new-order orchestration must remain:
-   // scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill
-   // This helper consumes cached context only. It must not trigger scanner math itself.
+   if(StringCompare(origin_tag, "Timer") != 0)
+   {
+      WarnRunCachedRouterPassOriginBlockedOnce(origin_tag);
+      DecisionTelemetry_MarkPassiveSkip("router_origin_not_timer");
+      return false;
+   }
+
+   // Canonical new-order orchestration must remain:
+   // OnTimer() -> scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill.
+   // This helper consumes cached timer-owned context only and must never be used as a tick-owned router entrypoint.
 
    if(!WarmupGateOK())
    {
@@ -6176,14 +6268,12 @@ void OnTick()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
        g_use_registry = false;
        
-   // OnTimer is the only owner of route/decision dispatch and router cadence.
-   // OnTick must never consume timer-owned routing cadence state or the timer router latch.
-   // Keep this path tick-safe only: lightweight runtime refresh,
-   // open-position management, telemetry/UI helpers, and debug checklist cadence.
-
-   // Tick path must NOT recompute timer-owned scanner / institutional snapshot math.
-   // OnTick only refreshes lightweight runtime context and consumes cached
-   // scanner outputs produced by MarketScannerHub on OnTimer().
+   // Canonical ownership rule:
+   // OnTimer() is the only owner of scanner cadence, routing cadence, and new-order dispatch.
+   // OnTick() is consumer-only: lightweight runtime refresh, open-position management,
+   // telemetry/UI helpers, and diagnostics against already-cached state.
+   // OnTick() must never call RouterEvaluateAll(), RunCachedRouterPass(), ProcessSymbol(),
+   // EvaluateOneSymbol(), or any helper that would become an alternate routing owner.
    const string runtime_sym = (UseLegacyProcessSymbolEngine() ? _Symbol : CanonicalRouterSymbol());
    RefreshRuntimeContextLight(runtime_sym);
 
@@ -6296,11 +6386,11 @@ void OnTimer()
    const string router_sym = CanonicalRouterSymbol();
    const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));
 
-   // Canonical timer-owned orchestration:
-   // 1) MarketScannerHub drives scanners/signals
-   // 2) AutoC / Scan cadence stays inside HubTimerTick()
-   // 3) EA refreshes confluence/state/runtime context from cached scanner outputs
-   // 4) RouterEvaluateAll() then consumes StrategyRegistry -> Router -> Policies/Risk -> Execution on cached data only
+   // Canonical timer-owned orchestration (single source of truth):
+   // 1) OnTimer() -> MSH::HubTimerTick(S)
+   // 2) RefreshRuntimeContextFromHub(router_sym, true)
+   // 3) RunCachedRouterPass(router_sym, now_srv, "Timer")
+   // 4) RouterEvaluateAll() executes only inside that timer-owned cached-context path
    MSH::HubTimerTick(S);
    // Always refresh the microstructure snapshot.  Without this, the canonical
    // institutional state never becomes "fresh" in the tester, causing the
@@ -6419,8 +6509,8 @@ void OnTimer()
    // if(!g_use_registry)
    //    MaybeEvaluate();
    
-   // Router mode path (cached-context only).
-   // Scanning remains timer-owned by MarketScannerHub above; routing consumes cached state only.
+   // Canonical router pass (timer-only, cached-context only).
+   // Do not call RunCachedRouterPass() from OnTick() or any alternate helper path.
    if(!timer_require_new_bar && g_msh_dirty_n <= 0)
    {
       DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
@@ -7166,8 +7256,8 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
    return true;
 }
 
-// Per-symbol compatibility path (tester-only legacy harness).
-// Live orchestration must remain Hub cadence -> cached context -> RouterEvaluateAll().
+// DEPRECATED tester-only legacy harness.
+// Live/canonical orchestration remains OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
    // Legacy harness is tester-only. Live must never enter ProcessSymbol().
