@@ -1257,6 +1257,9 @@ struct Settings;
 #ifndef CFG_HAS_TESTER_ENFORCE_KILLZONE
   #define CFG_HAS_TESTER_ENFORCE_KILLZONE 1
 #endif
+#ifndef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+  #define CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED 1
+#endif
 
 #ifndef CFG_HAS_TESTERSETTINGS_ENABLE
   #define CFG_HAS_TESTERSETTINGS_ENABLE 1
@@ -2193,6 +2196,9 @@ namespace Config
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         bool   tester_enforce_killzone;
       #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        bool   tester_smoke_real_sends_armed;
+      #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
         bool   tester_settings_enable;
@@ -3039,6 +3045,15 @@ namespace Config
       #endif
    
       return (v ? true : false);
+   }
+
+   inline bool CfgTesterSmokeRealSendArmed(const Settings &cfg)
+   {
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+         if(CfgIsTesterRuntime())
+            return (cfg.tester_smoke_real_sends_armed ? true : false);
+      #endif
+      return false;
    }
 
    inline bool CfgRouterForceOneNormalVol(const Settings &cfg){
@@ -4053,6 +4068,9 @@ namespace Config
      #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
        cfg.tester_enforce_killzone = x.tester_enforce_killzone;
      #endif
+     #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+       cfg.tester_smoke_real_sends_armed = x.tester_smoke_real_sends_armed;
+     #endif
 
      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
        cfg.tester_settings_enable = x.tester_settings_enable;
@@ -4747,6 +4765,9 @@ namespace Config
       
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         x.tester_enforce_killzone = false;
+      #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        x.tester_smoke_real_sends_armed = false;
       #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
@@ -7666,7 +7687,11 @@ namespace Config
      if(CfgIsTesterRuntime() && !cfg.tester_enforce_killzone)
         warns += "tester runtime active; killzone enforcement is disabled by tester_enforce_killzone=false.\n";
    #endif
-   
+   #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+     if(cfg.tester_smoke_real_sends_armed && !CfgIsTesterRuntime())
+        warns += "tester_smoke_real_sends_armed=true outside tester runtime; smoke provenance still fail-closes in Tester/Execution, so real smoke sends remain disabled.\n";
+   #endif
+
    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
      if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_news_block)
         warns += "tester degraded mode active; news block is disabled at config layer.\n";
@@ -10756,6 +10781,9 @@ namespace Config
    #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
      cfg.tester_enforce_killzone = (cfg.tester_enforce_killzone ? true : false);
    #endif
+   #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+     cfg.tester_smoke_real_sends_armed = (cfg.tester_smoke_real_sends_armed ? true : false);
+   #endif
 
    #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
      cfg.tester_settings_enable = (cfg.tester_settings_enable ? true : false);
@@ -11540,6 +11568,9 @@ namespace Config
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         cfg.tester_enforce_killzone = false;
       #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        cfg.tester_smoke_real_sends_armed = false;
+      #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
         cfg.tester_settings_enable = true;
@@ -12073,6 +12104,9 @@ namespace Config
       
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         ex.tester_enforce_killzone = false;
+      #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        ex.tester_smoke_real_sends_armed = false;
       #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
@@ -14334,6 +14368,9 @@ namespace Config
     #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
       s+=",testerKZ="+BoolStr(c.tester_enforce_killzone);
     #endif
+    #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+      s+=",tsSmokeArm="+BoolStr(c.tester_smoke_real_sends_armed);
+    #endif
 
     #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
       s+=",tsEn="+BoolStr(c.tester_settings_enable);
@@ -15879,6 +15916,9 @@ namespace Config
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         else if(k=="testerKZ") cfg.tester_enforce_killzone = ToBool(v);
       #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        else if(k=="tsSmokeArm" || k=="tester_smoke_real_sends_armed") cfg.tester_smoke_real_sends_armed = ToBool(v);
+      #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
         else if(k=="tsEn") cfg.tester_settings_enable = ToBool(v);
@@ -16850,6 +16890,9 @@ namespace Config
       
       #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
         else if(k=="testerKZ") cfg.tester_enforce_killzone = ToBool(v);
+      #endif
+      #ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+        else if(k=="tsSmokeArm" || k=="tester_smoke_real_sends_armed") cfg.tester_smoke_real_sends_armed = ToBool(v);
       #endif
 
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
@@ -19829,6 +19872,9 @@ struct Settings
    bool mode_enforce_killzone;
 #ifdef CFG_HAS_TESTER_ENFORCE_KILLZONE
   bool tester_enforce_killzone;
+#endif
+#ifdef CFG_HAS_TESTER_SMOKE_REAL_SENDS_ARMED
+  bool tester_smoke_real_sends_armed;
 #endif
    bool mode_use_ICT_bias;
    bool mode_use_continuation;

@@ -171,6 +171,10 @@ void RefreshICTContext(EAState &st);
 
 bool RuntimeMainChecklistSoftFallbackEnabled();
 bool UseLegacyProcessSymbolEngine();
+bool DirectRegistryCompatRuntimeRequested(const Settings &cfg);
+void WarnDirectRegistryCompatBlockedOnce(const string origin_tag,
+                                         const Settings &cfg);
+
 datetime ResolveCanonicalInstitutionalRequiredBarTime(const string sym);
 datetime ResolveCanonicalInstitutionalClosedBarAnchorTime(const string sym);
 bool EnsureCanonicalInstitutionalStateReady(const string sym,
@@ -893,6 +897,7 @@ input int              InpTradeCooldown_Sec     = 900; // Policy Cooldown
 // Routing choice
 input bool             InpUseRegistryRouting         = false; // Legacy registry routing gate
 input bool             InpLegacyProcessSymbolTester  = false; // Tester only: explicit legacy ProcessSymbol compatibility mode
+input bool             InpTester_DirectRegistryCompat = false; // Tester only: explicit direct StrategyRegistry compatibility gate for deprecated helper paths
 input double           InpRegimeThreshold            = 0.55;  // Regime Threshold
 
 // --------- Profiles (top-level presets) ----------
@@ -1091,6 +1096,7 @@ static bool g_ml_on          = false;
 static bool g_is_tester      = false;   // true only in Strategy Tester / Optimization
 static bool g_use_registry = false; // explicit tester-only legacy ProcessSymbol compatibility mode
 
+bool        g_sr_direct_registry_compat_runtime = false;
 static bool gTesterLooseGateMode = false;
 static bool gDisableMicrostructureGatesRuntime = false;
 
@@ -2383,11 +2389,50 @@ bool LegacyProcessSymbolCompileTimeEnabled()
 #endif
 }
 
+bool DirectRegistryCompatRuntimeRequested(const Settings &cfg)
+{
+   if(!IsTesterRuntime())
+      return false;
+
+   if(Config::CfgStrategyMode(cfg) == STRAT_MAIN_ONLY)
+      return false;
+
+   #ifdef CFG_HAS_TESTER_DIRECT_REGISTRY_COMPAT
+      return cfg.tester_direct_registry_compat;
+   #else
+      return InpTester_DirectRegistryCompat;
+   #endif
+}
+
 bool LegacyProcessSymbolRuntimeRequested()
 {
-   return (IsTesterRuntime() &&
+   return (DirectRegistryCompatRuntimeRequested(S) &&
            InpUseRegistryRouting &&
            InpLegacyProcessSymbolTester);
+}
+
+void WarnDirectRegistryCompatBlockedOnce(const string origin_tag,
+                                         const Settings &cfg)
+{
+   static string last_key = "";
+
+   const bool compat_on = DirectRegistryCompatRuntimeRequested(cfg);
+   const string key = StringFormat("%s|%d|%d|%d",
+                                   origin_tag,
+                                   (int)IsTesterRuntime(),
+                                   (int)compat_on,
+                                   (int)Config::CfgStrategyMode(cfg));
+   if(key == last_key)
+      return;
+
+   last_key = key;
+
+   LogX::Warn(StringFormat(
+      "[ROUTER-OWNERSHIP] %s blocked: direct StrategyRegistry compatibility route is disabled. Required: tester/optimization context + explicit tester direct-registry compatibility flag. Canonical path: OnTimer() -> RunCachedRouterPass() -> RouterEvaluateAll(). tester=%s compat=%s strat_mode=%d",
+      origin_tag,
+      (IsTesterRuntime() ? "true" : "false"),
+      (compat_on ? "true" : "false"),
+      (int)Config::CfgStrategyMode(cfg)));
 }
 
 void WarnLegacyProcessSymbolCompileTimeBlocked(const string origin_tag)
@@ -3848,14 +3893,19 @@ inline void UpdateRegistryRoutingFlag()
    // 1) diagnostic compile-time enable
    // 2) historical registry-routing input
    // 3) explicit legacy compatibility opt-in
+   // 4) explicit direct StrategyRegistry compatibility arm
    g_use_registry = false;
-
-   if(LegacyProcessSymbolCompileTimeEnabled())
+   g_sr_direct_registry_compat_runtime = DirectRegistryCompatRuntimeRequested(g_cfg);
+   
+   if(LegacyProcessSymbolCompileTimeEnabled() && g_sr_direct_registry_compat_runtime)
       g_use_registry = LegacyProcessSymbolRuntimeRequested();
-
+   
    // STRAT_MAIN_ONLY must always use RouterEvaluateAll()
    if(g_cfg.strat_mode == STRAT_MAIN_ONLY)
+   {
+      g_sr_direct_registry_compat_runtime = false;
       g_use_registry = false;
+   }
 }
 
 bool UseLegacyProcessSymbolEngine()
@@ -4174,6 +4224,11 @@ void BuildSettingsFromInputs(Settings &cfg)
    #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
       cfg.allow_tester_degraded_inst_fallback = InpMS_TesterAllowUnavailable;
    #endif
+
+   #ifdef CFG_HAS_TESTER_DIRECT_REGISTRY_COMPAT
+      cfg.tester_direct_registry_compat = InpTester_DirectRegistryCompat;
+   #endif
+
    #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
       cfg.allow_live_degraded_inst_fallback   = InpMS_LiveAllowDegradedInstFallback;
    #endif
@@ -6057,11 +6112,12 @@ int OnInit()
    if(!g_is_tester)
       g_use_registry = false;
 
-   LogX::Info(StringFormat("[Routing] engine=%s tester=%s registry_input=%s legacy_tester_mode=%s legacy_compiletime=%s tester_gate_mode=%s",
+   LogX::Info(StringFormat("[Routing] engine=%s tester=%s registry_input=%s legacy_tester_mode=%s direct_registry_compat=%s legacy_compiletime=%s tester_gate_mode=%s",
                            ActiveRoutingEngineName(),
                            (g_is_tester ? "true" : "false"),
                            (InpUseRegistryRouting ? "true" : "false"),
                            (InpLegacyProcessSymbolTester ? "true" : "false"),
+                           (g_sr_direct_registry_compat_runtime ? "true" : "false"),
                            (LegacyProcessSymbolCompileTimeEnabled() ? "ON" : "OFF"),
                            TesterRouterGateModeName(ResolveTesterRouterGateMode())));
                         
@@ -6731,6 +6787,12 @@ void OnTimer()
       Config::ApplyStrategyMode(cfg_core, STRAT_MAIN_ONLY);
       Config::Normalize(cfg_core);
    
+      if(!StratReg::SR_AllowDirectRegistrySelection(cfg_core))
+      {
+         WarnDirectRegistryCompatBlockedOnce("RouteMainOnlyPick", cfg_core);
+         return false;
+      }
+      
       if(!StratReg::Route(cfg_core, pick_out))
          return false;
    
@@ -6756,7 +6818,13 @@ void OnTimer()
    const double min_sc = EA_RouterResolvedMinScore();   
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
    bool okRoute = false;
-   
+
+   if(!DirectRegistryCompatRuntimeRequested(cfg))
+   {
+      WarnDirectRegistryCompatBlockedOnce("TryMinimalPathIntent", cfg);
+      return false;
+   }
+
    // MAIN_ONLY: route via registry with core-only gating
    if(sm == STRAT_MAIN_ONLY)
    {
@@ -6795,21 +6863,29 @@ void OnTimer()
       Config::Normalize(cfg_pack);
          
    #ifdef STRATREG_HAS_ROUTE
-         okRoute = (StratReg::Route(cfg_pack, pick_out) && pick_out.ok);
-   #else
-         if(g_use_registry)
-         {
-            string top;
-            okRoute = RouteRegistryAll(cfg_pack, pick_out, top);
-            if(okRoute) LogX::Info(StringFormat("Router.Top: %s", top));
-            if(!okRoute) okRoute = RouteRegistryPick(cfg_pack, pick_out);
-         }
-         else
-         {
-            okRoute = RouteManualRegimePick(cfg_pack, pick_out);
-         }
-   #endif
+      if(!StratReg::SR_AllowDirectRegistrySelection(cfg_pack))
+      {
+         WarnDirectRegistryCompatBlockedOnce("TryMinimalPathIntent.pack", cfg_pack);
+         okRoute = false;
       }
+      else
+      {
+         okRoute = (StratReg::Route(cfg_pack, pick_out) && pick_out.ok);
+      }
+   #else
+      if(g_use_registry)
+      {
+         string top;
+         okRoute = RouteRegistryAll(cfg_pack, pick_out, top);
+         if(okRoute) LogX::Info(StringFormat("Router.Top: %s", top));
+         if(!okRoute) okRoute = RouteRegistryPick(cfg_pack, pick_out);
+      }
+      else
+      {
+         okRoute = RouteManualRegimePick(cfg_pack, pick_out);
+      }
+   #endif
+    }
    }
    
    // Allowlist containment must happen here first.
