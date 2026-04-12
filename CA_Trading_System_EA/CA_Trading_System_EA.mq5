@@ -1165,6 +1165,8 @@ static int      g_msh_dirty_n = 0;
 static string   g_msh_dirty_sym[MSH_DIRTY_MAX];
 static int      g_msh_dirty_tf[MSH_DIRTY_MAX];
 static datetime g_msh_dirty_ts[MSH_DIRTY_MAX];
+static int      g_msh_idle_heartbeat_streak = 0; // consecutive timer heartbeats with no dirty symbols
+static int      g_msh_idle_fallback_after_n = 3; // throttled canonical fallback cadence
 
 // ================== Backend-only microstructure cache ==================
 // Requires MicrostructureStats in Types.mqh
@@ -6396,7 +6398,10 @@ void OnTimer()
    // institutional state never becomes "fresh" in the tester, causing the
    // microstructure gate to veto all trades.
    RefreshRuntimeContextFromHub(router_sym, true);
-   
+
+   if(g_msh_dirty_n > 0)
+      g_msh_idle_heartbeat_streak = 0;
+
    // Direct timer calls stay disabled here:
    // MarketScannerHub owns MarketData refresh + AutoC/Scan timer cadence.
    ML::SetRuntimeOn(g_ml_on);
@@ -6511,11 +6516,29 @@ void OnTimer()
    
    // Canonical router pass (timer-only, cached-context only).
    // Do not call RunCachedRouterPass() from OnTick() or any alternate helper path.
-   if(!timer_require_new_bar && g_msh_dirty_n <= 0)
+   if(g_msh_dirty_n <= 0)
    {
-      DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
-      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
-      return;
+      g_msh_idle_heartbeat_streak++;
+
+      if(g_msh_idle_heartbeat_streak < g_msh_idle_fallback_after_n)
+      {
+         DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
+         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+         return;
+      }
+
+      LogX::Info(StringFormat(
+         "[ROUTER-FALLBACK] Timer idle fallback engaged: sym=%s dirty_n=%d idle_heartbeats=%d mode=%s -> RunCachedRouterPass()",
+         router_sym,
+         g_msh_dirty_n,
+         g_msh_idle_heartbeat_streak,
+         StrategyModeNameLocal(g_cfg.strat_mode)));
+
+      g_msh_idle_heartbeat_streak = 0;
+   }
+   else
+   {
+      g_msh_idle_heartbeat_streak = 0;
    }
 
    RunCachedRouterPass(router_sym, now_srv, "Timer");
