@@ -133,6 +133,7 @@ bool DecisionTelemetry_ShouldEmitTimerNotNewBar(const string sym,
                                                 const datetime latch_time);
 
 void EmitDeterministicStartupStrategyAudit(const Settings &cfg);
+bool RunMainOnlyConsistencyAudit(const Settings &cfg);
 
 void PublishTesterDegradedFallbackRuntimeState(const string sym,
                                                const bool active,
@@ -365,6 +366,143 @@ void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
             tradable_n));
       }
    }
+}
+
+bool AuditArrayHasInt(const int &arr[], const int value)
+{
+   for(int i=0; i<ArraySize(arr); i++)
+      if(arr[i] == value)
+         return true;
+
+   return false;
+}
+
+string AuditStrategyIdListToString(const int &ids[])
+{
+   string out = "";
+
+   for(int i=0; i<ArraySize(ids); i++)
+   {
+      const StrategyID sid = (StrategyID)ids[i];
+
+      if(StringLen(out) > 0)
+         out += ", ";
+
+      out += StringFormat("%s(%d)", StratReg::FriendlyName(sid), ids[i]);
+   }
+
+   if(StringLen(out) == 0)
+      out = "NONE";
+
+   return out;
+}
+
+bool RunMainOnlyConsistencyAudit(const Settings &cfg)
+{
+   Settings audit_cfg = cfg;
+   Config::ApplyStrategyMode(audit_cfg, STRAT_MAIN_ONLY);
+   Config::Normalize(audit_cfg);
+
+   int expected_ids[];
+   Strat_FillCanonicalMainOnlyIds(expected_ids);
+
+   int router_missing_ids[];
+   Router_FillMainOnlyModeFilterUnrecognizedIds(audit_cfg, router_missing_ids);
+
+   int eligible_ids[];
+   StratReg::FillEligibleRegisteredIds(audit_cfg, eligible_ids, true);
+
+   int extra_ids[];
+   ArrayResize(extra_ids, 0);
+
+   for(int i=0; i<ArraySize(eligible_ids); i++)
+   {
+      if(!AuditArrayHasInt(expected_ids, eligible_ids[i]))
+      {
+         const int k = ArraySize(extra_ids);
+         ArrayResize(extra_ids, k + 1);
+         extra_ids[k] = eligible_ids[i];
+      }
+   }
+
+   bool critical_mismatch = false;
+
+   for(int i=0; i<ArraySize(expected_ids); i++)
+   {
+      const StrategyID sid = (StrategyID)expected_ids[i];
+
+      bool registered_now = false;
+      bool enabled_capable = false;
+      bool enabled_now = false;
+      bool tradable_now = false;
+      string slug = "";
+
+      StratReg::QueryMainOnlyExpectedIdState(audit_cfg,
+                                             sid,
+                                             registered_now,
+                                             enabled_capable,
+                                             enabled_now,
+                                             tradable_now,
+                                             slug);
+
+      if(enabled_capable && !registered_now)
+      {
+         critical_mismatch = true;
+
+         LogX::Error(StringFormat(
+            "[FATAL][MainOnlyAudit] expected canonical MAIN_ONLY id missing from registry id=%d name=%s slug=%s enabled_capable=true",
+            (int)sid,
+            StratReg::FriendlyName(sid),
+            slug));
+      }
+      else if(!enabled_capable && !registered_now)
+      {
+         LogX::Warn(StringFormat(
+            "[WARN][MainOnlyAudit] canonical MAIN_ONLY id not registered because current config disables it id=%d name=%s",
+            (int)sid,
+            StratReg::FriendlyName(sid)));
+      }
+   }
+
+   if(ArraySize(router_missing_ids) > 0)
+   {
+      critical_mismatch = true;
+
+      LogX::Error(StringFormat(
+         "[FATAL][MainOnlyAudit] router MAIN_ONLY mode filters do not recognize canonical ids: %s",
+         AuditStrategyIdListToString(router_missing_ids)));
+   }
+
+   if(ArraySize(extra_ids) > 0)
+   {
+      if(IsTesterRuntime())
+      {
+         LogX::Warn(StringFormat(
+            "[WARN][MainOnlyAudit] extra MAIN_ONLY-tradable ids detected outside canonical policy list: %s",
+            AuditStrategyIdListToString(extra_ids)));
+      }
+      else
+      {
+         critical_mismatch = true;
+
+         LogX::Error(StringFormat(
+            "[FATAL][MainOnlyAudit] live MAIN_ONLY tradable set contains extra ids outside canonical policy list: %s",
+            AuditStrategyIdListToString(extra_ids)));
+      }
+   }
+
+   LogX::Info(StringFormat(
+      "[MainOnlyAudit] expected=%s eligible_now=%s",
+      AuditStrategyIdListToString(expected_ids),
+      AuditStrategyIdListToString(eligible_ids)));
+
+   if(critical_mismatch && InpStrat_Mode == STRAT_MAIN_ONLY)
+   {
+      LogX::Error("[FATAL][MainOnlyAudit] fail-closed: InpStrat_Mode=STRAT_MAIN_ONLY requires canonical MAIN_ONLY ID parity across Types, StrategyRegistry, and Router.");
+      return false;
+   }
+
+   return true;
 }
 
 // ================== User Inputs ==================
@@ -2428,11 +2566,26 @@ void WarnDirectRegistryCompatBlockedOnce(const string origin_tag,
    last_key = key;
 
    LogX::Warn(StringFormat(
-      "[ROUTER-OWNERSHIP] %s blocked: direct StrategyRegistry compatibility route is disabled. Required: tester/optimization context + explicit tester direct-registry compatibility flag. Canonical path: OnTimer() -> RunCachedRouterPass() -> RouterEvaluateAll(). tester=%s compat=%s strat_mode=%d",
+      "[ROUTER-OWNERSHIP] %s blocked: non-canonical route disabled for trade execution. Direct StrategyRegistry compatibility route is diagnostics-only. Required: tester/optimization context + explicit tester direct-registry compatibility flag. Canonical path is OnTimer() with RunCachedRouterPass(Timer) and RouterEvaluateAll(). tester=%s compat=%s strat_mode=%d",
       origin_tag,
       (IsTesterRuntime() ? "true" : "false"),
       (compat_on ? "true" : "false"),
       (int)Config::CfgStrategyMode(cfg)));
+}
+
+void WarnNonCanonicalTradeExecutionDisabledOnce(const string origin_tag)
+{
+   static string seen = "|";
+   const string key = origin_tag + "|";
+
+   if(StringFind(seen, key) >= 0)
+      return;
+
+   seen += key;
+
+   LogX::Warn(StringFormat(
+      "[ROUTER-OWNERSHIP] %s is a non-canonical route disabled for trade execution. Diagnostics may inspect intent/picks only. Canonical live/tester owner is OnTimer() with RunCachedRouterPass(Timer) and RouterEvaluateAll().",
+      origin_tag));
 }
 
 void WarnLegacyProcessSymbolCompileTimeBlocked(const string origin_tag)
@@ -2445,7 +2598,7 @@ void WarnLegacyProcessSymbolCompileTimeBlocked(const string origin_tag)
    last_emit = now;
 
    LogX::Warn(StringFormat(
-      "[LEGACY][COMPILETIME-OFF] origin=%s requested legacy ProcessSymbol compatibility mode, but CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL is OFF. Canonical RunCachedRouterPass() remains active.",
+      "[LEGACY][COMPILETIME-OFF] origin=%s requested legacy ProcessSymbol compatibility mode, but CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL is OFF. Non-canonical route disabled for trade execution. Canonical RunCachedRouterPass(Timer) remains active.",
       origin_tag));
 }
 
@@ -2493,7 +2646,7 @@ void WarnEvaluateOneSymbolDeprecatedOnce(const string sym)
 
    warned = true;
    LogX::Warn(StringFormat(
-      "[DEPRECATED] EvaluateOneSymbol(%s) is a non-canonical legacy tester helper. Canonical routing ownership is OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().",
+"[DEPRECATED] EvaluateOneSymbol(%s) is a non-canonical route disabled for trade execution. Canonical live/tester owner is OnTimer() with MSH::HubTimerTick(), RefreshRuntimeContextFromHub(), RunCachedRouterPass(Timer), and RouterEvaluateAll().",
       sym));
 }
 
@@ -2595,6 +2748,11 @@ void EvaluateOneSymbol(const string sym)
       StrategiesCarry::RiskMod01(pick.dir, trade_cfg, ss.risk_mult);
 
    UI_PublishDecision(pick.bd, ss);
+
+   WarnNonCanonicalTradeExecutionDisabledOnce("EvaluateOneSymbol");
+   DecisionTelemetry_MarkPassiveSkip("evaluate_one_symbol_trade_execution_disabled");
+   UI_Render(S);
+   return;
 
 // 3) Risk sizing → plan
    OrderPlan plan;
@@ -3931,7 +4089,7 @@ void WarnMaybeEvaluateDeprecatedOnce()
 
    warned = true;
    LogX::Warn(
-      "[DEPRECATED] MaybeEvaluate() is a non-canonical compatibility helper. New-order routing ownership is OnTimer() only via RunCachedRouterPass(); MaybeEvaluate() is fail-closed.");
+            "[DEPRECATED] MaybeEvaluate() is a non-canonical route disabled for trade execution. Canonical live/tester owner is OnTimer() with RunCachedRouterPass(Timer) and RouterEvaluateAll().");
 }
 
 // DEPRECATED compatibility helper.
@@ -6343,7 +6501,10 @@ int OnInit()
    // 3. Initialize Router strategies registry (ICT-aware)
    RouterInit(g_exec_router, g_cfg);
    RouterSetWatchlist(g_exec_router, g_symbols, g_symCount);
-   
+
+   if(!RunMainOnlyConsistencyAudit(S))
+      return(INIT_FAILED);
+
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();
    
@@ -6585,11 +6746,13 @@ void OnTimer()
    const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));
    const bool legacy_runtime_requested = LegacyProcessSymbolRuntimeRequested();
 
-   // Canonical timer-owned orchestration (single source of truth):
-   // 1) OnTimer() -> MSH::HubTimerTick(S)
+   // Canonical parity policy:
+   // live and tester use the same routing owner.
+   // 1) OnTimer() runs MSH::HubTimerTick(S)
    // 2) RefreshRuntimeContextFromHub(router_sym, true)
    // 3) RunCachedRouterPass(router_sym, now_srv, "Timer")
    // 4) RouterEvaluateAll() executes only inside that timer-owned cached-context path
+   // Non-canonical routes are diagnostics-only and disabled for trade execution.
    MSH::HubTimerTick(S);
    // Always refresh the microstructure snapshot.  Without this, the canonical
    // institutional state never becomes "fresh" in the tester, causing the
@@ -6673,40 +6836,8 @@ void OnTimer()
       g_use_registry = false;
 
 #ifdef CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
-   // Optional tester-only legacy compatibility harness. Default OFF.
-   // Canonical router remains the primary path for tester and live.
-   if(UseLegacyProcessSymbolEngine())
-   {
-      if(!timer_require_new_bar && g_msh_dirty_n <= 0)
-      {
-         DecisionTelemetry_MarkPassiveSkip("timer_no_dirty_symbols");
-         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
-         return;
-      }
-
-      if(timer_require_new_bar && g_msh_dirty_n <= 0)
-      {
-         const bool nb0 = (S.only_new_bar ? NewBarFor(_Symbol, S.tf_entry) : true);
-         ProcessSymbol(_Symbol, nb0);
-         MSH_DirtyClear();
-         PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
-         return;
-      }
-
-      for(int i=0; i<g_symCount; i++)
-      {
-         const string sym = g_symbols[i];
-         if(!MSH_DirtyHasSym(sym))
-            continue;
-
-         const bool nb = (S.only_new_bar ? NewBarFor(sym, S.tf_entry) : true);
-         ProcessSymbol(sym, nb);
-      }
-
-      MSH_DirtyClear();
-      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
-      return;
-   }
+   if(legacy_runtime_requested || UseLegacyProcessSymbolEngine())
+      WarnNonCanonicalTradeExecutionDisabledOnce("OnTimer.LegacyProcessSymbol");
 #else
    if(legacy_runtime_requested)
       WarnLegacyProcessSymbolCompileTimeBlocked("OnTimer");
@@ -6782,7 +6913,8 @@ void OnTimer()
    {
       ZeroMemory(pick_out);
    
-      // Force a MAIN_ONLY view of the world, but route via registry
+      // Force a MAIN_ONLY view for diagnostics-only registry inspection.
+      // This route is non-canonical and disabled for trade execution.
       Settings cfg_core = cfg;
       Config::ApplyStrategyMode(cfg_core, STRAT_MAIN_ONLY);
       Config::Normalize(cfg_core);
@@ -6807,7 +6939,8 @@ void OnTimer()
       return true;
    }
 
-   // --- Minimal Trading Path (MVP): intent → risk → execute ---
+   // --- Minimal intent path retained for diagnostics-only inspection ---
+   // Non-canonical route disabled for trade execution.
    bool TryMinimalPathIntent(const string sym,
                              const Settings &cfg,
                              StratReg::RoutedPick &pick_out)
@@ -7548,7 +7681,10 @@ bool RouterGateOK(const string sym, const Settings &cfg, const datetime now_srv,
 }
 
 // DEPRECATED tester-only legacy harness.
-// Live/canonical orchestration remains OnTimer() -> MSH::HubTimerTick() -> RefreshRuntimeContextFromHub() -> RunCachedRouterPass().
+// Non-canonical route disabled for trade execution.
+// Live and tester both use the same canonical owner: OnTimer() with
+// MSH::HubTimerTick(), RefreshRuntimeContextFromHub(), RunCachedRouterPass(Timer),
+// and RouterEvaluateAll().
 void ProcessSymbol(const string sym, const bool new_bar_for_sym)
   {
 #ifndef CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
@@ -7594,7 +7730,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
       DecisionTelemetry_MarkPassiveSkip("legacy_engine_off");
 
       if(InpDebug)
-         LogX::Warn("[LEGACY] ProcessSymbol blocked (legacy tester compatibility mode is OFF).");
+         LogX::Warn("[LEGACY] ProcessSymbol blocked: non-canonical route disabled for trade execution.");
       return;
    }
 
@@ -7717,7 +7853,12 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    // -------- Carry integration (strict or mild) ----------
    if(trade_cfg.carry_enable && InpCarry_StrictRiskOnly)
       StrategiesCarry::RiskMod01(pick.dir, trade_cfg, SS.risk_mult);
-   
+
+   WarnNonCanonicalTradeExecutionDisabledOnce("ProcessSymbol");
+   DecisionTelemetry_MarkPassiveSkip("legacy_processsymbol_trade_execution_disabled");
+   UI_Render(S);
+   return;
+
    OrderPlan plan;
    const StrategyID sid = (StrategyID)pick.id;
    
