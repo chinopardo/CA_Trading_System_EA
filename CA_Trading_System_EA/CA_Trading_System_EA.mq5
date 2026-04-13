@@ -416,7 +416,13 @@ bool RunMainOnlyConsistencyAudit(const Settings &cfg)
    Config::Normalize(audit_cfg);
 
    int expected_ids[];
-   Strat_FillCanonicalMainOnlyIds(expected_ids);
+   Config::FillCanonicalMainOnlyIds(expected_ids);
+
+   if(ArraySize(expected_ids) <= 0)
+   {
+      LogX::Error("[FATAL][MainOnlyAudit] Config::FillCanonicalMainOnlyIds returned an empty canonical MAIN_ONLY roster.");
+      return false;
+   }
 
    int router_missing_ids[];
    Router_FillMainOnlyModeFilterUnrecognizedIds(audit_cfg, router_missing_ids);
@@ -510,7 +516,7 @@ bool RunMainOnlyConsistencyAudit(const Settings &cfg)
 
    if(critical_mismatch && InpStrat_Mode == STRAT_MAIN_ONLY)
    {
-      LogX::Error("[FATAL][MainOnlyAudit] fail-closed: InpStrat_Mode=STRAT_MAIN_ONLY requires canonical MAIN_ONLY ID parity across Types, StrategyRegistry, and Router.");
+      LogX::Error("[FATAL][MainOnlyAudit] fail-closed: InpStrat_Mode=STRAT_MAIN_ONLY requires canonical MAIN_ONLY ID parity across Config, StrategyRegistry, and Router.");
       return false;
    }
 
@@ -695,8 +701,9 @@ input double           InpP2_ClosePct           = 25.0;          // Position Mgn
 
 // ================= Strategy family selector =================
 // Strategy Mode:
-// STRAT_MAIN_ONLY  => ONLY MainTradingLogic + ICT/Wyckoff strategies may send orders.
-//                     ICT/Wyckoff band is StrategyID [10010..19999] (see Types.mqh Strat_AllowedToTrade()).
+// STRAT_MAIN_ONLY  => ONLY MainTradingLogic + the ICT/Wyckoff orderable specialists may send orders.
+//                     Canonical MAIN_ONLY roster is defined in Config::FillCanonicalMainOnlyIds()
+//                     and enforced by Config::IsStrategyAllowedInMode().
 //                     All other modules/pack strategies remain confluence-only (no order sending).
 // STRAT_PACK_ONLY  => Only non-core pack strategies may send orders.
 // STRAT_COMBINED   => All strategies may send orders.

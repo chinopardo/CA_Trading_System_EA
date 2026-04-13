@@ -3299,24 +3299,119 @@ namespace Config
           // Smart Money auto mode: use ICT context gate (now prefers ctx.allowedDirection)
           return ComputeDirectionFromICT(ctx);
      }
-   
+
+  // ----------------------------------------------------------------------------
+  // Canonical MAIN_ONLY roster
+  // Single source of truth for:
+  // - Config::IsStrategyAllowedInMode()
+  // - StrategyRegistry MAIN_ONLY audits
+  // - Router MAIN_ONLY validation
+  //
+  // ONLY these strategies may become orderable in STRAT_MAIN_ONLY:
+  // - Main Trading Logic
+  // - ICT Silver Bullet
+  // - ICT PO3
+  // - ICT OBFVG OTE
+  // - ICT Wyckoff Spring / UTAD
+  //
+  // Do NOT duplicate this allow-list in the EA .mq5 file.
+  // ----------------------------------------------------------------------------
+  inline bool IsCanonicalMainOnlyStrategyId(const StrategyID sid)
+  {
+     if(((int)sid) <= 0)
+        return false;
+
+     #ifdef STRAT_MAIN_ID
+        if(sid == (StrategyID)STRAT_MAIN_ID)
+           return true;
+     #endif
+
+     #ifdef STRAT_ICT_SILVER_BULLET_ID
+        if(sid == (StrategyID)STRAT_ICT_SILVER_BULLET_ID)
+           return true;
+     #endif
+
+     #ifdef STRAT_ICT_PO3_ID
+        if(sid == (StrategyID)STRAT_ICT_PO3_ID)
+           return true;
+     #endif
+
+     #ifdef STRAT_ICT_OBFVG_OTE_ID
+        if(sid == (StrategyID)STRAT_ICT_OBFVG_OTE_ID)
+           return true;
+     #endif
+
+     #ifdef STRAT_ICT_WYCKOFF_SPRING_UTAD_ID
+        if(sid == (StrategyID)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID)
+           return true;
+     #endif
+
+     return false;
+  }
+
+  inline int FillCanonicalMainOnlyIds(int &out_ids[])
+  {
+     ArrayResize(out_ids, 0);
+     int n = 0;
+
+     #ifdef STRAT_MAIN_ID
+        ArrayResize(out_ids, n + 1);
+        out_ids[n++] = (int)STRAT_MAIN_ID;
+     #endif
+
+     #ifdef STRAT_ICT_SILVER_BULLET_ID
+        ArrayResize(out_ids, n + 1);
+        out_ids[n++] = (int)STRAT_ICT_SILVER_BULLET_ID;
+     #endif
+
+     #ifdef STRAT_ICT_PO3_ID
+        ArrayResize(out_ids, n + 1);
+        out_ids[n++] = (int)STRAT_ICT_PO3_ID;
+     #endif
+
+     #ifdef STRAT_ICT_OBFVG_OTE_ID
+        ArrayResize(out_ids, n + 1);
+        out_ids[n++] = (int)STRAT_ICT_OBFVG_OTE_ID;
+     #endif
+
+     #ifdef STRAT_ICT_WYCKOFF_SPRING_UTAD_ID
+        ArrayResize(out_ids, n + 1);
+        out_ids[n++] = (int)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID;
+     #endif
+
+     return n;
+  }
+
+  #ifndef CFG_HAS_IS_CANONICAL_MAIN_ONLY_STRATEGY_ID
+     #define CFG_HAS_IS_CANONICAL_MAIN_ONLY_STRATEGY_ID 1
+  #endif
+
+  #ifndef CFG_HAS_FILL_CANONICAL_MAIN_ONLY_IDS
+     #define CFG_HAS_FILL_CANONICAL_MAIN_ONLY_IDS 1
+  #endif
+
 #ifdef CFG_HAS_STRAT_MODE
    // StrategyMode trade eligibility:
-   // - STRAT_MAIN_ONLY allows ONLY MainTradingLogic + ICT/Wyckoff (see Types.mqh Strat_AllowedToTrade).
+   // - STRAT_MAIN_ONLY allows ONLY MainTradingLogic + the ICT/Wyckoff specialists
+   //   defined by Config::FillCanonicalMainOnlyIds().
    // - STRAT_PACK_ONLY allows only non-core strategies.
    // - STRAT_COMBINED allows all.
-   // IMPORTANT: Do not re-implement allow-lists elsewhere. Change policy ONLY in Types.mqh.
+   //
+   // Single source of truth lives in Config.mqh.
    inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID id)
    {
-      // Always reject missing/invalid strategy IDs (prevents ghost paths)
       if(((int)id) <= 0)
          return false;
 
       const StrategyMode mode = CfgStrategyMode(cfg);
-      
+
       if(cfg.debug)
          PrintFormat("[Config] IsStrategyAllowedInMode: mode=%d sid=%d",
                      (int)mode, (int)id);
+
+      if(mode == STRAT_MAIN_ONLY)
+         return IsCanonicalMainOnlyStrategyId(id);
+
       return Strat_AllowedToTrade(mode, id);
    }
 
@@ -3326,15 +3421,17 @@ namespace Config
 #else
    inline bool IsStrategyAllowedInMode(const Settings &cfg, const StrategyID sid)
    {
-      // Keep behavior consistent even if CFG_HAS_STRAT_MODE is not defined:
-      // This wrapper must always delegate to the single source of truth.
       if(((int)sid) <= 0)
          return false;
-   
+
       const StrategyMode mode = (StrategyMode)cfg.strat_mode;
+
+      if(mode == STRAT_MAIN_ONLY)
+         return IsCanonicalMainOnlyStrategyId(sid);
+
       return Strat_AllowedToTrade(mode, sid);
    }
-   
+
    #ifndef CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE
       #define CFG_HAS_IS_STRATEGY_ALLOWED_IN_MODE 1
    #endif
