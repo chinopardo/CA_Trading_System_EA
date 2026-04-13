@@ -336,10 +336,22 @@ void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
 
    if(in_tester)
    {
-      LogX::Info(StringFormat(
-         "[StartupAudit] tester_main_only_selected_non_core_orderables=%s selected_non_core_ids=%s",
-         (InpTester_MainOnlyAllowSelectedNonCoreOrderables ? "true" : "false"),
-         (StringLen(InpTester_MainOnlySelectedNonCoreIds) > 0 ? InpTester_MainOnlySelectedNonCoreIds : "NONE")));
+      const bool deprecated_selected_non_core_requested =
+         (InpTester_MainOnlyAllowSelectedNonCoreOrderables ||
+          StringLen(InpTester_MainOnlySelectedNonCoreIds) > 0);
+
+      if(deprecated_selected_non_core_requested)
+      {
+         LogX::Warn(StringFormat(
+            "[StartupAudit] tester MAIN_ONLY selected non-core override requested but deprecated/ignored. requested_flag=%s ids=%s active_behavior=ignored final_authority=Config::IsStrategyAllowedInMode canonical_execution=RunCachedRouterPass(Timer)->RouterEvaluateAll",
+            (InpTester_MainOnlyAllowSelectedNonCoreOrderables ? "true" : "false"),
+            (StringLen(InpTester_MainOnlySelectedNonCoreIds) > 0 ? InpTester_MainOnlySelectedNonCoreIds : "NONE")));
+      }
+
+      if(Config::CfgTesterSmokeRealSendArmed(cfg))
+      {
+         LogX::Warn("[StartupAudit] tester_smoke_real_sends_armed=true. Any send tagged exec_origin_class=diagnostic exec_origin_reason=TESTER_SMOKE is non-canonical and not strategy-routed.");
+      }
 
       if(tradable_n < 3)
       {
@@ -352,9 +364,9 @@ void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
    }
    else
    {
-      if(InpTester_MainOnlyAllowSelectedNonCoreOrderables)
+      if(InpTester_MainOnlyAllowSelectedNonCoreOrderables || StringLen(InpTester_MainOnlySelectedNonCoreIds) > 0)
       {
-         LogX::Warn("[StartupAudit] tester-only selected non-core MAIN_ONLY override is configured but ignored outside tester.");
+         LogX::Warn("[StartupAudit] deprecated tester MAIN_ONLY selected non-core override inputs are configured but ignored outside tester.");
       }
 
       if(sm != STRAT_MAIN_ONLY && tradable_n < 2)
@@ -1945,13 +1957,16 @@ void LogExecFailThrottled(const string sym,
 
    string side = (dir == DIR_BUY ? "BUY" : "SELL");
 
-   // NOTE: This logger expects Exec::Outcome to include: ok, retcode, ticket, last_error, last_error_text.
-   // Do not reference ex.code_text / ex.ret_text here unless you confirm they exist in your Exec::Outcome struct.
-    PrintFormat("[ExecFail] %s %s retcode=%u err=%d(%s) ticket=%I64d lots=%.2f price=%.5f sl=%.5f tp=%.5f slip=%d",
-                sym, side, ex.retcode,
-                ex.last_error, LogX::San(ex.last_error_text),
-                (long)ex.ticket,
-                plan.lots, plan.price, plan.sl, plan.tp, slippage_points);
+   const string exec_origin_class  = Exec::ExecOriginClassText(ex.origin_class);
+   const string exec_origin_reason = Exec::ExecOriginReasonText(ex.origin_reason);
+   const int non_canonical_exec = (ex.origin_class != Exec::EXEC_ORIGIN_CANONICAL ? 1 : 0);
+
+   PrintFormat("[ExecFail] %s %s retcode=%u err=%d(%s) ticket=%I64d lots=%.2f price=%.5f sl=%.5f tp=%.5f slip=%d origin=%s reason=%s(%d) non_canonical=%d",
+               sym, side, ex.retcode,
+               ex.last_error, LogX::San(ex.last_error_text),
+               (long)ex.ticket,
+               plan.lots, plan.price, plan.sl, plan.tp, slippage_points,
+               exec_origin_class, exec_origin_reason, ex.origin_reason, non_canonical_exec);
 }
 
 void HintTradeDisabledOnce(const Exec::Outcome &ex)
@@ -7854,8 +7869,15 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
    if(trade_cfg.carry_enable && InpCarry_StrictRiskOnly)
       StrategiesCarry::RiskMod01(pick.dir, trade_cfg, SS.risk_mult);
 
+   static bool s_logged_processsymbol_timer_owned = false;
+   if(!s_logged_processsymbol_timer_owned)
+   {
+      s_logged_processsymbol_timer_owned = true;
+      LogX::Info("[LEGACY] ProcessSymbol diagnostics complete. Trade-plan and order send are blocked here. Canonical execution is timer-owned via RunCachedRouterPass(Timer) -> RouterEvaluateAll().");
+   }
+
    WarnNonCanonicalTradeExecutionDisabledOnce("ProcessSymbol");
-   DecisionTelemetry_MarkPassiveSkip("legacy_processsymbol_trade_execution_disabled");
+   DecisionTelemetry_MarkPassiveSkip("legacy_processsymbol_execution_timer_owned");
    UI_Render(S);
    return;
 
