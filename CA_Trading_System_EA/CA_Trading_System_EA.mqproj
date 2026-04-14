@@ -483,6 +483,11 @@
       "path":"include\\Trade\\DealInfo.mqh",
       "compile":false,
       "relative_to_project":true
+    },
+    {
+      "path":"include\\CategorySelector.mqh",
+      "compile":false,
+      "relative_to_project":true
     }
   ]
 }

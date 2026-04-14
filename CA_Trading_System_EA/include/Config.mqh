@@ -1631,6 +1631,106 @@ namespace Config
      CFG_VOL_EST_YZ         = 4
   };
 
+  // Signal-stack / category-selection modes
+  enum SignalSelectionMode
+  {
+     SELECTION_FIXED   = 0,
+     SELECTION_DYNAMIC = 1
+  };
+
+  enum InstitutionalSelectionMode
+  {
+     INST_SELECTION_ANTI_ECHO_SUBFAMILY = 0,
+     INST_SELECTION_DIRECT_FULL         = 1
+  };
+
+  enum SignalSelectionArraySize
+  {
+     SIGSEL_INST_CAND_COUNT  = 24,
+     SIGSEL_TREND_CAND_COUNT = 5,
+     SIGSEL_MOM_CAND_COUNT   = 6,
+     SIGSEL_VOL_CAND_COUNT   = 7,
+     SIGSEL_VOLA_CAND_COUNT  = 8
+  };
+
+  inline int _SigSelClampIndex(const int idx, const int count)
+  {
+     if(idx < 0)
+        return 0;
+     if(idx >= count)
+        return count - 1;
+     return idx;
+  }
+
+  inline void _SigSelFillWeightArray(double &dst[], const int count, const double value)
+  {
+     ArrayResize(dst, count);
+     for(int i = 0; i < count; i++)
+        dst[i] = value;
+  }
+
+  inline void _SigSelNormalizeWeightArray(double &dst[], const int count, const double fallback_value)
+  {
+     if(ArraySize(dst) != count)
+        ArrayResize(dst, count);
+
+     double sum = 0.0;
+
+     for(int i = 0; i < count; i++)
+     {
+        if(dst[i] < 0.0)
+           dst[i] = 0.0;
+        sum += dst[i];
+     }
+
+     if(sum <= 0.0)
+     {
+        for(int i = 0; i < count; i++)
+           dst[i] = fallback_value;
+
+        sum = fallback_value * (double)count;
+     }
+
+     if(sum > 0.0)
+     {
+        for(int i = 0; i < count; i++)
+           dst[i] /= sum;
+     }
+  }
+
+  inline void _SigSelParseWeightsCSV(const string csv_in, const int count, double &dst[])
+  {
+     _SigSelFillWeightArray(dst, count, 1.0);
+
+     string csv = Trim(csv_in);
+     if(StringLen(csv) <= 0)
+     {
+        _SigSelNormalizeWeightArray(dst, count, 1.0);
+        return;
+     }
+
+     StringReplace(csv, ",", ";");
+
+     string toks[];
+     int n = StringSplit(csv, (ushort)';', toks);
+     if(n > 0)
+     {
+        int limit = n;
+        if(limit > count)
+           limit = count;
+
+        for(int i = 0; i < limit; i++)
+        {
+           double w = StringToDouble(Trim(toks[i]));
+           if(w < 0.0)
+              w = 0.0;
+           dst[i] = w;
+        }
+     }
+
+     _SigSelNormalizeWeightArray(dst, count, 1.0);
+  }
+
   inline string Join(const string &arr[], const string sep)
   {
     const int n=ArraySize(arr);
@@ -2175,6 +2275,64 @@ namespace Config
      double w_mtf_zone_h1;
      double w_mtf_zone_h4;
      double mtf_zone_max_dist_atr;   // e.g., 1.0–1.5 ATR
+
+     // Signal-stack / category gating
+     bool   sigsel_enable;                // master toggle for signal-stack + location gate
+     int    sigsel_selection_mode;        // 0=fixed, 1=dynamic
+     int    sigsel_inst_selection_mode;   // 0=anti-echo subfamily, 1=direct-full
+
+     int    sigsel_fixed_inst_index;
+     int    sigsel_fixed_trend_index;
+     int    sigsel_fixed_mom_index;
+     int    sigsel_fixed_vol_index;
+     int    sigsel_fixed_vola_index;
+
+     double sigsel_th_inst;
+     double sigsel_th_trend;
+     double sigsel_th_mom;
+     double sigsel_th_vol;
+     double sigsel_th_vola;
+
+     double sigsel_band_rsi;
+     double sigsel_band_stoch;
+     double sigsel_th_adx;
+
+     double sigsel_th_atr_min;
+     double sigsel_th_atr_max;
+     double sigsel_th_bbwidth_min;
+     double sigsel_th_bbwidth_max;
+     double sigsel_th_rv_min;
+     double sigsel_th_rv_max;
+     double sigsel_th_bv_min;
+     double sigsel_th_bv_max;
+     double sigsel_th_jump_max;
+     double sigsel_th_sigmap_min;
+     double sigsel_th_sigmap_max;
+     double sigsel_th_sigmagk_min;
+     double sigsel_th_sigmagk_max;
+
+     double sigsel_loc_th_pivot;
+     double sigsel_loc_th_sr;
+     double sigsel_loc_th_fib;
+     double sigsel_loc_th_sd;
+     double sigsel_loc_th_ob;
+     double sigsel_loc_th_fvg;
+     double sigsel_loc_th_sweep;
+     double sigsel_loc_th_wyckoff;
+
+     int    sigsel_min_category_votes;
+     int    sigsel_min_location_votes;
+
+     double sigsel_w_orderbook;
+     double sigsel_w_tradeflow;
+     double sigsel_w_impact;
+     double sigsel_w_execquality;
+
+     string sigsel_inst_weights_csv;      // use ';' separated values
+     string sigsel_trend_weights_csv;     // use ';' separated values
+     string sigsel_mom_weights_csv;       // use ';' separated values
+     string sigsel_vol_weights_csv;       // use ';' separated values
+     string sigsel_vola_weights_csv;      // use ';' separated values
 
      // Router / gates / require toggles
       bool   enable_hard_gate;
@@ -3321,65 +3479,35 @@ namespace Config
      if(((int)sid) <= 0)
         return false;
 
-     #ifdef STRAT_MAIN_ID
-        if(sid == (StrategyID)STRAT_MAIN_ID)
-           return true;
-     #endif
-
-     #ifdef STRAT_ICT_SILVER_BULLET_ID
-        if(sid == (StrategyID)STRAT_ICT_SILVER_BULLET_ID)
-           return true;
-     #endif
-
-     #ifdef STRAT_ICT_PO3_ID
-        if(sid == (StrategyID)STRAT_ICT_PO3_ID)
-           return true;
-     #endif
-
-     #ifdef STRAT_ICT_OBFVG_OTE_ID
-        if(sid == (StrategyID)STRAT_ICT_OBFVG_OTE_ID)
-           return true;
-     #endif
-
-     #ifdef STRAT_ICT_WYCKOFF_SPRING_UTAD_ID
-        if(sid == (StrategyID)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID)
-           return true;
-     #endif
-
-     return false;
+     // IMPORTANT:
+     // These direct StrategyID references are intentional.
+     // Do NOT wrap them in #ifdef / #endif.
+     // If any required ID is missing, Config.mqh must fail at compile time
+     // instead of degrading into an empty runtime MAIN_ONLY roster.
+     return (
+            sid == (StrategyID)STRAT_MAIN_ID
+         || sid == (StrategyID)STRAT_ICT_SILVER_BULLET_ID
+         || sid == (StrategyID)STRAT_ICT_PO3_ID
+         || sid == (StrategyID)STRAT_ICT_OBFVG_OTE_ID
+         || sid == (StrategyID)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID
+     );
   }
 
   inline int FillCanonicalMainOnlyIds(int &out_ids[])
   {
-     ArrayResize(out_ids, 0);
-     int n = 0;
+     // IMPORTANT:
+     // This list is structural policy identity for MAIN_ONLY.
+     // It must not depend on runtime toggles, profile logic, pack toggles,
+     // tester overrides, or optional feature gates.
+     ArrayResize(out_ids, 5);
 
-     #ifdef STRAT_MAIN_ID
-        ArrayResize(out_ids, n + 1);
-        out_ids[n++] = (int)STRAT_MAIN_ID;
-     #endif
+     out_ids[0] = (int)STRAT_MAIN_ID;
+     out_ids[1] = (int)STRAT_ICT_SILVER_BULLET_ID;
+     out_ids[2] = (int)STRAT_ICT_PO3_ID;
+     out_ids[3] = (int)STRAT_ICT_OBFVG_OTE_ID;
+     out_ids[4] = (int)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID;
 
-     #ifdef STRAT_ICT_SILVER_BULLET_ID
-        ArrayResize(out_ids, n + 1);
-        out_ids[n++] = (int)STRAT_ICT_SILVER_BULLET_ID;
-     #endif
-
-     #ifdef STRAT_ICT_PO3_ID
-        ArrayResize(out_ids, n + 1);
-        out_ids[n++] = (int)STRAT_ICT_PO3_ID;
-     #endif
-
-     #ifdef STRAT_ICT_OBFVG_OTE_ID
-        ArrayResize(out_ids, n + 1);
-        out_ids[n++] = (int)STRAT_ICT_OBFVG_OTE_ID;
-     #endif
-
-     #ifdef STRAT_ICT_WYCKOFF_SPRING_UTAD_ID
-        ArrayResize(out_ids, n + 1);
-        out_ids[n++] = (int)STRAT_ICT_WYCKOFF_SPRING_UTAD_ID;
-     #endif
-
-     return n;
+     return 5;
   }
 
   #ifndef CFG_HAS_IS_CANONICAL_MAIN_ONLY_STRATEGY_ID
@@ -4142,7 +4270,65 @@ namespace Config
      #ifdef CFG_HAS_MTF_ZONE_MAX_DIST_ATR
        cfg.mtf_zone_max_dist_atr = x.mtf_zone_max_dist_atr;
      #endif
-   
+
+     // Signal-stack / category gating
+     cfg.sigsel_enable              = x.sigsel_enable;
+     cfg.sigsel_selection_mode      = x.sigsel_selection_mode;
+     cfg.sigsel_inst_selection_mode = x.sigsel_inst_selection_mode;
+
+     cfg.sigsel_fixed_inst_index    = x.sigsel_fixed_inst_index;
+     cfg.sigsel_fixed_trend_index   = x.sigsel_fixed_trend_index;
+     cfg.sigsel_fixed_mom_index     = x.sigsel_fixed_mom_index;
+     cfg.sigsel_fixed_vol_index     = x.sigsel_fixed_vol_index;
+     cfg.sigsel_fixed_vola_index    = x.sigsel_fixed_vola_index;
+
+     cfg.sigsel_th_inst             = x.sigsel_th_inst;
+     cfg.sigsel_th_trend            = x.sigsel_th_trend;
+     cfg.sigsel_th_mom              = x.sigsel_th_mom;
+     cfg.sigsel_th_vol              = x.sigsel_th_vol;
+     cfg.sigsel_th_vola             = x.sigsel_th_vola;
+
+     cfg.sigsel_band_rsi            = x.sigsel_band_rsi;
+     cfg.sigsel_band_stoch          = x.sigsel_band_stoch;
+     cfg.sigsel_th_adx              = x.sigsel_th_adx;
+
+     cfg.sigsel_th_atr_min          = x.sigsel_th_atr_min;
+     cfg.sigsel_th_atr_max          = x.sigsel_th_atr_max;
+     cfg.sigsel_th_bbwidth_min      = x.sigsel_th_bbwidth_min;
+     cfg.sigsel_th_bbwidth_max      = x.sigsel_th_bbwidth_max;
+     cfg.sigsel_th_rv_min           = x.sigsel_th_rv_min;
+     cfg.sigsel_th_rv_max           = x.sigsel_th_rv_max;
+     cfg.sigsel_th_bv_min           = x.sigsel_th_bv_min;
+     cfg.sigsel_th_bv_max           = x.sigsel_th_bv_max;
+     cfg.sigsel_th_jump_max         = x.sigsel_th_jump_max;
+     cfg.sigsel_th_sigmap_min       = x.sigsel_th_sigmap_min;
+     cfg.sigsel_th_sigmap_max       = x.sigsel_th_sigmap_max;
+     cfg.sigsel_th_sigmagk_min      = x.sigsel_th_sigmagk_min;
+     cfg.sigsel_th_sigmagk_max      = x.sigsel_th_sigmagk_max;
+
+     cfg.sigsel_loc_th_pivot        = x.sigsel_loc_th_pivot;
+     cfg.sigsel_loc_th_sr           = x.sigsel_loc_th_sr;
+     cfg.sigsel_loc_th_fib          = x.sigsel_loc_th_fib;
+     cfg.sigsel_loc_th_sd           = x.sigsel_loc_th_sd;
+     cfg.sigsel_loc_th_ob           = x.sigsel_loc_th_ob;
+     cfg.sigsel_loc_th_fvg          = x.sigsel_loc_th_fvg;
+     cfg.sigsel_loc_th_sweep        = x.sigsel_loc_th_sweep;
+     cfg.sigsel_loc_th_wyckoff      = x.sigsel_loc_th_wyckoff;
+
+     cfg.sigsel_min_category_votes  = x.sigsel_min_category_votes;
+     cfg.sigsel_min_location_votes  = x.sigsel_min_location_votes;
+
+     cfg.sigsel_w_orderbook         = x.sigsel_w_orderbook;
+     cfg.sigsel_w_tradeflow         = x.sigsel_w_tradeflow;
+     cfg.sigsel_w_impact            = x.sigsel_w_impact;
+     cfg.sigsel_w_execquality       = x.sigsel_w_execquality;
+
+     cfg.sigsel_inst_weights_csv    = x.sigsel_inst_weights_csv;
+     cfg.sigsel_trend_weights_csv   = x.sigsel_trend_weights_csv;
+     cfg.sigsel_mom_weights_csv     = x.sigsel_mom_weights_csv;
+     cfg.sigsel_vol_weights_csv     = x.sigsel_vol_weights_csv;
+     cfg.sigsel_vola_weights_csv    = x.sigsel_vola_weights_csv;
+
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
        cfg.enable_hard_gate = x.enable_hard_gate;
@@ -4844,6 +5030,64 @@ namespace Config
      x.w_mtf_zone_h1     = 0.05;
      x.w_mtf_zone_h4     = 0.07;
      x.mtf_zone_max_dist_atr = 1.25;
+   
+     // Signal-stack / category gating defaults
+     x.sigsel_enable              = true;
+     x.sigsel_selection_mode      = SELECTION_DYNAMIC;
+     x.sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+
+     x.sigsel_fixed_inst_index    = 0;
+     x.sigsel_fixed_trend_index   = 0;
+     x.sigsel_fixed_mom_index     = 0;
+     x.sigsel_fixed_vol_index     = 0;
+     x.sigsel_fixed_vola_index    = 0;
+
+     x.sigsel_th_inst             = 1.0;
+     x.sigsel_th_trend            = 1.0;
+     x.sigsel_th_mom              = 1.0;
+     x.sigsel_th_vol              = 1.0;
+     x.sigsel_th_vola             = 1.0;
+
+     x.sigsel_band_rsi            = 5.0;
+     x.sigsel_band_stoch          = 5.0;
+     x.sigsel_th_adx              = 20.0;
+
+     x.sigsel_th_atr_min          = 0.0;
+     x.sigsel_th_atr_max          = 10000000000.0;
+     x.sigsel_th_bbwidth_min      = 0.0;
+     x.sigsel_th_bbwidth_max      = 10000000000.0;
+     x.sigsel_th_rv_min           = 0.0;
+     x.sigsel_th_rv_max           = 10000000000.0;
+     x.sigsel_th_bv_min           = 0.0;
+     x.sigsel_th_bv_max           = 10000000000.0;
+     x.sigsel_th_jump_max         = 10000000000.0;
+     x.sigsel_th_sigmap_min       = 0.0;
+     x.sigsel_th_sigmap_max       = 10000000000.0;
+     x.sigsel_th_sigmagk_min      = 0.0;
+     x.sigsel_th_sigmagk_max      = 10000000000.0;
+
+     x.sigsel_loc_th_pivot        = 0.50;
+     x.sigsel_loc_th_sr           = 0.50;
+     x.sigsel_loc_th_fib          = 0.50;
+     x.sigsel_loc_th_sd           = 0.0;
+     x.sigsel_loc_th_ob           = 0.0;
+     x.sigsel_loc_th_fvg          = 0.0;
+     x.sigsel_loc_th_sweep        = 0.0;
+     x.sigsel_loc_th_wyckoff      = 0.0;
+
+     x.sigsel_min_category_votes  = 3;
+     x.sigsel_min_location_votes  = 2;
+
+     x.sigsel_w_orderbook         = 1.0;
+     x.sigsel_w_tradeflow         = 1.0;
+     x.sigsel_w_impact            = 1.0;
+     x.sigsel_w_execquality       = 1.0;
+
+     x.sigsel_inst_weights_csv    = "";
+     x.sigsel_trend_weights_csv   = "";
+     x.sigsel_mom_weights_csv     = "";
+     x.sigsel_vol_weights_csv     = "";
+     x.sigsel_vola_weights_csv    = "";
    
      x.router_min_score = 0.0;
      x.router_fb_min    = 0.0;
@@ -5677,6 +5921,11 @@ namespace Config
       cfg.ms_sd_ob_invalidation_gate_on= true;
       cfg.ms_liquidity_trap_gate_on    = true;
 
+      cfg.ms_spreadshock_gate_on          = false;
+      cfg.ms_slippage_gate_on             = false;
+      cfg.ms_depthfade_gate_on            = false;
+      cfg.ms_internalisation_gate_on      = false;
+
       cfg.ms_vpin_threshold              = 0.80;
       cfg.ms_flow_dir_min                = 0.10;
       cfg.ms_max_toxicity01              = 0.85;
@@ -5834,6 +6083,21 @@ namespace Config
       cfg.ms_other_risk_gate_max01      = 0.54;
       cfg.ms_other_vpin_gate_max01      = 0.70;
       cfg.ms_other_resil_gate_min01     = 0.28;
+
+      cfg.ms_fx_spreadshock_gate_max01      = 1.00;
+      cfg.ms_fx_slippage_gate_max01         = 1.00;
+      cfg.ms_fx_depthfade_gate_max01        = 1.00;
+      cfg.ms_fx_internalisation_gate_max01  = 1.00;
+
+      cfg.ms_xau_spreadshock_gate_max01     = 1.00;
+      cfg.ms_xau_slippage_gate_max01        = 1.00;
+      cfg.ms_xau_depthfade_gate_max01       = 1.00;
+      cfg.ms_xau_internalisation_gate_max01 = 1.00;
+
+      cfg.ms_other_spreadshock_gate_max01      = 1.00;
+      cfg.ms_other_slippage_gate_max01         = 1.00;
+      cfg.ms_other_depthfade_gate_max01        = 1.00;
+      cfg.ms_other_internalisation_gate_max01  = 1.00;
 #endif
 
       // --- VSA background-hook defaults (scanner fusion; OFF by default)
@@ -6899,6 +7163,11 @@ namespace Config
       cfg.ms_sd_ob_invalidation_gate_on = (cfg.ms_sd_ob_invalidation_gate_on ? true : false);
       cfg.ms_liquidity_trap_gate_on     = (cfg.ms_liquidity_trap_gate_on ? true : false);
 
+      cfg.ms_spreadshock_gate_on          = (cfg.ms_spreadshock_gate_on ? true : false);
+      cfg.ms_slippage_gate_on             = (cfg.ms_slippage_gate_on ? true : false);
+      cfg.ms_depthfade_gate_on            = (cfg.ms_depthfade_gate_on ? true : false);
+      cfg.ms_internalisation_gate_on      = (cfg.ms_internalisation_gate_on ? true : false);
+
       if(cfg.ms_vpin_threshold < 0.0) cfg.ms_vpin_threshold = 0.0;
       if(cfg.ms_vpin_threshold > 1.0) cfg.ms_vpin_threshold = 1.0;
 
@@ -7041,6 +7310,33 @@ namespace Config
       if(cfg.ms_other_vpin_gate_max01 > 1.0)  cfg.ms_other_vpin_gate_max01 = 1.0;
       if(cfg.ms_other_resil_gate_min01 < 0.0) cfg.ms_other_resil_gate_min01 = 0.0;
       if(cfg.ms_other_resil_gate_min01 > 1.0) cfg.ms_other_resil_gate_min01 = 1.0;
+
+      if(cfg.ms_fx_spreadshock_gate_max01 < 0.0) cfg.ms_fx_spreadshock_gate_max01 = 0.0;
+      if(cfg.ms_fx_spreadshock_gate_max01 > 1.0) cfg.ms_fx_spreadshock_gate_max01 = 1.0;
+      if(cfg.ms_fx_slippage_gate_max01 < 0.0) cfg.ms_fx_slippage_gate_max01 = 0.0;
+      if(cfg.ms_fx_slippage_gate_max01 > 1.0) cfg.ms_fx_slippage_gate_max01 = 1.0;
+      if(cfg.ms_fx_depthfade_gate_max01 < 0.0) cfg.ms_fx_depthfade_gate_max01 = 0.0;
+      if(cfg.ms_fx_depthfade_gate_max01 > 1.0) cfg.ms_fx_depthfade_gate_max01 = 1.0;
+      if(cfg.ms_fx_internalisation_gate_max01 < 0.0) cfg.ms_fx_internalisation_gate_max01 = 0.0;
+      if(cfg.ms_fx_internalisation_gate_max01 > 1.0) cfg.ms_fx_internalisation_gate_max01 = 1.0;
+
+      if(cfg.ms_xau_spreadshock_gate_max01 < 0.0) cfg.ms_xau_spreadshock_gate_max01 = 0.0;
+      if(cfg.ms_xau_spreadshock_gate_max01 > 1.0) cfg.ms_xau_spreadshock_gate_max01 = 1.0;
+      if(cfg.ms_xau_slippage_gate_max01 < 0.0) cfg.ms_xau_slippage_gate_max01 = 0.0;
+      if(cfg.ms_xau_slippage_gate_max01 > 1.0) cfg.ms_xau_slippage_gate_max01 = 1.0;
+      if(cfg.ms_xau_depthfade_gate_max01 < 0.0) cfg.ms_xau_depthfade_gate_max01 = 0.0;
+      if(cfg.ms_xau_depthfade_gate_max01 > 1.0) cfg.ms_xau_depthfade_gate_max01 = 1.0;
+      if(cfg.ms_xau_internalisation_gate_max01 < 0.0) cfg.ms_xau_internalisation_gate_max01 = 0.0;
+      if(cfg.ms_xau_internalisation_gate_max01 > 1.0) cfg.ms_xau_internalisation_gate_max01 = 1.0;
+
+      if(cfg.ms_other_spreadshock_gate_max01 < 0.0) cfg.ms_other_spreadshock_gate_max01 = 0.0;
+      if(cfg.ms_other_spreadshock_gate_max01 > 1.0) cfg.ms_other_spreadshock_gate_max01 = 1.0;
+      if(cfg.ms_other_slippage_gate_max01 < 0.0) cfg.ms_other_slippage_gate_max01 = 0.0;
+      if(cfg.ms_other_slippage_gate_max01 > 1.0) cfg.ms_other_slippage_gate_max01 = 1.0;
+      if(cfg.ms_other_depthfade_gate_max01 < 0.0) cfg.ms_other_depthfade_gate_max01 = 0.0;
+      if(cfg.ms_other_depthfade_gate_max01 > 1.0) cfg.ms_other_depthfade_gate_max01 = 1.0;
+      if(cfg.ms_other_internalisation_gate_max01 < 0.0) cfg.ms_other_internalisation_gate_max01 = 0.0;
+      if(cfg.ms_other_internalisation_gate_max01 > 1.0) cfg.ms_other_internalisation_gate_max01 = 1.0;
 
 #ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
       if(cfg.ms_observability_direct_min01 < 0.0) cfg.ms_observability_direct_min01 = 0.0;
@@ -11014,6 +11310,103 @@ namespace Config
       #endif
     #endif
 
+    // Signal-stack / category gating normalization
+    cfg.sigsel_enable = (cfg.sigsel_enable ? true : false);
+
+    if(cfg.sigsel_selection_mode < SELECTION_FIXED || cfg.sigsel_selection_mode > SELECTION_DYNAMIC)
+       cfg.sigsel_selection_mode = SELECTION_DYNAMIC;
+
+    if(cfg.sigsel_inst_selection_mode < INST_SELECTION_ANTI_ECHO_SUBFAMILY || cfg.sigsel_inst_selection_mode > INST_SELECTION_DIRECT_FULL)
+       cfg.sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+
+    cfg.sigsel_fixed_inst_index  = _SigSelClampIndex(cfg.sigsel_fixed_inst_index,  SIGSEL_INST_CAND_COUNT);
+    cfg.sigsel_fixed_trend_index = _SigSelClampIndex(cfg.sigsel_fixed_trend_index, SIGSEL_TREND_CAND_COUNT);
+    cfg.sigsel_fixed_mom_index   = _SigSelClampIndex(cfg.sigsel_fixed_mom_index,   SIGSEL_MOM_CAND_COUNT);
+    cfg.sigsel_fixed_vol_index   = _SigSelClampIndex(cfg.sigsel_fixed_vol_index,   SIGSEL_VOL_CAND_COUNT);
+    cfg.sigsel_fixed_vola_index  = _SigSelClampIndex(cfg.sigsel_fixed_vola_index,  SIGSEL_VOLA_CAND_COUNT);
+
+    if(cfg.sigsel_th_inst <= 0.0)  cfg.sigsel_th_inst  = 1.0;
+    if(cfg.sigsel_th_trend <= 0.0) cfg.sigsel_th_trend = 1.0;
+    if(cfg.sigsel_th_mom <= 0.0)   cfg.sigsel_th_mom   = 1.0;
+    if(cfg.sigsel_th_vol <= 0.0)   cfg.sigsel_th_vol   = 1.0;
+    if(cfg.sigsel_th_vola <= 0.0)  cfg.sigsel_th_vola  = 1.0;
+
+    if(cfg.sigsel_band_rsi < 0.0)   cfg.sigsel_band_rsi   = 5.0;
+    if(cfg.sigsel_band_stoch < 0.0) cfg.sigsel_band_stoch = 5.0;
+    if(cfg.sigsel_th_adx <= 0.0)    cfg.sigsel_th_adx     = 20.0;
+
+    if(cfg.sigsel_th_atr_min < 0.0) cfg.sigsel_th_atr_min = 0.0;
+    if(cfg.sigsel_th_atr_max <= 0.0 || cfg.sigsel_th_atr_max < cfg.sigsel_th_atr_min)
+       cfg.sigsel_th_atr_max = 10000000000.0;
+
+    if(cfg.sigsel_th_bbwidth_min < 0.0) cfg.sigsel_th_bbwidth_min = 0.0;
+    if(cfg.sigsel_th_bbwidth_max <= 0.0 || cfg.sigsel_th_bbwidth_max < cfg.sigsel_th_bbwidth_min)
+       cfg.sigsel_th_bbwidth_max = 10000000000.0;
+
+    if(cfg.sigsel_th_rv_min < 0.0) cfg.sigsel_th_rv_min = 0.0;
+    if(cfg.sigsel_th_rv_max <= 0.0 || cfg.sigsel_th_rv_max < cfg.sigsel_th_rv_min)
+       cfg.sigsel_th_rv_max = 10000000000.0;
+
+    if(cfg.sigsel_th_bv_min < 0.0) cfg.sigsel_th_bv_min = 0.0;
+    if(cfg.sigsel_th_bv_max <= 0.0 || cfg.sigsel_th_bv_max < cfg.sigsel_th_bv_min)
+       cfg.sigsel_th_bv_max = 10000000000.0;
+
+    if(cfg.sigsel_th_jump_max <= 0.0)
+       cfg.sigsel_th_jump_max = 10000000000.0;
+
+    if(cfg.sigsel_th_sigmap_min < 0.0) cfg.sigsel_th_sigmap_min = 0.0;
+    if(cfg.sigsel_th_sigmap_max <= 0.0 || cfg.sigsel_th_sigmap_max < cfg.sigsel_th_sigmap_min)
+       cfg.sigsel_th_sigmap_max = 10000000000.0;
+
+    if(cfg.sigsel_th_sigmagk_min < 0.0) cfg.sigsel_th_sigmagk_min = 0.0;
+    if(cfg.sigsel_th_sigmagk_max <= 0.0 || cfg.sigsel_th_sigmagk_max < cfg.sigsel_th_sigmagk_min)
+       cfg.sigsel_th_sigmagk_max = 10000000000.0;
+
+    if(cfg.sigsel_loc_th_pivot < 0.0)   cfg.sigsel_loc_th_pivot   = 0.0;
+    if(cfg.sigsel_loc_th_sr < 0.0)      cfg.sigsel_loc_th_sr      = 0.0;
+    if(cfg.sigsel_loc_th_fib < 0.0)     cfg.sigsel_loc_th_fib     = 0.0;
+
+    if(cfg.sigsel_min_category_votes < 1)
+       cfg.sigsel_min_category_votes = 3;
+    if(cfg.sigsel_min_category_votes > 5)
+       cfg.sigsel_min_category_votes = 5;
+
+    if(cfg.sigsel_min_location_votes < 1)
+       cfg.sigsel_min_location_votes = 2;
+    if(cfg.sigsel_min_location_votes > 8)
+       cfg.sigsel_min_location_votes = 8;
+
+    if(cfg.sigsel_w_orderbook < 0.0)   cfg.sigsel_w_orderbook = 0.0;
+    if(cfg.sigsel_w_tradeflow < 0.0)   cfg.sigsel_w_tradeflow = 0.0;
+    if(cfg.sigsel_w_impact < 0.0)      cfg.sigsel_w_impact = 0.0;
+    if(cfg.sigsel_w_execquality < 0.0) cfg.sigsel_w_execquality = 0.0;
+
+    double inst_sf_sum =
+       cfg.sigsel_w_orderbook +
+       cfg.sigsel_w_tradeflow +
+       cfg.sigsel_w_impact +
+       cfg.sigsel_w_execquality;
+
+    if(inst_sf_sum <= 0.0)
+    {
+       cfg.sigsel_w_orderbook   = 1.0;
+       cfg.sigsel_w_tradeflow   = 1.0;
+       cfg.sigsel_w_impact      = 1.0;
+       cfg.sigsel_w_execquality = 1.0;
+       inst_sf_sum = 4.0;
+    }
+
+    cfg.sigsel_w_orderbook   /= inst_sf_sum;
+    cfg.sigsel_w_tradeflow   /= inst_sf_sum;
+    cfg.sigsel_w_impact      /= inst_sf_sum;
+    cfg.sigsel_w_execquality /= inst_sf_sum;
+
+    _SigSelParseWeightsCSV(cfg.sigsel_inst_weights_csv,  SIGSEL_INST_CAND_COUNT,  cfg.sigsel_inst_weights);
+    _SigSelParseWeightsCSV(cfg.sigsel_trend_weights_csv, SIGSEL_TREND_CAND_COUNT, cfg.sigsel_trend_weights);
+    _SigSelParseWeightsCSV(cfg.sigsel_mom_weights_csv,   SIGSEL_MOM_CAND_COUNT,   cfg.sigsel_mom_weights);
+    _SigSelParseWeightsCSV(cfg.sigsel_vol_weights_csv,   SIGSEL_VOL_CAND_COUNT,   cfg.sigsel_vol_weights);
+    _SigSelParseWeightsCSV(cfg.sigsel_vola_weights_csv,  SIGSEL_VOLA_CAND_COUNT,  cfg.sigsel_vola_weights);
+
     // Keep router fallback threshold and legacy alias in sync
     _SyncRouterFallbackAlias(cfg);
     // Strategy toggles & ICT-specific thresholds
@@ -11520,7 +11913,48 @@ namespace Config
           warns += "enable_hard_gate ON but min_features_met==0; gate will act like OFF.\n";
       #endif
     #endif
-    
+
+    if(cfg.sigsel_selection_mode < SELECTION_FIXED || cfg.sigsel_selection_mode > SELECTION_DYNAMIC)
+       warns += "sigsel_selection_mode out of range; Normalize() will clamp to fixed/dynamic.\n";
+
+    if(cfg.sigsel_inst_selection_mode < INST_SELECTION_ANTI_ECHO_SUBFAMILY || cfg.sigsel_inst_selection_mode > INST_SELECTION_DIRECT_FULL)
+       warns += "sigsel_inst_selection_mode out of range; Normalize() will clamp to anti-echo/direct-full.\n";
+
+    if(cfg.sigsel_fixed_inst_index < 0 || cfg.sigsel_fixed_inst_index >= SIGSEL_INST_CAND_COUNT)
+       warns += "sigsel_fixed_inst_index out of range; Normalize() will clamp to the Institutional candidate range.\n";
+
+    if(cfg.sigsel_fixed_trend_index < 0 || cfg.sigsel_fixed_trend_index >= SIGSEL_TREND_CAND_COUNT)
+       warns += "sigsel_fixed_trend_index out of range; Normalize() will clamp to the Trend candidate range.\n";
+
+    if(cfg.sigsel_fixed_mom_index < 0 || cfg.sigsel_fixed_mom_index >= SIGSEL_MOM_CAND_COUNT)
+       warns += "sigsel_fixed_mom_index out of range; Normalize() will clamp to the Momentum candidate range.\n";
+
+    if(cfg.sigsel_fixed_vol_index < 0 || cfg.sigsel_fixed_vol_index >= SIGSEL_VOL_CAND_COUNT)
+       warns += "sigsel_fixed_vol_index out of range; Normalize() will clamp to the Volume candidate range.\n";
+
+    if(cfg.sigsel_fixed_vola_index < 0 || cfg.sigsel_fixed_vola_index >= SIGSEL_VOLA_CAND_COUNT)
+       warns += "sigsel_fixed_vola_index out of range; Normalize() will clamp to the Volatility candidate range.\n";
+
+    if(cfg.sigsel_enable && cfg.sigsel_min_category_votes > 5)
+       warns += "sigsel_min_category_votes > 5; Normalize() will clamp to 5.\n";
+
+    if(cfg.sigsel_enable && cfg.sigsel_min_location_votes > 8)
+       warns += "sigsel_min_location_votes > 8; Normalize() will clamp to 8.\n";
+
+    if(cfg.sigsel_band_rsi < 0.0 || cfg.sigsel_band_stoch < 0.0)
+       warns += "sigsel RSI/Stoch bands should not be negative; Normalize() will restore safe defaults.\n";
+
+    if(cfg.sigsel_th_adx <= 0.0)
+       warns += "sigsel_th_adx <= 0; Normalize() will restore a safe ADX threshold.\n";
+
+    if(cfg.sigsel_w_orderbook <= 0.0 &&
+       cfg.sigsel_w_tradeflow <= 0.0 &&
+       cfg.sigsel_w_impact <= 0.0 &&
+       cfg.sigsel_w_execquality <= 0.0)
+    {
+       warns += "all Institutional anti-echo subfamily weights are <= 0; Normalize() will reset them to equal weights.\n";
+    }
+
     #ifdef CFG_HAS_MONTHLY_TARGET
       const double mt = CfgMonthlyTargetPct(cfg);
       if(mt > 0.50)
@@ -12561,6 +12995,38 @@ namespace Config
     return cfg.ms_other_resil_gate_min01;
   }
 
+  inline double CfgMSSpreadShockGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_spreadshock_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_spreadshock_gate_max01;
+    return cfg.ms_other_spreadshock_gate_max01;
+  }
+
+  inline double CfgMSSlippageGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_slippage_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_slippage_gate_max01;
+    return cfg.ms_other_slippage_gate_max01;
+  }
+
+  inline double CfgMSDepthFadeGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_depthfade_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_depthfade_gate_max01;
+    return cfg.ms_other_depthfade_gate_max01;
+  }
+
+  inline double CfgMSInternalisationGateMax(const Settings &cfg, const string sym)
+  {
+    const int cls = CfgMicroThresholdSymbolClass(cfg, sym);
+    if(cls == CFG_MS_SYMBOL_XAU)   return cfg.ms_xau_internalisation_gate_max01;
+    if(cls == CFG_MS_SYMBOL_FOREX) return cfg.ms_fx_internalisation_gate_max01;
+    return cfg.ms_other_internalisation_gate_max01;
+  }
+
   inline void _ForceVPVisibleRangeOff_NoNormalize(Settings &cfg)
   {
     if(cfg.scan_vp_profile_mode == 4)
@@ -13292,6 +13758,63 @@ namespace Config
     s+=",mainWPr="+DoubleToString(c.main_profile_weight,4);
     s+=",mainWPOI="+DoubleToString(c.main_poi_weight,4);
     s+=",mainWLq="+DoubleToString(c.main_liquidity_event_weight,4);
+
+    s+=",ssOn="+BoolStr(c.sigsel_enable);
+    s+=",ssMode="+IntegerToString(c.sigsel_selection_mode);
+    s+=",ssInstMode="+IntegerToString(c.sigsel_inst_selection_mode);
+
+    s+=",ssFixInst="+IntegerToString(c.sigsel_fixed_inst_index);
+    s+=",ssFixTrend="+IntegerToString(c.sigsel_fixed_trend_index);
+    s+=",ssFixMom="+IntegerToString(c.sigsel_fixed_mom_index);
+    s+=",ssFixVol="+IntegerToString(c.sigsel_fixed_vol_index);
+    s+=",ssFixVola="+IntegerToString(c.sigsel_fixed_vola_index);
+
+    s+=",ssThInst="+DoubleToString(c.sigsel_th_inst,4);
+    s+=",ssThTrend="+DoubleToString(c.sigsel_th_trend,4);
+    s+=",ssThMom="+DoubleToString(c.sigsel_th_mom,4);
+    s+=",ssThVol="+DoubleToString(c.sigsel_th_vol,4);
+    s+=",ssThVola="+DoubleToString(c.sigsel_th_vola,4);
+
+    s+=",ssBandRSI="+DoubleToString(c.sigsel_band_rsi,4);
+    s+=",ssBandStoch="+DoubleToString(c.sigsel_band_stoch,4);
+    s+=",ssADX="+DoubleToString(c.sigsel_th_adx,4);
+
+    s+=",ssATRMin="+DoubleToString(c.sigsel_th_atr_min,6);
+    s+=",ssATRMax="+DoubleToString(c.sigsel_th_atr_max,6);
+    s+=",ssBBWMin="+DoubleToString(c.sigsel_th_bbwidth_min,6);
+    s+=",ssBBWMax="+DoubleToString(c.sigsel_th_bbwidth_max,6);
+    s+=",ssRVMin="+DoubleToString(c.sigsel_th_rv_min,6);
+    s+=",ssRVMax="+DoubleToString(c.sigsel_th_rv_max,6);
+    s+=",ssBVMin="+DoubleToString(c.sigsel_th_bv_min,6);
+    s+=",ssBVMax="+DoubleToString(c.sigsel_th_bv_max,6);
+    s+=",ssJumpMax="+DoubleToString(c.sigsel_th_jump_max,6);
+    s+=",ssSigPMin="+DoubleToString(c.sigsel_th_sigmap_min,6);
+    s+=",ssSigPMax="+DoubleToString(c.sigsel_th_sigmap_max,6);
+    s+=",ssSigGKMin="+DoubleToString(c.sigsel_th_sigmagk_min,6);
+    s+=",ssSigGKMax="+DoubleToString(c.sigsel_th_sigmagk_max,6);
+
+    s+=",ssLocPivot="+DoubleToString(c.sigsel_loc_th_pivot,4);
+    s+=",ssLocSR="+DoubleToString(c.sigsel_loc_th_sr,4);
+    s+=",ssLocFib="+DoubleToString(c.sigsel_loc_th_fib,4);
+    s+=",ssLocSD="+DoubleToString(c.sigsel_loc_th_sd,4);
+    s+=",ssLocOB="+DoubleToString(c.sigsel_loc_th_ob,4);
+    s+=",ssLocFVG="+DoubleToString(c.sigsel_loc_th_fvg,4);
+    s+=",ssLocSweep="+DoubleToString(c.sigsel_loc_th_sweep,4);
+    s+=",ssLocWyk="+DoubleToString(c.sigsel_loc_th_wyckoff,4);
+
+    s+=",ssMinCat="+IntegerToString(c.sigsel_min_category_votes);
+    s+=",ssMinLoc="+IntegerToString(c.sigsel_min_location_votes);
+
+    s+=",ssWOB="+DoubleToString(c.sigsel_w_orderbook,4);
+    s+=",ssWTF="+DoubleToString(c.sigsel_w_tradeflow,4);
+    s+=",ssWImp="+DoubleToString(c.sigsel_w_impact,4);
+    s+=",ssWExQ="+DoubleToString(c.sigsel_w_execquality,4);
+
+    s+=",ssInstW="+c.sigsel_inst_weights_csv;
+    s+=",ssTrendW="+c.sigsel_trend_weights_csv;
+    s+=",ssMomW="+c.sigsel_mom_weights_csv;
+    s+=",ssVolW="+c.sigsel_vol_weights_csv;
+    s+=",ssVolaW="+c.sigsel_vola_weights_csv;
     
     #ifdef CFG_HAS_SB_REQUIRE_OTE
       s+=",sbReqOTE="+BoolStr(c.sb_require_ote);
@@ -14534,6 +15057,64 @@ namespace Config
     #ifdef CFG_HAS_MIN_FEATURES_MET
       s+=",minFeat="+IntegerToString(c.min_features_met);
     #endif
+
+    s+=",ssOn="+BoolStr(c.sigsel_enable);
+    s+=",ssMode="+IntegerToString(c.sigsel_selection_mode);
+    s+=",ssInstMode="+IntegerToString(c.sigsel_inst_selection_mode);
+
+    s+=",ssFixInst="+IntegerToString(c.sigsel_fixed_inst_index);
+    s+=",ssFixTrend="+IntegerToString(c.sigsel_fixed_trend_index);
+    s+=",ssFixMom="+IntegerToString(c.sigsel_fixed_mom_index);
+    s+=",ssFixVol="+IntegerToString(c.sigsel_fixed_vol_index);
+    s+=",ssFixVola="+IntegerToString(c.sigsel_fixed_vola_index);
+
+    s+=",ssThInst="+DoubleToString(c.sigsel_th_inst,4);
+    s+=",ssThTrend="+DoubleToString(c.sigsel_th_trend,4);
+    s+=",ssThMom="+DoubleToString(c.sigsel_th_mom,4);
+    s+=",ssThVol="+DoubleToString(c.sigsel_th_vol,4);
+    s+=",ssThVola="+DoubleToString(c.sigsel_th_vola,4);
+
+    s+=",ssBandRSI="+DoubleToString(c.sigsel_band_rsi,4);
+    s+=",ssBandStoch="+DoubleToString(c.sigsel_band_stoch,4);
+    s+=",ssADX="+DoubleToString(c.sigsel_th_adx,4);
+
+    s+=",ssATRMin="+DoubleToString(c.sigsel_th_atr_min,6);
+    s+=",ssATRMax="+DoubleToString(c.sigsel_th_atr_max,6);
+    s+=",ssBBWMin="+DoubleToString(c.sigsel_th_bbwidth_min,6);
+    s+=",ssBBWMax="+DoubleToString(c.sigsel_th_bbwidth_max,6);
+    s+=",ssRVMin="+DoubleToString(c.sigsel_th_rv_min,6);
+    s+=",ssRVMax="+DoubleToString(c.sigsel_th_rv_max,6);
+    s+=",ssBVMin="+DoubleToString(c.sigsel_th_bv_min,6);
+    s+=",ssBVMax="+DoubleToString(c.sigsel_th_bv_max,6);
+    s+=",ssJumpMax="+DoubleToString(c.sigsel_th_jump_max,6);
+    s+=",ssSigPMin="+DoubleToString(c.sigsel_th_sigmap_min,6);
+    s+=",ssSigPMax="+DoubleToString(c.sigsel_th_sigmap_max,6);
+    s+=",ssSigGKMin="+DoubleToString(c.sigsel_th_sigmagk_min,6);
+    s+=",ssSigGKMax="+DoubleToString(c.sigsel_th_sigmagk_max,6);
+
+    s+=",ssLocPivot="+DoubleToString(c.sigsel_loc_th_pivot,4);
+    s+=",ssLocSR="+DoubleToString(c.sigsel_loc_th_sr,4);
+    s+=",ssLocFib="+DoubleToString(c.sigsel_loc_th_fib,4);
+    s+=",ssLocSD="+DoubleToString(c.sigsel_loc_th_sd,4);
+    s+=",ssLocOB="+DoubleToString(c.sigsel_loc_th_ob,4);
+    s+=",ssLocFVG="+DoubleToString(c.sigsel_loc_th_fvg,4);
+    s+=",ssLocSweep="+DoubleToString(c.sigsel_loc_th_sweep,4);
+    s+=",ssLocWyk="+DoubleToString(c.sigsel_loc_th_wyckoff,4);
+
+    s+=",ssMinCat="+IntegerToString(c.sigsel_min_category_votes);
+    s+=",ssMinLoc="+IntegerToString(c.sigsel_min_location_votes);
+
+    s+=",ssWOB="+DoubleToString(c.sigsel_w_orderbook,4);
+    s+=",ssWTF="+DoubleToString(c.sigsel_w_tradeflow,4);
+    s+=",ssWImp="+DoubleToString(c.sigsel_w_impact,4);
+    s+=",ssWExQ="+DoubleToString(c.sigsel_w_execquality,4);
+
+    s+=",ssInstW="+c.sigsel_inst_weights_csv;
+    s+=",ssTrendW="+c.sigsel_trend_weights_csv;
+    s+=",ssMomW="+c.sigsel_mom_weights_csv;
+    s+=",ssVolW="+c.sigsel_vol_weights_csv;
+    s+=",ssVolaW="+c.sigsel_vola_weights_csv;
+
    #ifdef CFG_HAS_REQUIRE_TREND_FILTER
      s+=",reqTrend="+BoolStr(c.require_trend_filter);
    #endif
@@ -15980,7 +16561,64 @@ namespace Config
       else if(k=="mainWPr")  cfg.main_profile_weight = ToDouble(v);
       else if(k=="mainWPOI") cfg.main_poi_weight = ToDouble(v);
       else if(k=="mainWLq")  cfg.main_liquidity_event_weight = ToDouble(v);
-      
+
+      else if(k=="ssOn")       cfg.sigsel_enable = ToBool(v);
+      else if(k=="ssMode")     cfg.sigsel_selection_mode = ToInt(v);
+      else if(k=="ssInstMode") cfg.sigsel_inst_selection_mode = ToInt(v);
+
+      else if(k=="ssFixInst")  cfg.sigsel_fixed_inst_index = ToInt(v);
+      else if(k=="ssFixTrend") cfg.sigsel_fixed_trend_index = ToInt(v);
+      else if(k=="ssFixMom")   cfg.sigsel_fixed_mom_index = ToInt(v);
+      else if(k=="ssFixVol")   cfg.sigsel_fixed_vol_index = ToInt(v);
+      else if(k=="ssFixVola")  cfg.sigsel_fixed_vola_index = ToInt(v);
+
+      else if(k=="ssThInst")   cfg.sigsel_th_inst = ToDouble(v);
+      else if(k=="ssThTrend")  cfg.sigsel_th_trend = ToDouble(v);
+      else if(k=="ssThMom")    cfg.sigsel_th_mom = ToDouble(v);
+      else if(k=="ssThVol")    cfg.sigsel_th_vol = ToDouble(v);
+      else if(k=="ssThVola")   cfg.sigsel_th_vola = ToDouble(v);
+
+      else if(k=="ssBandRSI")  cfg.sigsel_band_rsi = ToDouble(v);
+      else if(k=="ssBandStoch")cfg.sigsel_band_stoch = ToDouble(v);
+      else if(k=="ssADX")      cfg.sigsel_th_adx = ToDouble(v);
+
+      else if(k=="ssATRMin")   cfg.sigsel_th_atr_min = ToDouble(v);
+      else if(k=="ssATRMax")   cfg.sigsel_th_atr_max = ToDouble(v);
+      else if(k=="ssBBWMin")   cfg.sigsel_th_bbwidth_min = ToDouble(v);
+      else if(k=="ssBBWMax")   cfg.sigsel_th_bbwidth_max = ToDouble(v);
+      else if(k=="ssRVMin")    cfg.sigsel_th_rv_min = ToDouble(v);
+      else if(k=="ssRVMax")    cfg.sigsel_th_rv_max = ToDouble(v);
+      else if(k=="ssBVMin")    cfg.sigsel_th_bv_min = ToDouble(v);
+      else if(k=="ssBVMax")    cfg.sigsel_th_bv_max = ToDouble(v);
+      else if(k=="ssJumpMax")  cfg.sigsel_th_jump_max = ToDouble(v);
+      else if(k=="ssSigPMin")  cfg.sigsel_th_sigmap_min = ToDouble(v);
+      else if(k=="ssSigPMax")  cfg.sigsel_th_sigmap_max = ToDouble(v);
+      else if(k=="ssSigGKMin") cfg.sigsel_th_sigmagk_min = ToDouble(v);
+      else if(k=="ssSigGKMax") cfg.sigsel_th_sigmagk_max = ToDouble(v);
+
+      else if(k=="ssLocPivot") cfg.sigsel_loc_th_pivot = ToDouble(v);
+      else if(k=="ssLocSR")    cfg.sigsel_loc_th_sr = ToDouble(v);
+      else if(k=="ssLocFib")   cfg.sigsel_loc_th_fib = ToDouble(v);
+      else if(k=="ssLocSD")    cfg.sigsel_loc_th_sd = ToDouble(v);
+      else if(k=="ssLocOB")    cfg.sigsel_loc_th_ob = ToDouble(v);
+      else if(k=="ssLocFVG")   cfg.sigsel_loc_th_fvg = ToDouble(v);
+      else if(k=="ssLocSweep") cfg.sigsel_loc_th_sweep = ToDouble(v);
+      else if(k=="ssLocWyk")   cfg.sigsel_loc_th_wyckoff = ToDouble(v);
+
+      else if(k=="ssMinCat")   cfg.sigsel_min_category_votes = ToInt(v);
+      else if(k=="ssMinLoc")   cfg.sigsel_min_location_votes = ToInt(v);
+
+      else if(k=="ssWOB")      cfg.sigsel_w_orderbook = ToDouble(v);
+      else if(k=="ssWTF")      cfg.sigsel_w_tradeflow = ToDouble(v);
+      else if(k=="ssWImp")     cfg.sigsel_w_impact = ToDouble(v);
+      else if(k=="ssWExQ")     cfg.sigsel_w_execquality = ToDouble(v);
+
+      else if(k=="ssInstW")    cfg.sigsel_inst_weights_csv = v;
+      else if(k=="ssTrendW")   cfg.sigsel_trend_weights_csv = v;
+      else if(k=="ssMomW")     cfg.sigsel_mom_weights_csv = v;
+      else if(k=="ssVolW")     cfg.sigsel_vol_weights_csv = v;
+      else if(k=="ssVolaW")    cfg.sigsel_vola_weights_csv = v;
+
       #ifdef CFG_HAS_SB_REQUIRE_OTE
         else if(k=="sbReqOTE") cfg.sb_require_ote = ToBool(v);
       #endif
@@ -17059,6 +17697,64 @@ namespace Config
       #ifdef CFG_HAS_MIN_FEATURES_MET
         else if(k=="minFeat") cfg.min_features_met = ToInt(v);
       #endif
+
+      else if(k=="ssOn")       cfg.sigsel_enable = ToBool(v);
+      else if(k=="ssMode")     cfg.sigsel_selection_mode = ToInt(v);
+      else if(k=="ssInstMode") cfg.sigsel_inst_selection_mode = ToInt(v);
+
+      else if(k=="ssFixInst")  cfg.sigsel_fixed_inst_index = ToInt(v);
+      else if(k=="ssFixTrend") cfg.sigsel_fixed_trend_index = ToInt(v);
+      else if(k=="ssFixMom")   cfg.sigsel_fixed_mom_index = ToInt(v);
+      else if(k=="ssFixVol")   cfg.sigsel_fixed_vol_index = ToInt(v);
+      else if(k=="ssFixVola")  cfg.sigsel_fixed_vola_index = ToInt(v);
+
+      else if(k=="ssThInst")   cfg.sigsel_th_inst = ToDouble(v);
+      else if(k=="ssThTrend")  cfg.sigsel_th_trend = ToDouble(v);
+      else if(k=="ssThMom")    cfg.sigsel_th_mom = ToDouble(v);
+      else if(k=="ssThVol")    cfg.sigsel_th_vol = ToDouble(v);
+      else if(k=="ssThVola")   cfg.sigsel_th_vola = ToDouble(v);
+
+      else if(k=="ssBandRSI")  cfg.sigsel_band_rsi = ToDouble(v);
+      else if(k=="ssBandStoch")cfg.sigsel_band_stoch = ToDouble(v);
+      else if(k=="ssADX")      cfg.sigsel_th_adx = ToDouble(v);
+
+      else if(k=="ssATRMin")   cfg.sigsel_th_atr_min = ToDouble(v);
+      else if(k=="ssATRMax")   cfg.sigsel_th_atr_max = ToDouble(v);
+      else if(k=="ssBBWMin")   cfg.sigsel_th_bbwidth_min = ToDouble(v);
+      else if(k=="ssBBWMax")   cfg.sigsel_th_bbwidth_max = ToDouble(v);
+      else if(k=="ssRVMin")    cfg.sigsel_th_rv_min = ToDouble(v);
+      else if(k=="ssRVMax")    cfg.sigsel_th_rv_max = ToDouble(v);
+      else if(k=="ssBVMin")    cfg.sigsel_th_bv_min = ToDouble(v);
+      else if(k=="ssBVMax")    cfg.sigsel_th_bv_max = ToDouble(v);
+      else if(k=="ssJumpMax")  cfg.sigsel_th_jump_max = ToDouble(v);
+      else if(k=="ssSigPMin")  cfg.sigsel_th_sigmap_min = ToDouble(v);
+      else if(k=="ssSigPMax")  cfg.sigsel_th_sigmap_max = ToDouble(v);
+      else if(k=="ssSigGKMin") cfg.sigsel_th_sigmagk_min = ToDouble(v);
+      else if(k=="ssSigGKMax") cfg.sigsel_th_sigmagk_max = ToDouble(v);
+
+      else if(k=="ssLocPivot") cfg.sigsel_loc_th_pivot = ToDouble(v);
+      else if(k=="ssLocSR")    cfg.sigsel_loc_th_sr = ToDouble(v);
+      else if(k=="ssLocFib")   cfg.sigsel_loc_th_fib = ToDouble(v);
+      else if(k=="ssLocSD")    cfg.sigsel_loc_th_sd = ToDouble(v);
+      else if(k=="ssLocOB")    cfg.sigsel_loc_th_ob = ToDouble(v);
+      else if(k=="ssLocFVG")   cfg.sigsel_loc_th_fvg = ToDouble(v);
+      else if(k=="ssLocSweep") cfg.sigsel_loc_th_sweep = ToDouble(v);
+      else if(k=="ssLocWyk")   cfg.sigsel_loc_th_wyckoff = ToDouble(v);
+
+      else if(k=="ssMinCat")   cfg.sigsel_min_category_votes = ToInt(v);
+      else if(k=="ssMinLoc")   cfg.sigsel_min_location_votes = ToInt(v);
+
+      else if(k=="ssWOB")      cfg.sigsel_w_orderbook = ToDouble(v);
+      else if(k=="ssWTF")      cfg.sigsel_w_tradeflow = ToDouble(v);
+      else if(k=="ssWImp")     cfg.sigsel_w_impact = ToDouble(v);
+      else if(k=="ssWExQ")     cfg.sigsel_w_execquality = ToDouble(v);
+
+      else if(k=="ssInstW")    cfg.sigsel_inst_weights_csv = v;
+      else if(k=="ssTrendW")   cfg.sigsel_trend_weights_csv = v;
+      else if(k=="ssMomW")     cfg.sigsel_mom_weights_csv = v;
+      else if(k=="ssVolW")     cfg.sigsel_vol_weights_csv = v;
+      else if(k=="ssVolaW")    cfg.sigsel_vola_weights_csv = v;
+
       #ifdef CFG_HAS_REQUIRE_TREND_FILTER
         else if(k=="reqTrend") cfg.require_trend_filter = ToBool(v);
       #endif
@@ -18222,6 +18918,11 @@ struct Settings
     bool   ms_sd_ob_invalidation_gate_on;// enable smart-money invalidation veto
     bool   ms_liquidity_trap_gate_on;    // enable liquidity vacuum / hunt veto
 
+    bool   ms_spreadshock_gate_on;        // enable spread-shock execution veto
+    bool   ms_slippage_gate_on;           // enable slippage-stress execution veto
+    bool   ms_depthfade_gate_on;          // enable depth-fade execution veto
+    bool   ms_internalisation_gate_on;    // enable internalisation-proxy execution veto
+
     // Canonical top-level thresholds
     double ms_vpin_threshold;            // top-level toxicity / VPIN max
     double ms_flow_dir_min;              // minimum signed flow-direction strength for canonical micro participation
@@ -18297,6 +18998,21 @@ struct Settings
     double ms_other_risk_gate_max01;
     double ms_other_vpin_gate_max01;
     double ms_other_resil_gate_min01;
+
+    double ms_fx_spreadshock_gate_max01;
+    double ms_fx_slippage_gate_max01;
+    double ms_fx_depthfade_gate_max01;
+    double ms_fx_internalisation_gate_max01;
+
+    double ms_xau_spreadshock_gate_max01;
+    double ms_xau_slippage_gate_max01;
+    double ms_xau_depthfade_gate_max01;
+    double ms_xau_internalisation_gate_max01;
+
+    double ms_other_spreadshock_gate_max01;
+    double ms_other_slippage_gate_max01;
+    double ms_other_depthfade_gate_max01;
+    double ms_other_internalisation_gate_max01;
 
 #ifdef CFG_HAS_MS_MODE_OBSERVABILITY_THRESHOLDS
     double ms_observability_direct_min01;         // direct-micro mode observability cutoff
@@ -18910,7 +19626,71 @@ struct Settings
    double liqPoolLevelEpsATR;         // distance threshold in ATR (e.g. 0.10 = 10% ATR)
    int    liqPoolMaxLookbackBars;     // max bars to keep pool “active”
    double liqPoolMinSweepATR;         // intensity: min ATR move for a “real sweep”
-   
+
+   // ===== Signal-stack / category gating =====
+   bool   sigsel_enable;                // master toggle for signal-stack + location gate
+   int    sigsel_selection_mode;        // 0=fixed, 1=dynamic
+   int    sigsel_inst_selection_mode;   // 0=anti-echo subfamily, 1=direct-full
+
+   int    sigsel_fixed_inst_index;
+   int    sigsel_fixed_trend_index;
+   int    sigsel_fixed_mom_index;
+   int    sigsel_fixed_vol_index;
+   int    sigsel_fixed_vola_index;
+
+   double sigsel_th_inst;
+   double sigsel_th_trend;
+   double sigsel_th_mom;
+   double sigsel_th_vol;
+   double sigsel_th_vola;
+
+   double sigsel_band_rsi;
+   double sigsel_band_stoch;
+   double sigsel_th_adx;
+
+   double sigsel_th_atr_min;
+   double sigsel_th_atr_max;
+   double sigsel_th_bbwidth_min;
+   double sigsel_th_bbwidth_max;
+   double sigsel_th_rv_min;
+   double sigsel_th_rv_max;
+   double sigsel_th_bv_min;
+   double sigsel_th_bv_max;
+   double sigsel_th_jump_max;
+   double sigsel_th_sigmap_min;
+   double sigsel_th_sigmap_max;
+   double sigsel_th_sigmagk_min;
+   double sigsel_th_sigmagk_max;
+
+   double sigsel_loc_th_pivot;
+   double sigsel_loc_th_sr;
+   double sigsel_loc_th_fib;
+   double sigsel_loc_th_sd;
+   double sigsel_loc_th_ob;
+   double sigsel_loc_th_fvg;
+   double sigsel_loc_th_sweep;
+   double sigsel_loc_th_wyckoff;
+
+   int    sigsel_min_category_votes;
+   int    sigsel_min_location_votes;
+
+   double sigsel_w_orderbook;
+   double sigsel_w_tradeflow;
+   double sigsel_w_impact;
+   double sigsel_w_execquality;
+
+   string sigsel_inst_weights_csv;      // semicolon-separated
+   string sigsel_trend_weights_csv;     // semicolon-separated
+   string sigsel_mom_weights_csv;       // semicolon-separated
+   string sigsel_vol_weights_csv;       // semicolon-separated
+   string sigsel_vola_weights_csv;      // semicolon-separated
+
+   double sigsel_inst_weights[];
+   double sigsel_trend_weights[];
+   double sigsel_mom_weights[];
+   double sigsel_vol_weights[];
+   double sigsel_vola_weights[];
+
    #ifdef CFG_HAS_TRADE_CD_SEC
      int    trade_cd_sec;    // global per-trade cooldown seconds (Policies::CfgTradeCooldownSec)
    #endif

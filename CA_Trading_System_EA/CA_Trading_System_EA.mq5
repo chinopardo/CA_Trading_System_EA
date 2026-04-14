@@ -133,7 +133,9 @@ bool DecisionTelemetry_ShouldEmitTimerNotNewBar(const string sym,
                                                 const datetime latch_time);
 
 void EmitDeterministicStartupStrategyAudit(const Settings &cfg);
+
 bool RunMainOnlyConsistencyAudit(const Settings &cfg);
+bool g_main_only_audit_empty_roster = false;
 
 void PublishTesterDegradedFallbackRuntimeState(const string sym,
                                                const bool active,
@@ -411,6 +413,8 @@ string AuditStrategyIdListToString(const int &ids[])
 
 bool RunMainOnlyConsistencyAudit(const Settings &cfg)
 {
+   g_main_only_audit_empty_roster = false;
+
    Settings audit_cfg = cfg;
    Config::ApplyStrategyMode(audit_cfg, STRAT_MAIN_ONLY);
    Config::Normalize(audit_cfg);
@@ -420,7 +424,17 @@ bool RunMainOnlyConsistencyAudit(const Settings &cfg)
 
    if(ArraySize(expected_ids) <= 0)
    {
-      LogX::Error("[FATAL][MainOnlyAudit] Config::FillCanonicalMainOnlyIds returned an empty canonical MAIN_ONLY roster.");
+      g_main_only_audit_empty_roster = true;
+   
+      LogX::Error(StringFormat(
+         "[FATAL][MainOnlyAudit] canonical MAIN_ONLY roster empty | mode=%d | main=%d sb=%d po3=%d cont=%d wyck=%d",
+         (int)Config::CfgStrategyMode(cfg),
+         (int)cfg.enable_strat_main,
+         (int)cfg.enable_strat_ict_silverbullet,
+         (int)cfg.enable_strat_ict_po3,
+         (int)cfg.enable_strat_ict_continuation,
+         (int)cfg.enable_strat_ict_wyckoff_turn
+      ));
       return false;
    }
 
@@ -847,6 +861,66 @@ input double Inp_MTFZone_MaxDistATR = 1.25;
 input bool   Inp_EnableHardGate            = false;  // Router/Confluence Threshold: Hard Gate
 input double Inp_RouterFallbackMin         = 0.10;  // Router/Confluence Threshold: Fallback acceptance if normal gate rejects
 input int    Inp_MinFeaturesMet            = 1;     // Router/Confluence Threshold: Min Feat. Met exclude NewsOK from count
+
+// ================= Signal-Stack / Category Gating =================
+// These inputs feed Config.mqh signal-stack settings.
+// Use lower-case mode strings exactly as shown.
+input bool   InpSigSel_Enable                 = true;   // Signal-stack: master enable
+input string InpSigSel_Mode                   = "dynamic"; // Signal-stack: "fixed" or "dynamic"
+input string InpSigSel_InstMode               = "anti_echo_subfamily"; // Institutional selection: "anti_echo_subfamily" or "direct_full"
+
+input int    InpSigSel_FixedInstIndex         = 0;      // Fixed mode: Institutional candidate index
+input int    InpSigSel_FixedTrendIndex        = 0;      // Fixed mode: Trend candidate index
+input int    InpSigSel_FixedMomIndex          = 0;      // Fixed mode: Momentum candidate index
+input int    InpSigSel_FixedVolIndex          = 0;      // Fixed mode: Volume candidate index
+input int    InpSigSel_FixedVolaIndex         = 0;      // Fixed mode: Volatility candidate index
+
+input double InpSigSel_ThInst                 = 1.0;    // Category pass threshold: Institutional |z|
+input double InpSigSel_ThTrend                = 1.0;    // Category pass threshold: Trend |z|
+input double InpSigSel_ThMom                  = 1.0;    // Category pass threshold: Momentum |z|
+input double InpSigSel_ThVol                  = 1.0;    // Category pass threshold: Volume |z|
+input double InpSigSel_ThVola                 = 1.0;    // Category pass threshold: Volatility regime pass
+
+input double InpSigSel_BandRSI                = 5.0;    // DirMap band for RSI around 50
+input double InpSigSel_BandStoch              = 5.0;    // DirMap band for StochRSI around 50
+input double InpSigSel_ThADX                  = 20.0;   // DirMap threshold for ADX
+
+input double InpSigSel_ATRMin                 = 0.0;    // RegimeMap ATR min
+input double InpSigSel_ATRMax                 = 10000000000.0; // RegimeMap ATR max
+input double InpSigSel_BBWidthMin             = 0.0;    // RegimeMap BB width min
+input double InpSigSel_BBWidthMax             = 10000000000.0; // RegimeMap BB width max
+input double InpSigSel_RVMin                  = 0.0;    // RegimeMap RV min
+input double InpSigSel_RVMax                  = 10000000000.0; // RegimeMap RV max
+input double InpSigSel_BVMin                  = 0.0;    // RegimeMap BV min
+input double InpSigSel_BVMax                  = 10000000000.0; // RegimeMap BV max
+input double InpSigSel_JumpMax                = 10000000000.0; // RegimeMap Jump max
+input double InpSigSel_SigmaPMin              = 0.0;    // RegimeMap sigmaP min
+input double InpSigSel_SigmaPMax              = 10000000000.0; // RegimeMap sigmaP max
+input double InpSigSel_SigmaGKMin             = 0.0;    // RegimeMap sigmaGK min
+input double InpSigSel_SigmaGKMax             = 10000000000.0; // RegimeMap sigmaGK max
+
+input double InpSigSel_LocPivot               = 0.50;   // Location gate: PivotDist max
+input double InpSigSel_LocSR                  = 0.50;   // Location gate: SRDist max
+input double InpSigSel_LocFib                 = 0.50;   // Location gate: FibDist max
+input double InpSigSel_LocSD                  = 0.0;    // Location gate: SDScore min
+input double InpSigSel_LocOB                  = 0.0;    // Location gate: OBScore min
+input double InpSigSel_LocFVG                 = 0.0;    // Location gate: FVGScore min
+input double InpSigSel_LocSweep               = 0.0;    // Location gate: SweepScore min
+input double InpSigSel_LocWyckoff             = 0.0;    // Location gate: Dir * WyckoffScore min
+
+input int    InpSigSel_MinCategoryVotes       = 3;      // Signal-stack gate: minimum category passes
+input int    InpSigSel_MinLocationVotes       = 2;      // Location gate: minimum location passes
+
+input double InpSigSel_W_OrderBook            = 1.0;    // Institutional anti-echo weight: OrderBook
+input double InpSigSel_W_TradeFlow            = 1.0;    // Institutional anti-echo weight: TradeFlow
+input double InpSigSel_W_Impact               = 1.0;    // Institutional anti-echo weight: Impact
+input double InpSigSel_W_ExecQuality          = 1.0;    // Institutional anti-echo weight: ExecQuality
+
+input string InpSigSel_InstWeightsCSV         = "";     // Institutional candidate weights; semicolon-separated
+input string InpSigSel_TrendWeightsCSV        = "";     // Trend candidate weights; semicolon-separated
+input string InpSigSel_MomWeightsCSV          = "";     // Momentum candidate weights; semicolon-separated
+input string InpSigSel_VolWeightsCSV          = "";     // Volume candidate weights; semicolon-separated
+input string InpSigSel_VolaWeightsCSV         = "";     // Volatility candidate weights; semicolon-separated
 
 // Hard-gate recipe: Trend + ADX + (Struct || Candle || OB_Prox)
 input bool   Inp_RequireTrendFilter        = false; // Market Structure: Required Trend Filter 
@@ -1974,6 +2048,16 @@ void LogExecFailThrottled(const string sym,
                (long)ex.ticket,
                plan.lots, plan.price, plan.sl, plan.tp, slippage_points,
                exec_origin_class, exec_origin_reason, ex.origin_reason, non_canonical_exec);
+
+   PrintFormat("[ExecFailGate] %s pf=%d ssg=%d loc=%d exg=%d rkg=%d internal=%.2f depthFade=%.2f",
+               sym,
+               (ex.pre_filter_pass ? 1 : 0),
+               (ex.signal_stack_gate_pass ? 1 : 0),
+               (ex.location_pass ? 1 : 0),
+               (ex.execution_gate_pass ? 1 : 0),
+               (ex.risk_gate_pass ? 1 : 0),
+               ex.internalisation01,
+               ex.depth_fade01);
 }
 
 void HintTradeDisabledOnce(const Exec::Outcome &ex)
@@ -2140,6 +2224,36 @@ string TesterRouterGateModeName(const int mode)
    return "auto";
 }
 
+string EA_SigSelModeName(const int mode)
+{
+   if(mode == Config::SELECTION_FIXED)
+      return "fixed";
+   return "dynamic";
+}
+
+string EA_SigSelInstModeName(const int mode)
+{
+   if(mode == Config::INST_SELECTION_DIRECT_FULL)
+      return "direct_full";
+   return "anti_echo_subfamily";
+}
+
+int EA_ParseSigSelModeInput(const string mode_text)
+{
+   if(mode_text == "fixed" || mode_text == "FIXED" || mode_text == "Fixed")
+      return Config::SELECTION_FIXED;
+
+   return Config::SELECTION_DYNAMIC;
+}
+
+int EA_ParseSigSelInstModeInput(const string mode_text)
+{
+   if(mode_text == "direct_full" || mode_text == "DIRECT_FULL" || mode_text == "Direct_Full")
+      return Config::INST_SELECTION_DIRECT_FULL;
+
+   return Config::INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+}
+
 bool TesterSoftMicroFreshnessFailure(const string detail)
 {
    if(StringLen(detail) <= 0)
@@ -2211,6 +2325,21 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
    j += ",\"degraded_score_policy_mag\":" + DoubleToString(degraded_policy_mag, 3);
    j += ",\"timer_sec\":" + IntegerToString(EA_ResolveHubTimerSec(cfg));
    j += ",\"timer_force_every_heartbeat\":" + ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? "true" : "false");
+
+   j += ",\"sigsel_enable\":" + (cfg.sigsel_enable ? "true" : "false");
+   j += ",\"sigsel_mode\":" + Telemetry::JsonStringOrNull(true, EA_SigSelModeName(cfg.sigsel_selection_mode));
+   j += ",\"sigsel_inst_mode\":" + Telemetry::JsonStringOrNull(true, EA_SigSelInstModeName(cfg.sigsel_inst_selection_mode));
+   j += ",\"sigsel_min_category_votes\":" + IntegerToString(cfg.sigsel_min_category_votes);
+   j += ",\"sigsel_min_location_votes\":" + IntegerToString(cfg.sigsel_min_location_votes);
+
+   j += ",\"last_pre_filter_pass\":" + (Risk::LastDiagPreFilterPass() ? "true" : "false");
+   j += ",\"last_signal_stack_gate_pass\":" + (Risk::LastDiagSignalStackGatePass() ? "true" : "false");
+   j += ",\"last_location_pass\":" + (Risk::LastDiagLocationPass() ? "true" : "false");
+   j += ",\"last_execution_gate_pass\":" + (Risk::LastDiagExecutionGatePass() ? "true" : "false");
+   j += ",\"last_risk_gate_pass\":" + (Risk::LastDiagRiskGatePass() ? "true" : "false");
+
+   j += ",\"last_internalisation_proxy01\":" + DoubleToString(Risk::LastDiagInternalisation01(), 3);
+   j += ",\"last_depth_fade01\":" + DoubleToString(Risk::LastDiagDepthFade01(), 3);
    return j;
 }
 
@@ -2242,6 +2371,22 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
       degraded_policy_mag,
       EA_ResolveHubTimerSec(cfg),
       ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? 1 : 0)));
+
+   LogX::Info(StringFormat(
+      "%s signal_stack cfg{enable=%d mode=%s inst_mode=%s min_cat=%d min_loc=%d} gates{pf=%d ssg=%d loc=%d exg=%d rkg=%d internal=%.2f depthFade=%.2f}",
+      where,
+      (cfg.sigsel_enable ? 1 : 0),
+      EA_SigSelModeName(cfg.sigsel_selection_mode),
+      EA_SigSelInstModeName(cfg.sigsel_inst_selection_mode),
+      cfg.sigsel_min_category_votes,
+      cfg.sigsel_min_location_votes,
+      (Risk::LastDiagPreFilterPass() ? 1 : 0),
+      (Risk::LastDiagSignalStackGatePass() ? 1 : 0),
+      (Risk::LastDiagLocationPass() ? 1 : 0),
+      (Risk::LastDiagExecutionGatePass() ? 1 : 0),
+      (Risk::LastDiagRiskGatePass() ? 1 : 0),
+      Risk::LastDiagInternalisation01(),
+      Risk::LastDiagDepthFade01()));
 }
 
 void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
@@ -3481,6 +3626,17 @@ void _LogExecReject(const string origin,
    LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=exec sym=%s id=%d dir=%s score=%.3f retcode=%u err=%d(%s) lots=%.2f",
                            origin, sym, (int)id, _DirStr(dir), ss.score,
                            ex.retcode, ex.last_error, LogX::San(ex.last_error_text), plan.lots));
+
+   LogX::Info(StringFormat("[WhyNoTrade] origin=%s stage=exec_gate sym=%s pf=%d ssg=%d loc=%d exg=%d rkg=%d internal=%.2f depthFade=%.2f",
+                           origin,
+                           sym,
+                           (ex.pre_filter_pass ? 1 : 0),
+                           (ex.signal_stack_gate_pass ? 1 : 0),
+                           (ex.location_pass ? 1 : 0),
+                           (ex.execution_gate_pass ? 1 : 0),
+                           (ex.risk_gate_pass ? 1 : 0),
+                           ex.internalisation01,
+                           ex.depth_fade01));
   }
 
 // Throttled logger: avoid spamming every tick
@@ -4418,6 +4574,64 @@ void BuildSettingsFromInputs(Settings &cfg)
          (InpRouterTesterMinScoreOverride >= 0.0 ? InpRouterTesterMinScoreOverride : InpRouterMinScore);
    #endif
 
+   // --- Signal-stack / category gating ---
+   cfg.sigsel_enable              = (InpSigSel_Enable ? true : false);
+   cfg.sigsel_selection_mode      = EA_ParseSigSelModeInput(InpSigSel_Mode);
+   cfg.sigsel_inst_selection_mode = EA_ParseSigSelInstModeInput(InpSigSel_InstMode);
+
+   cfg.sigsel_fixed_inst_index    = InpSigSel_FixedInstIndex;
+   cfg.sigsel_fixed_trend_index   = InpSigSel_FixedTrendIndex;
+   cfg.sigsel_fixed_mom_index     = InpSigSel_FixedMomIndex;
+   cfg.sigsel_fixed_vol_index     = InpSigSel_FixedVolIndex;
+   cfg.sigsel_fixed_vola_index    = InpSigSel_FixedVolaIndex;
+
+   cfg.sigsel_th_inst             = InpSigSel_ThInst;
+   cfg.sigsel_th_trend            = InpSigSel_ThTrend;
+   cfg.sigsel_th_mom              = InpSigSel_ThMom;
+   cfg.sigsel_th_vol              = InpSigSel_ThVol;
+   cfg.sigsel_th_vola             = InpSigSel_ThVola;
+
+   cfg.sigsel_band_rsi            = InpSigSel_BandRSI;
+   cfg.sigsel_band_stoch          = InpSigSel_BandStoch;
+   cfg.sigsel_th_adx              = InpSigSel_ThADX;
+
+   cfg.sigsel_th_atr_min          = InpSigSel_ATRMin;
+   cfg.sigsel_th_atr_max          = InpSigSel_ATRMax;
+   cfg.sigsel_th_bbwidth_min      = InpSigSel_BBWidthMin;
+   cfg.sigsel_th_bbwidth_max      = InpSigSel_BBWidthMax;
+   cfg.sigsel_th_rv_min           = InpSigSel_RVMin;
+   cfg.sigsel_th_rv_max           = InpSigSel_RVMax;
+   cfg.sigsel_th_bv_min           = InpSigSel_BVMin;
+   cfg.sigsel_th_bv_max           = InpSigSel_BVMax;
+   cfg.sigsel_th_jump_max         = InpSigSel_JumpMax;
+   cfg.sigsel_th_sigmap_min       = InpSigSel_SigmaPMin;
+   cfg.sigsel_th_sigmap_max       = InpSigSel_SigmaPMax;
+   cfg.sigsel_th_sigmagk_min      = InpSigSel_SigmaGKMin;
+   cfg.sigsel_th_sigmagk_max      = InpSigSel_SigmaGKMax;
+
+   cfg.sigsel_loc_th_pivot        = InpSigSel_LocPivot;
+   cfg.sigsel_loc_th_sr           = InpSigSel_LocSR;
+   cfg.sigsel_loc_th_fib          = InpSigSel_LocFib;
+   cfg.sigsel_loc_th_sd           = InpSigSel_LocSD;
+   cfg.sigsel_loc_th_ob           = InpSigSel_LocOB;
+   cfg.sigsel_loc_th_fvg          = InpSigSel_LocFVG;
+   cfg.sigsel_loc_th_sweep        = InpSigSel_LocSweep;
+   cfg.sigsel_loc_th_wyckoff      = InpSigSel_LocWyckoff;
+
+   cfg.sigsel_min_category_votes  = InpSigSel_MinCategoryVotes;
+   cfg.sigsel_min_location_votes  = InpSigSel_MinLocationVotes;
+
+   cfg.sigsel_w_orderbook         = InpSigSel_W_OrderBook;
+   cfg.sigsel_w_tradeflow         = InpSigSel_W_TradeFlow;
+   cfg.sigsel_w_impact            = InpSigSel_W_Impact;
+   cfg.sigsel_w_execquality       = InpSigSel_W_ExecQuality;
+
+   cfg.sigsel_inst_weights_csv    = InpSigSel_InstWeightsCSV;
+   cfg.sigsel_trend_weights_csv   = InpSigSel_TrendWeightsCSV;
+   cfg.sigsel_mom_weights_csv     = InpSigSel_MomWeightsCSV;
+   cfg.sigsel_vol_weights_csv     = InpSigSel_VolWeightsCSV;
+   cfg.sigsel_vola_weights_csv    = InpSigSel_VolaWeightsCSV;
+
    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
       cfg.enable_news_block = true;
    #endif
@@ -4633,7 +4847,8 @@ void FinalizeRuntimeSettings()
       }
    #endif
 
-   // 7) Normalize exactly once
+   // 7) Normalize finalized local snapshot (includes signal-stack clamps + weight parsing)
+   Config::Normalize(cfg);
    SyncRuntimeCfgFlags(cfg);
 
    // 8) Commit single source of truth
@@ -4656,6 +4871,8 @@ void FinalizeRuntimeSettings()
       TesterPresets::ApplyPresetByName(S, InpTesterPreset);
       TesterCases::ApplyTestCase(S, InpTestCase);
       ApplyLiquidityPolicyInputs(S);
+      Config::Normalize(S);
+      SyncRuntimeCfgFlags(S);
       g_cfg = S; // keep both identical after tester overlay
    }
 
@@ -4664,6 +4881,8 @@ void FinalizeRuntimeSettings()
    // and BEFORE registry/router boot so downstream gates consume
    // the final effective runtime config.
    TesterSettings::ApplyToConfig(S);
+   Config::Normalize(S);
+   SyncRuntimeCfgFlags(S);
    g_cfg = S;
 
    #ifdef CFG_HAS_STRUCT_VETO
@@ -6123,6 +6342,12 @@ bool RunCachedRouterPass(const string router_sym,
    // OnTimer() -> scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill.
    // This helper consumes cached timer-owned context only and must never be used as a tick-owned router entrypoint.
 
+   // Signal-stack / category selection ownership:
+   // The raw bank, category-selected vector, category pass vector,
+   // signal-stack gate, location gate, and final integrated state vector
+   // are computed upstream by InstitutionalStateVector / CategorySelector.
+   // Do not duplicate that computation in the EA entry file.
+   // This file consumes the resulting gate transport through Router / Risk / Execution.
    if(!WarmupGateOK())
    {
       DecisionTelemetry_MarkGateBlocked("router", "warmup");
@@ -6525,7 +6750,12 @@ int OnInit()
    RouterSetWatchlist(g_exec_router, g_symbols, g_symCount);
 
    if(!RunMainOnlyConsistencyAudit(S))
+   {
+      if(g_main_only_audit_empty_roster)
+         return(INIT_PARAMETERS_INCORRECT);
+   
       return(INIT_FAILED);
+   }
 
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();

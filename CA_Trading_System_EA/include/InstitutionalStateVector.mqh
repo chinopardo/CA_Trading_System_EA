@@ -24,78 +24,100 @@
 
 namespace ISV
 {
+
 enum InstitutionalStateVectorSlot
 {
-   ISV_BID = 0,
-   ISV_ASK = 1,
-   ISV_SPREAD = 2,
-   ISV_REL_SPREAD = 3,
-   ISV_MID = 4,
-   ISV_MICRO = 5,
-   ISV_DOM_BID_K = 6,
-   ISV_DOM_ASK_K = 7,
-   ISV_DOM_TOT_K = 8,
-   ISV_DOM_SKEW_K = 9,
-   ISV_DOM_PRESSURE_K = 10,
-   ISV_BUY_FLOW = 11,
-   ISV_SELL_FLOW = 12,
-   ISV_NET_FLOW = 13,
-   ISV_FLOW_IMB = 14,
-   ISV_SIGNED_FLOW = 15,
-   ISV_CVD = 16,
-   ISV_OBI_1 = 17,
-   ISV_OBI_K = 18,
-   ISV_OFI = 19,
-   ISV_BETA_T = 20,
-   ISV_LAMBDA_T = 21,
-   ISV_VPIN = 22,
-   ISV_ABS_PLUS = 23,
-   ISV_ABS_MINUS = 24,
-   ISV_REPL_BID = 25,
-   ISV_REPL_ASK = 26,
-   ISV_RESIL_T = 27,
-   ISV_IMPACT_Q = 28,
-   ISV_MID_MINUS_VWAP = 29,
-   ISV_MID_MINUS_TWAP = 30,
-   ISV_POV_GAP = 31,
-   ISV_RV = 32,
-   ISV_BV = 33,
-   ISV_JUMP = 34,
-   ISV_SIGMA_P = 35,
-   ISV_SIGMA_GK = 36,
-   ISV_CLV = 37,
-   ISV_VOL_Z = 38,
-   ISV_ER = 39,
-   ISV_FOOTPRINT_DELTA = 40,
-   ISV_POC_DIST = 41,
-   ISV_VA_STATE = 42,
-   ISV_TPO_STATE = 43,
-   ISV_SWEEP_SCORE = 44,
-   ISV_SPREAD_SHOCK = 45,
-   ISV_SLIPPAGE = 46,
-   ISV_DEPTH_FADE = 47,
-   ISV_DP_SHARE = 48,
-   ISV_ATS_SHARE = 49,
-   ISV_VENUE_MIX_ENTROPY = 50,
-   ISV_INTERNALISATION_PROXY = 51,
-   ISV_QUOTE_FADE = 52,
-   ISV_SD_SCORE = 53,
-   ISV_OB_SCORE = 54,
-   ISV_WYCKOFF_SCORE = 55,
-   ISV_FVG_SCORE = 56,
-   ISV_RSI = 57,
-   ISV_MACD = 58,
-   ISV_MACD_SIGNAL = 59,
-   ISV_MACD_HIST = 60,
-   ISV_STOCH_RSI = 61,
-   ISV_ROC = 62,
-   ISV_ADX = 63,
-   ISV_RHO = 64,
-   ISV_SR_DIST = 65,
-   ISV_PIVOT_DIST = 66,
-   ISV_FIB_DIST = 67,
-   ISV_TREND_SLOPE = 68,
-   ISV_SLOT_COUNT = 69
+   ISV_BID                   = RAW_BID,
+   ISV_ASK                   = RAW_ASK,
+   ISV_SPREAD                = RAW_SPREAD,
+   ISV_REL_SPREAD            = RAW_REL_SPREAD,
+   ISV_MID                   = RAW_MID,
+   ISV_MICRO                 = RAW_MICRO,
+
+   ISV_DOM_BID_K             = RAW_DOM_BID_K,
+   ISV_DOM_ASK_K             = RAW_DOM_ASK_K,
+   ISV_DOM_TOT_K             = RAW_DOM_TOT_K,
+   ISV_DOM_SKEW_K            = RAW_DOM_SKEW_K,
+   ISV_DOM_PRESSURE_K        = RAW_DOM_PRESSURE_K,
+
+   ISV_BUY_FLOW              = RAW_BUY_FLOW,
+   ISV_SELL_FLOW             = RAW_SELL_FLOW,
+   ISV_NET_FLOW              = RAW_NET_FLOW,
+   ISV_FLOW_IMB              = RAW_FLOW_IMB,
+   ISV_SIGNED_FLOW           = RAW_SIGNED_FLOW,
+   ISV_CVD                   = RAW_CVD,
+   ISV_DELTA_CVD             = RAW_DELTA_CVD,
+
+   ISV_OBI_1                 = RAW_OBI_1,
+   ISV_OBI_K                 = RAW_OBI_K,
+   ISV_OFI                   = RAW_OFI,
+   ISV_BETA_T                = RAW_IMPACT_BETA,
+   ISV_LAMBDA_T              = RAW_IMPACT_LAMBDA,
+   ISV_VPIN                  = RAW_VPIN,
+   ISV_ABS_PLUS              = RAW_ABS_PLUS,
+   ISV_ABS_MINUS             = RAW_ABS_MINUS,
+   ISV_REPL_BID              = RAW_REPL_BID,
+   ISV_REPL_ASK              = RAW_REPL_ASK,
+   ISV_RESIL_T               = RAW_RESIL,
+   ISV_IMPACT_Q              = RAW_IMPACT_Q,
+
+   ISV_MID_MINUS_VWAP        = RAW_VWAP_DIST,
+   ISV_MID_MINUS_TWAP        = RAW_TWAP_DIST,
+   ISV_POV_GAP               = RAW_POV_GAP,
+
+   ISV_EMA_FAST              = RAW_EMA_FAST,
+   ISV_EMA_SLOW              = RAW_EMA_SLOW,
+   ISV_EMA_SPREAD            = RAW_EMA_SPREAD,
+   ISV_EMA_SLOPE             = RAW_EMA_SLOPE,
+
+   ISV_RV                    = RAW_RV,
+   ISV_BV                    = RAW_BV,
+   ISV_JUMP                  = RAW_JUMP,
+   ISV_SIGMA_P               = RAW_SIGMA_P,
+   ISV_SIGMA_GK              = RAW_SIGMA_GK,
+   ISV_ATR                   = RAW_ATR,
+   ISV_BB_UPPER              = RAW_BB_UPPER,
+   ISV_BB_LOWER              = RAW_BB_LOWER,
+   ISV_BB_WIDTH              = RAW_BB_WIDTH,
+   ISV_BB_POS                = RAW_BB_POS,
+
+   ISV_CLV                   = RAW_CLV,
+   ISV_VOL_Z                 = RAW_VOL_Z,
+   ISV_ER                    = RAW_ER,
+   ISV_FOOTPRINT_DELTA       = RAW_FOOTPRINT_DELTA,
+   ISV_STACKED_IMBALANCE     = RAW_STACKED_IMBALANCE,
+   ISV_POC_DIST              = RAW_POC_DIST,
+   ISV_VA_STATE              = RAW_VA_STATE,
+   ISV_TPO_STATE             = RAW_TPO_STATE,
+
+   ISV_SWEEP_SCORE           = RAW_SWEEP_SCORE,
+   ISV_SPREAD_SHOCK          = RAW_SPREAD_SHOCK,
+   ISV_SLIPPAGE              = RAW_SLIPPAGE,
+   ISV_DEPTH_FADE            = RAW_DEPTH_FADE,
+   ISV_DP_SHARE              = RAW_DP_SHARE,
+   ISV_ATS_SHARE             = RAW_ATS_SHARE,
+   ISV_VENUE_MIX_ENTROPY     = RAW_VENUE_MIX_ENTROPY,
+   ISV_INTERNALISATION_PROXY = RAW_INTERNALISATION_PROXY,
+   ISV_QUOTE_FADE            = RAW_QUOTE_FADE,
+   ISV_SD_SCORE              = RAW_SD_SCORE,
+   ISV_OB_SCORE              = RAW_OB_SCORE,
+   ISV_WYCKOFF_SCORE         = RAW_WYCKOFF_SCORE,
+   ISV_FVG_SCORE             = RAW_FVG_SCORE,
+
+   ISV_RSI                   = RAW_RSI,
+   ISV_MACD                  = RAW_MACD,
+   ISV_MACD_SIGNAL           = RAW_MACD_SIGNAL,
+   ISV_MACD_HIST             = RAW_MACD_HIST,
+   ISV_STOCH_RSI             = RAW_STOCH_RSI,
+   ISV_ROC                   = RAW_ROC,
+   ISV_ADX                   = RAW_ADX,
+   ISV_RHO                   = RAW_CORRELATION,
+   ISV_SR_DIST               = RAW_SR_DIST,
+   ISV_PIVOT_DIST            = RAW_PIVOT_DIST,
+   ISV_FIB_DIST              = RAW_FIB_DIST,
+   ISV_TREND_SLOPE           = RAW_TREND_SLOPE,
+
+   ISV_SLOT_COUNT            = RAW_COUNT
 };
 
 inline double Clamp01(const double v)
@@ -258,6 +280,153 @@ inline double RegressionSlopeRaw(const string sym,
       return 0.0;
 
    return (((double)got * sum_xy - sum_x * sum_y) / den);
+}
+
+inline double EMAValueRaw(const string sym,
+                          const ENUM_TIMEFRAMES tf,
+                          const int period,
+                          const int shift)
+{
+   int handle = iMA(sym, tf, period, 0, MODE_EMA, PRICE_CLOSE);
+   if(handle == INVALID_HANDLE)
+      return 0.0;
+
+   double buf[];
+   ArraySetAsSeries(buf, true);
+
+   double out = 0.0;
+   if(CopyBuffer(handle, 0, shift, 1, buf) == 1)
+      out = buf[0];
+
+   IndicatorRelease(handle);
+   return out;
+}
+
+inline bool BollingerRaw(const string sym,
+                         const ENUM_TIMEFRAMES tf,
+                         const int period,
+                         const double deviation,
+                         const int shift,
+                         double &mid,
+                         double &upper,
+                         double &lower)
+{
+   mid = 0.0;
+   upper = 0.0;
+   lower = 0.0;
+
+   double closes[];
+   ArraySetAsSeries(closes, true);
+
+   int got = CopyClose(sym, tf, shift, period, closes);
+   if(got < period)
+      return false;
+
+   double sum = 0.0;
+   for(int i = 0; i < period; i++)
+      sum += closes[i];
+
+   mid = sum / (double)period;
+
+   double var = 0.0;
+   for(int i = 0; i < period; i++)
+   {
+      double d = closes[i] - mid;
+      var += d * d;
+   }
+
+   var /= (double)period;
+
+   double sd = MathSqrt(MathMax(var, 0.0));
+   upper = mid + deviation * sd;
+   lower = mid - deviation * sd;
+   return true;
+}
+
+inline bool ADXDirectionalRaw(const string sym,
+                              const ENUM_TIMEFRAMES tf,
+                              const int period,
+                              const int shift,
+                              double &adx,
+                              double &plus_di,
+                              double &minus_di)
+{
+   adx = 0.0;
+   plus_di = 0.0;
+   minus_di = 0.0;
+
+   int handle = iADX(sym, tf, period);
+   if(handle == INVALID_HANDLE)
+      return false;
+
+   double b0[];
+   double b1[];
+   double b2[];
+   ArraySetAsSeries(b0, true);
+   ArraySetAsSeries(b1, true);
+   ArraySetAsSeries(b2, true);
+
+   bool ok =
+      (CopyBuffer(handle, 0, shift, 1, b0) == 1) &&
+      (CopyBuffer(handle, 1, shift, 1, b1) == 1) &&
+      (CopyBuffer(handle, 2, shift, 1, b2) == 1);
+
+   if(ok)
+   {
+      adx = b0[0];
+      plus_di = b1[0];
+      minus_di = b2[0];
+   }
+
+   IndicatorRelease(handle);
+   return ok;
+}
+
+inline void LoadSignalSelectionThresholdView(const Settings &cfg,
+                                             SignalSelectionThresholdView &out)
+{
+   out.Reset();
+
+   out.band_rsi       = cfg.sigsel_band_rsi;
+   out.band_stoch     = cfg.sigsel_band_stoch;
+   out.th_adx         = cfg.sigsel_th_adx;
+
+   out.th_atr_min     = cfg.sigsel_th_atr_min;
+   out.th_atr_max     = cfg.sigsel_th_atr_max;
+   out.th_bbwidth_min = cfg.sigsel_th_bbwidth_min;
+   out.th_bbwidth_max = cfg.sigsel_th_bbwidth_max;
+   out.th_rv_min      = cfg.sigsel_th_rv_min;
+   out.th_rv_max      = cfg.sigsel_th_rv_max;
+   out.th_bv_min      = cfg.sigsel_th_bv_min;
+   out.th_bv_max      = cfg.sigsel_th_bv_max;
+   out.th_jump_max    = cfg.sigsel_th_jump_max;
+   out.th_sigmap_min  = cfg.sigsel_th_sigmap_min;
+   out.th_sigmap_max  = cfg.sigsel_th_sigmap_max;
+   out.th_sigmagk_min = cfg.sigsel_th_sigmagk_min;
+   out.th_sigmagk_max = cfg.sigsel_th_sigmagk_max;
+}
+
+inline int DetermineDirectionFromRawBank(const double &raw[],
+                                         const double close0,
+                                         const double open0)
+{
+   int dir = SigSel_Sign(raw[ISV_FLOW_IMB]);
+   if(dir == 0)
+      dir = SigSel_Sign(raw[ISV_OFI]);
+
+   if(dir == 0)
+      dir = SigSel_Sign(raw[ISV_MID_MINUS_VWAP]);
+
+   if(dir == 0)
+      dir = SigSel_Sign(raw[ISV_MACD_HIST]);
+
+   if(dir == 0)
+      dir = (close0 >= open0 ? 1 : -1);
+
+   if(dir == 0)
+      dir = 1;
+
+   return dir;
 }
 
 struct ZWindow
@@ -701,6 +870,23 @@ struct Result
    double raw[ISV_SLOT_COUNT];
    double z[ISV_SLOT_COUNT];
 
+   CategorySelectedVector    cat_sel;
+   CategoryPassVector        cat_pass;
+   BaseContextVector         base_ctx;
+   StructureVector           struct_ctx;
+   AuxContextVector          aux_ctx;
+   FinalIntegratedStateVector final_vector;
+
+   int    pre_filter;
+   int    exec_pass;
+   int    risk_pass;
+   int    signal_stack_gate;
+   int    location_pass_flag;
+
+   double alpha_raw;
+   double exec_raw;
+   double risk_raw;
+
    double alpha_t;
    double exec_t;
    double risk_t;
@@ -735,6 +921,23 @@ struct Result
          raw[i] = 0.0;
          z[i] = 0.0;
       }
+
+      cat_sel.Reset();
+      cat_pass.Reset();
+      base_ctx.Reset();
+      struct_ctx.Reset();
+      aux_ctx.Reset();
+      final_vector.Reset();
+
+      pre_filter = 0;
+      exec_pass = 0;
+      risk_pass = 0;
+      signal_stack_gate = 0;
+      location_pass_flag = 0;
+
+      alpha_raw = 0.0;
+      exec_raw = 0.0;
+      risk_raw = 1.0;
 
       alpha_t = 0.0;
       exec_t = 0.0;
@@ -782,100 +985,608 @@ inline void NormalizeRawVector(const BuildConfig &cfg,
    rt.last_bar_time = bar_time;
 }
 
+inline double SigSelCategoryWeightByPosition(const Settings &cfg,
+                                             const int category,
+                                             const int position)
+{
+   if(position < 0)
+      return 1.0;
+
+   if(category == CAT_INSTITUTIONAL)
+   {
+      if(position < ArraySize(cfg.sigsel_inst_weights))
+         return cfg.sigsel_inst_weights[position];
+      return 1.0;
+   }
+
+   if(category == CAT_TREND)
+   {
+      if(position < ArraySize(cfg.sigsel_trend_weights))
+         return cfg.sigsel_trend_weights[position];
+      return 1.0;
+   }
+
+   if(category == CAT_MOMENTUM)
+   {
+      if(position < ArraySize(cfg.sigsel_mom_weights))
+         return cfg.sigsel_mom_weights[position];
+      return 1.0;
+   }
+
+   if(category == CAT_VOLUME)
+   {
+      if(position < ArraySize(cfg.sigsel_vol_weights))
+         return cfg.sigsel_vol_weights[position];
+      return 1.0;
+   }
+
+   if(category == CAT_VOLATILITY)
+   {
+      if(position < ArraySize(cfg.sigsel_vola_weights))
+         return cfg.sigsel_vola_weights[position];
+      return 1.0;
+   }
+
+   return 1.0;
+}
+
+inline int SigSelFixedCandidatePosition(const Settings &cfg,
+                                        const int category)
+{
+   if(category == CAT_INSTITUTIONAL) return cfg.sigsel_fixed_inst_index;
+   if(category == CAT_TREND)         return cfg.sigsel_fixed_trend_index;
+   if(category == CAT_MOMENTUM)      return cfg.sigsel_fixed_mom_index;
+   if(category == CAT_VOLUME)        return cfg.sigsel_fixed_vol_index;
+   if(category == CAT_VOLATILITY)    return cfg.sigsel_fixed_vola_index;
+   return 0;
+}
+
+inline double SigSelInstitutionalSubfamilyWeight(const Settings &cfg,
+                                                 const int subfamily)
+{
+   if(subfamily == INST_SUBFAMILY_ORDERBOOK)   return cfg.sigsel_w_orderbook;
+   if(subfamily == INST_SUBFAMILY_TRADEFLOW)   return cfg.sigsel_w_tradeflow;
+   if(subfamily == INST_SUBFAMILY_IMPACT)      return cfg.sigsel_w_impact;
+   if(subfamily == INST_SUBFAMILY_EXECQUALITY) return cfg.sigsel_w_execquality;
+   return 1.0;
+}
+
+inline void SigSelSelectBestCandidateFromList(const Settings &cfg,
+                                              const double &raw[],
+                                              const double &z[],
+                                              const bool &valid_mask[],
+                                              const int category,
+                                              const int &candidate_list[],
+                                              int &best_raw_index,
+                                              double &best_raw_value,
+                                              double &best_z_value,
+                                              double &best_score)
+{
+   best_raw_index = -1;
+   best_raw_value = 0.0;
+   best_z_value = 0.0;
+   best_score = -1.0;
+
+   for(int i = 0; i < ArraySize(candidate_list); i++)
+   {
+      int raw_idx = candidate_list[i];
+      if(raw_idx < 0 || raw_idx >= ISV_SLOT_COUNT)
+         continue;
+
+      if(!valid_mask[raw_idx])
+         continue;
+
+      double score = MathAbs(z[raw_idx]) * SigSelCategoryWeightByPosition(cfg, category, i);
+      if(score > best_score)
+      {
+         best_score = score;
+         best_raw_index = raw_idx;
+         best_raw_value = raw[raw_idx];
+         best_z_value = z[raw_idx];
+      }
+   }
+}
+
+inline void ComputeCategorySelection(const Settings &cfg,
+                                     const double &raw[],
+                                     const double &z[],
+                                     const bool &valid_mask[],
+                                     CategorySelectedVector &out_sel)
+{
+   out_sel.Reset();
+
+   if(cfg.sigsel_selection_mode == Config::SELECTION_FIXED)
+   {
+      for(int c = 0; c < CAT_COUNT; c++)
+      {
+         int cands[];
+         SigSel_GetCategoryCandidates(c, cands);
+
+         int pos = SigSelFixedCandidatePosition(cfg, c);
+         if(pos < 0) pos = 0;
+         if(pos >= ArraySize(cands)) pos = ArraySize(cands) - 1;
+
+         if(pos >= 0 && pos < ArraySize(cands))
+         {
+            int raw_idx = cands[pos];
+            if(raw_idx >= 0 && raw_idx < ISV_SLOT_COUNT && valid_mask[raw_idx])
+               out_sel.SetCategory(c, raw_idx, raw[raw_idx], z[raw_idx], 1);
+         }
+      }
+
+      return;
+   }
+
+   int best_idx = -1;
+   double best_raw = 0.0;
+   double best_z = 0.0;
+   double best_score = -1.0;
+
+   if(cfg.sigsel_inst_selection_mode == Config::INST_SELECTION_DIRECT_FULL)
+   {
+      int inst_all[];
+      SigSel_GetInstitutionalCandidates(inst_all);
+      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
+                                        inst_all, best_idx, best_raw, best_z, best_score);
+
+      if(best_idx >= 0)
+         out_sel.SetCategory(CAT_INSTITUTIONAL, best_idx, best_raw, best_z, 1);
+   }
+   else
+   {
+      int sf_lists_0[];
+      int sf_lists_1[];
+      int sf_lists_2[];
+      int sf_lists_3[];
+
+      SigSel_GetInstitutionalOrderBookCandidates(sf_lists_0);
+      SigSel_GetInstitutionalTradeFlowCandidates(sf_lists_1);
+      SigSel_GetInstitutionalImpactCandidates(sf_lists_2);
+      SigSel_GetInstitutionalExecQualityCandidates(sf_lists_3);
+
+      int sf_best_idx[INST_SUBFAMILY_COUNT];
+      double sf_best_raw[INST_SUBFAMILY_COUNT];
+      double sf_best_z[INST_SUBFAMILY_COUNT];
+      double sf_best_score[INST_SUBFAMILY_COUNT];
+
+      for(int i = 0; i < INST_SUBFAMILY_COUNT; i++)
+      {
+         sf_best_idx[i] = -1;
+         sf_best_raw[i] = 0.0;
+         sf_best_z[i] = 0.0;
+         sf_best_score[i] = -1.0;
+      }
+
+      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
+                                        sf_lists_0, sf_best_idx[0], sf_best_raw[0], sf_best_z[0], sf_best_score[0]);
+      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
+                                        sf_lists_1, sf_best_idx[1], sf_best_raw[1], sf_best_z[1], sf_best_score[1]);
+      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
+                                        sf_lists_2, sf_best_idx[2], sf_best_raw[2], sf_best_z[2], sf_best_score[2]);
+      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
+                                        sf_lists_3, sf_best_idx[3], sf_best_raw[3], sf_best_z[3], sf_best_score[3]);
+
+      double best_sf_score = -1.0;
+      int best_sf = -1;
+
+      for(int sf = 0; sf < INST_SUBFAMILY_COUNT; sf++)
+      {
+         if(sf_best_idx[sf] < 0)
+            continue;
+
+         double total_score = MathAbs(sf_best_z[sf]) * SigSelInstitutionalSubfamilyWeight(cfg, sf);
+         if(total_score > best_sf_score)
+         {
+            best_sf_score = total_score;
+            best_sf = sf;
+         }
+      }
+
+      if(best_sf >= 0)
+         out_sel.SetCategory(CAT_INSTITUTIONAL,
+                             sf_best_idx[best_sf],
+                             sf_best_raw[best_sf],
+                             sf_best_z[best_sf],
+                             1);
+   }
+
+   int trend_cands[];
+   SigSel_GetTrendCandidates(trend_cands);
+   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_TREND,
+                                     trend_cands, best_idx, best_raw, best_z, best_score);
+   if(best_idx >= 0)
+      out_sel.SetCategory(CAT_TREND, best_idx, best_raw, best_z, 1);
+
+   int mom_cands[];
+   SigSel_GetMomentumCandidates(mom_cands);
+   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_MOMENTUM,
+                                     mom_cands, best_idx, best_raw, best_z, best_score);
+   if(best_idx >= 0)
+      out_sel.SetCategory(CAT_MOMENTUM, best_idx, best_raw, best_z, 1);
+
+   int vol_cands[];
+   SigSel_GetVolumeCandidates(vol_cands);
+   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_VOLUME,
+                                     vol_cands, best_idx, best_raw, best_z, best_score);
+   if(best_idx >= 0)
+      out_sel.SetCategory(CAT_VOLUME, best_idx, best_raw, best_z, 1);
+
+   int vola_cands[];
+   SigSel_GetVolatilityCandidates(vola_cands);
+   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_VOLATILITY,
+                                     vola_cands, best_idx, best_raw, best_z, best_score);
+   if(best_idx >= 0)
+      out_sel.SetCategory(CAT_VOLATILITY, best_idx, best_raw, best_z, 1);
+}
+
+inline void ComputeCategoryPasses(const Settings &cfg,
+                                  const double &raw[],
+                                  const int dir_t,
+                                  const double plus_di,
+                                  const double minus_di,
+                                  const CategorySelectedVector &sel,
+                                  CategoryPassVector &out_pass)
+{
+   out_pass.Reset();
+
+   SignalSelectionThresholdView thv;
+   LoadSignalSelectionThresholdView(cfg, thv);
+
+   if(sel.inst_active > 0)
+   {
+      int d = DirMapSelectedSignal(sel.inst_value, sel.inst_index, plus_di, minus_di, thv);
+      if(d == dir_t && MathAbs(sel.inst_z) >= cfg.sigsel_th_inst)
+         out_pass.inst_pass = 1;
+   }
+
+   if(sel.trend_active > 0)
+   {
+      int d = DirMapSelectedSignal(sel.trend_value, sel.trend_index, plus_di, minus_di, thv);
+      if(d == dir_t && MathAbs(sel.trend_z) >= cfg.sigsel_th_trend)
+         out_pass.trend_pass = 1;
+   }
+
+   if(sel.mom_active > 0)
+   {
+      int d = DirMapSelectedSignal(sel.mom_value, sel.mom_index, plus_di, minus_di, thv);
+      if(d == dir_t && MathAbs(sel.mom_z) >= cfg.sigsel_th_mom)
+         out_pass.mom_pass = 1;
+   }
+
+   if(sel.vol_active > 0)
+   {
+      int d = DirMapSelectedSignal(sel.vol_value, sel.vol_index, plus_di, minus_di, thv);
+      if(d == dir_t && MathAbs(sel.vol_z) >= cfg.sigsel_th_vol)
+         out_pass.vol_pass = 1;
+   }
+
+   if(sel.vola_active > 0)
+   {
+      int regime = RegimeMapVol(sel.vola_value, sel.vola_index, raw[ISV_BB_WIDTH], thv);
+      if(regime == 1)
+         out_pass.vola_pass = 1;
+   }
+
+   out_pass.signal_stack_score =
+      out_pass.inst_pass +
+      out_pass.trend_pass +
+      out_pass.mom_pass +
+      out_pass.vol_pass +
+      out_pass.vola_pass;
+
+   out_pass.location_score = 0;
+   if(raw[ISV_PIVOT_DIST] <= cfg.sigsel_loc_th_pivot)                out_pass.location_score++;
+   if(raw[ISV_SR_DIST] <= cfg.sigsel_loc_th_sr)                      out_pass.location_score++;
+   if(raw[ISV_FIB_DIST] <= cfg.sigsel_loc_th_fib)                    out_pass.location_score++;
+   if(raw[ISV_SD_SCORE] >= cfg.sigsel_loc_th_sd)                     out_pass.location_score++;
+   if(raw[ISV_OB_SCORE] >= cfg.sigsel_loc_th_ob)                     out_pass.location_score++;
+   if(raw[ISV_FVG_SCORE] >= cfg.sigsel_loc_th_fvg)                   out_pass.location_score++;
+   if(raw[ISV_SWEEP_SCORE] >= cfg.sigsel_loc_th_sweep)               out_pass.location_score++;
+   if(((double)dir_t * raw[ISV_WYCKOFF_SCORE]) >= cfg.sigsel_loc_th_wyckoff) out_pass.location_score++;
+
+   if(cfg.sigsel_enable)
+   {
+      out_pass.signal_stack_gate = (out_pass.signal_stack_score >= cfg.sigsel_min_category_votes ? 1 : 0);
+      out_pass.location_pass = (out_pass.location_score >= cfg.sigsel_min_location_votes ? 1 : 0);
+   }
+   else
+   {
+      out_pass.signal_stack_gate = 1;
+      out_pass.location_pass = 1;
+   }
+}
+
+inline void FillIntegratedContextVectors(const double &z[],
+                                         BaseContextVector &base_ctx,
+                                         StructureVector &struct_ctx,
+                                         AuxContextVector &aux_ctx)
+{
+   base_ctx.Reset();
+   struct_ctx.Reset();
+   aux_ctx.Reset();
+
+   base_ctx.v[0] = z[ISV_BID];
+   base_ctx.v[1] = z[ISV_ASK];
+   base_ctx.v[2] = z[ISV_SPREAD];
+   base_ctx.v[3] = z[ISV_REL_SPREAD];
+   base_ctx.v[4] = z[ISV_MID];
+   base_ctx.v[5] = z[ISV_MICRO];
+
+   struct_ctx.v[0]  = z[ISV_SWEEP_SCORE];
+   struct_ctx.v[1]  = z[ISV_SPREAD_SHOCK];
+   struct_ctx.v[2]  = z[ISV_SLIPPAGE];
+   struct_ctx.v[3]  = z[ISV_DEPTH_FADE];
+   struct_ctx.v[4]  = z[ISV_SD_SCORE];
+   struct_ctx.v[5]  = z[ISV_OB_SCORE];
+   struct_ctx.v[6]  = z[ISV_WYCKOFF_SCORE];
+   struct_ctx.v[7]  = z[ISV_FVG_SCORE];
+   struct_ctx.v[8]  = z[ISV_PIVOT_DIST];
+   struct_ctx.v[9]  = z[ISV_SR_DIST];
+   struct_ctx.v[10] = z[ISV_FIB_DIST];
+   struct_ctx.v[11] = z[ISV_TREND_SLOPE];
+
+   aux_ctx.v[0] = z[ISV_POV_GAP];
+   aux_ctx.v[1] = z[ISV_DP_SHARE];
+   aux_ctx.v[2] = z[ISV_ATS_SHARE];
+   aux_ctx.v[3] = z[ISV_VENUE_MIX_ENTROPY];
+   aux_ctx.v[4] = z[ISV_INTERNALISATION_PROXY];
+   aux_ctx.v[5] = z[ISV_QUOTE_FADE];
+   aux_ctx.v[6] = z[ISV_RHO];
+}
+
 inline void BuildHeads(const Settings &cfg,
                        const BuildConfig &bcfg,
                        const double &raw[],
                        const double &z[],
                        Result &out)
 {
-   const double benchmark_z =
-      0.50 * z[ISV_MID_MINUS_VWAP] +
-      0.50 * z[ISV_MID_MINUS_TWAP];
+   FinalIntegratedStateVector fv;
+   fv = out.final_vector;
 
-   const double profile_z =
-      0.60 * z[ISV_VA_STATE] +
-      0.40 * z[ISV_TPO_STATE];
+   if(fv.total_size <= 0)
+   {
+      out.alpha_raw = 0.0;
+      out.exec_raw = 0.0;
+      out.risk_raw = 1.0;
 
-   const double structure_z =
-      0.30 * z[ISV_SD_SCORE] +
-      0.30 * z[ISV_OB_SCORE] +
-      0.20 * z[ISV_FVG_SCORE] +
-      0.20 * z[ISV_WYCKOFF_SCORE];
+      out.alpha_t = 0.0;
+      out.exec_t = 0.0;
+      out.risk_t = 1.0;
 
-   const double momentum_z =
-      0.30 * z[ISV_MACD] +
-      0.20 * z[ISV_MACD_HIST] +
-      0.20 * z[ISV_ROC] +
-      0.15 * z[ISV_RSI] +
-      0.15 * z[ISV_TREND_SLOPE];
+      out.pre_filter = (cfg.sigsel_enable ? 0 : 1);
+      out.exec_pass = 0;
+      out.risk_pass = 0;
+      out.trade_gate = false;
+      out.size01 = 0.0;
+
+      out.ms.alpha_score = out.alpha_t;
+      out.ms.execution_score = out.exec_t;
+      out.ms.risk_score = out.risk_t;
+      out.ms.trade_gate_pass = out.trade_gate;
+
+      out.snap.alpha_score = out.alpha_t;
+      out.snap.execution_score = out.exec_t;
+      out.snap.risk_score = out.risk_t;
+      out.snap.trade_gate_pass = out.trade_gate;
+      return;
+   }
+
+   const int IDX_SEL_INST   = 6;
+   const int IDX_SEL_TREND  = 7;
+   const int IDX_SEL_MOM    = 8;
+   const int IDX_SEL_VOL    = 9;
+   const int IDX_SEL_VOLA   = 10;
+
+   const int IDX_PASS_INST  = 11;
+   const int IDX_PASS_TREND = 12;
+   const int IDX_PASS_MOM   = 13;
+   const int IDX_PASS_VOL   = 14;
+   const int IDX_PASS_VOLA  = 15;
+   const int IDX_PASS_STACK = 16;
+   const int IDX_GATE_STACK = 17;
+   const int IDX_SCORE_LOC  = 18;
+   const int IDX_GATE_LOC   = 19;
+
+   const int IDX_STRUCT_SWEEP       = 20;
+   const int IDX_STRUCT_SPREAD      = 21;
+   const int IDX_STRUCT_SLIPPAGE    = 22;
+   const int IDX_STRUCT_DEPTHFADE   = 23;
+   const int IDX_STRUCT_SD          = 24;
+   const int IDX_STRUCT_OB          = 25;
+   const int IDX_STRUCT_WYCKOFF     = 26;
+   const int IDX_STRUCT_FVG         = 27;
+   const int IDX_STRUCT_PIVOT       = 28;
+   const int IDX_STRUCT_SR          = 29;
+   const int IDX_STRUCT_FIB         = 30;
+   const int IDX_STRUCT_TRENDSLOPE  = 31;
+
+   const int IDX_AUX_POV            = 32;
+   const int IDX_AUX_DPSHARE        = 33;
+   const int IDX_AUX_ATSSHARE       = 34;
+   const int IDX_AUX_VENUEENT       = 35;
+   const int IDX_AUX_INTERNAL       = 36;
+   const int IDX_AUX_QUOTEFADE      = 37;
+   const int IDX_AUX_RHO            = 38;
+
+   double w_alpha[SIGSEL_FINAL_VECTOR_MAX];
+   double w_exec[SIGSEL_FINAL_VECTOR_MAX];
+   double w_risk[SIGSEL_FINAL_VECTOR_MAX];
+   ArrayInitialize(w_alpha, 0.0);
+   ArrayInitialize(w_exec, 0.0);
+   ArrayInitialize(w_risk, 0.0);
+
+   w_alpha[IDX_SEL_INST]   = 0.30;
+   w_alpha[IDX_SEL_TREND]  = 0.18;
+   w_alpha[IDX_SEL_MOM]    = 0.14;
+   w_alpha[IDX_SEL_VOL]    = 0.12;
+   w_alpha[IDX_SEL_VOLA]   = 0.08;
+
+   w_alpha[IDX_PASS_INST]  = 0.07;
+   w_alpha[IDX_PASS_TREND] = 0.06;
+   w_alpha[IDX_PASS_MOM]   = 0.05;
+   w_alpha[IDX_PASS_VOL]   = 0.05;
+   w_alpha[IDX_PASS_VOLA]  = 0.04;
+   w_alpha[IDX_PASS_STACK] = 0.06;
+   w_alpha[IDX_GATE_STACK] = 0.10;
+   w_alpha[IDX_SCORE_LOC]  = 0.05;
+   w_alpha[IDX_GATE_LOC]   = 0.10;
+
+   w_alpha[IDX_STRUCT_SWEEP]      = 0.10;
+   w_alpha[IDX_STRUCT_SPREAD]     = -0.08;
+   w_alpha[IDX_STRUCT_SLIPPAGE]   = -0.06;
+   w_alpha[IDX_STRUCT_DEPTHFADE]  = -0.06;
+   w_alpha[IDX_STRUCT_SD]         = 0.06;
+   w_alpha[IDX_STRUCT_OB]         = 0.06;
+   w_alpha[IDX_STRUCT_WYCKOFF]    = 0.05;
+   w_alpha[IDX_STRUCT_FVG]        = 0.05;
+   w_alpha[IDX_STRUCT_PIVOT]      = -0.04;
+   w_alpha[IDX_STRUCT_SR]         = -0.04;
+   w_alpha[IDX_STRUCT_FIB]        = -0.04;
+   w_alpha[IDX_STRUCT_TRENDSLOPE] = 0.05;
+
+   if(!fv.compact_mode)
+   {
+      w_alpha[IDX_AUX_POV]       = -0.04;
+      w_alpha[IDX_AUX_DPSHARE]   = -0.02;
+      w_alpha[IDX_AUX_ATSSHARE]  = -0.01;
+      w_alpha[IDX_AUX_VENUEENT]  = 0.02;
+      w_alpha[IDX_AUX_INTERNAL]  = -0.03;
+      w_alpha[IDX_AUX_QUOTEFADE] = -0.03;
+      w_alpha[IDX_AUX_RHO]       = 0.02;
+   }
+
+   w_exec[IDX_SEL_INST]   = 0.16;
+   w_exec[IDX_SEL_TREND]  = 0.04;
+   w_exec[IDX_SEL_MOM]    = 0.04;
+   w_exec[IDX_SEL_VOL]    = 0.03;
+   w_exec[IDX_SEL_VOLA]   = 0.10;
+
+   w_exec[IDX_PASS_INST]  = 0.06;
+   w_exec[IDX_PASS_TREND] = 0.04;
+   w_exec[IDX_PASS_MOM]   = 0.03;
+   w_exec[IDX_PASS_VOL]   = 0.03;
+   w_exec[IDX_PASS_VOLA]  = 0.02;
+   w_exec[IDX_PASS_STACK] = 0.05;
+   w_exec[IDX_GATE_STACK] = 0.10;
+   w_exec[IDX_SCORE_LOC]  = 0.04;
+   w_exec[IDX_GATE_LOC]   = 0.08;
+
+   w_exec[IDX_STRUCT_SWEEP]      = 0.04;
+   w_exec[IDX_STRUCT_SPREAD]     = -0.14;
+   w_exec[IDX_STRUCT_SLIPPAGE]   = -0.12;
+   w_exec[IDX_STRUCT_DEPTHFADE]  = -0.12;
+   w_exec[IDX_STRUCT_SD]         = 0.03;
+   w_exec[IDX_STRUCT_OB]         = 0.03;
+   w_exec[IDX_STRUCT_WYCKOFF]    = 0.02;
+   w_exec[IDX_STRUCT_FVG]        = 0.02;
+   w_exec[IDX_STRUCT_PIVOT]      = -0.03;
+   w_exec[IDX_STRUCT_SR]         = -0.03;
+   w_exec[IDX_STRUCT_FIB]        = -0.03;
+   w_exec[IDX_STRUCT_TRENDSLOPE] = 0.03;
+
+   if(!fv.compact_mode)
+   {
+      w_exec[IDX_AUX_POV]       = -0.08;
+      w_exec[IDX_AUX_DPSHARE]   = -0.03;
+      w_exec[IDX_AUX_ATSSHARE]  = -0.02;
+      w_exec[IDX_AUX_VENUEENT]  = 0.02;
+      w_exec[IDX_AUX_INTERNAL]  = -0.06;
+      w_exec[IDX_AUX_QUOTEFADE] = -0.06;
+      w_exec[IDX_AUX_RHO]       = 0.01;
+   }
+
+   w_risk[IDX_SEL_INST]   = 0.03;
+   w_risk[IDX_SEL_TREND]  = 0.02;
+   w_risk[IDX_SEL_MOM]    = 0.02;
+   w_risk[IDX_SEL_VOL]    = 0.03;
+   w_risk[IDX_SEL_VOLA]   = 0.08;
+
+   w_risk[IDX_PASS_INST]  = -0.03;
+   w_risk[IDX_PASS_TREND] = -0.03;
+   w_risk[IDX_PASS_MOM]   = -0.02;
+   w_risk[IDX_PASS_VOL]   = -0.02;
+   w_risk[IDX_PASS_VOLA]  = -0.02;
+   w_risk[IDX_PASS_STACK] = -0.03;
+   w_risk[IDX_GATE_STACK] = -0.08;
+   w_risk[IDX_SCORE_LOC]  = -0.02;
+   w_risk[IDX_GATE_LOC]   = -0.08;
+
+   w_risk[IDX_STRUCT_SWEEP]      = 0.04;
+   w_risk[IDX_STRUCT_SPREAD]     = 0.14;
+   w_risk[IDX_STRUCT_SLIPPAGE]   = 0.12;
+   w_risk[IDX_STRUCT_DEPTHFADE]  = 0.12;
+   w_risk[IDX_STRUCT_SD]         = 0.03;
+   w_risk[IDX_STRUCT_OB]         = 0.03;
+   w_risk[IDX_STRUCT_WYCKOFF]    = 0.03;
+   w_risk[IDX_STRUCT_FVG]        = 0.03;
+   w_risk[IDX_STRUCT_PIVOT]      = 0.04;
+   w_risk[IDX_STRUCT_SR]         = 0.04;
+   w_risk[IDX_STRUCT_FIB]        = 0.04;
+   w_risk[IDX_STRUCT_TRENDSLOPE] = 0.02;
+
+   if(!fv.compact_mode)
+   {
+      w_risk[IDX_AUX_POV]       = 0.08;
+      w_risk[IDX_AUX_DPSHARE]   = 0.05;
+      w_risk[IDX_AUX_ATSSHARE]  = 0.03;
+      w_risk[IDX_AUX_VENUEENT]  = 0.02;
+      w_risk[IDX_AUX_INTERNAL]  = 0.05;
+      w_risk[IDX_AUX_QUOTEFADE] = 0.05;
+      w_risk[IDX_AUX_RHO]       = 0.02;
+   }
 
    double alpha_lin = 0.0;
-   alpha_lin += cfg.scan_inst_weight_microprice * (0.50 * z[ISV_OBI_K] + 0.50 * z[ISV_DOM_SKEW_K]);
-   alpha_lin += cfg.scan_inst_weight_resiliency * z[ISV_RESIL_T];
-   alpha_lin += cfg.scan_inst_weight_depth_fade * (-MathAbs(z[ISV_DEPTH_FADE]));
-   alpha_lin += cfg.scan_inst_weight_cvd * (0.40 * z[ISV_CVD] + 0.35 * z[ISV_FLOW_IMB] + 0.25 * z[ISV_OFI]);
-   alpha_lin += cfg.scan_inst_weight_toxicity * (-MathAbs(z[ISV_VPIN]));
-   alpha_lin += cfg.scan_inst_weight_impact * (-MathAbs(z[ISV_IMPACT_Q]));
-   alpha_lin += cfg.scan_inst_weight_profile_acceptance * profile_z;
-   alpha_lin += cfg.scan_inst_weight_market_profile * z[ISV_POC_DIST];
-   alpha_lin += cfg.scan_inst_weight_benchmark * benchmark_z;
-   alpha_lin += cfg.scan_inst_weight_jump * (-MathAbs(z[ISV_JUMP]));
-   alpha_lin += cfg.scan_inst_weight_sweep * z[ISV_SWEEP_SCORE];
-   alpha_lin += 0.10 * structure_z;
-   alpha_lin += 0.08 * momentum_z;
-   alpha_lin += 0.04 * z[ISV_RHO];
-
    double exec_lin = 0.0;
-   exec_lin += 0.25 * z[ISV_RESIL_T];
-   exec_lin += 0.18 * z[ISV_OBI_K];
-   exec_lin += 0.14 * z[ISV_OFI];
-   exec_lin += 0.10 * z[ISV_FLOW_IMB];
-   exec_lin += 0.08 * z[ISV_DOM_SKEW_K];
-   exec_lin -= 0.12 * MathAbs(z[ISV_SPREAD_SHOCK]);
-   exec_lin -= 0.10 * MathAbs(z[ISV_DEPTH_FADE]);
-   exec_lin -= 0.08 * MathAbs(z[ISV_POV_GAP]);
-   exec_lin -= 0.08 * MathAbs(z[ISV_IMPACT_Q]);
-   exec_lin -= 0.05 * MathAbs(z[ISV_SLIPPAGE]);
-   exec_lin += 0.05 * benchmark_z;
-
    double risk_lin = 0.0;
-   risk_lin += 0.16 * MathAbs(z[ISV_VPIN]);
-   risk_lin += 0.12 * MathAbs(z[ISV_JUMP]);
-   risk_lin += 0.12 * MathAbs(z[ISV_SPREAD_SHOCK]);
-   risk_lin += 0.10 * MathAbs(z[ISV_DEPTH_FADE]);
-   risk_lin += 0.10 * MathAbs(z[ISV_SLIPPAGE]);
-   risk_lin += 0.08 * MathAbs(z[ISV_POV_GAP]);
-   risk_lin += 0.08 * MathAbs(z[ISV_IMPACT_Q]);
-   risk_lin += 0.08 * MathAbs(z[ISV_REL_SPREAD]);
-   risk_lin += 0.06 * MathAbs(z[ISV_QUOTE_FADE]);
-   risk_lin += 0.05 * MathAbs(z[ISV_DP_SHARE]);
-   risk_lin -= 0.08 * z[ISV_RESIL_T];
 
-   out.alpha_t = cfg.scan_inst_head_weight_alpha * alpha_lin;
-   out.exec_t  = Sigmoid(cfg.scan_inst_head_weight_execution * exec_lin);
-   out.risk_t  = Sigmoid(cfg.scan_inst_head_weight_risk * risk_lin);
+   for(int i = 0; i < fv.total_size && i < SIGSEL_FINAL_VECTOR_MAX; i++)
+   {
+      alpha_lin += w_alpha[i] * fv.values[i];
+      exec_lin  += w_exec[i] * fv.values[i];
+      risk_lin  += w_risk[i] * MathAbs(fv.values[i]);
+   }
 
-   out.direction_dir11 = (out.alpha_t >= 0.0 ? 1 : -1);
+   out.alpha_raw = cfg.scan_inst_head_weight_alpha * alpha_lin;
+   out.exec_raw  = Sigmoid(cfg.scan_inst_head_weight_execution * exec_lin);
+   out.risk_raw  = Sigmoid(cfg.scan_inst_head_weight_risk * risk_lin);
 
-   const double alpha_abs = MathAbs(out.alpha_t);
-   const double vpin_raw = Clamp01(raw[ISV_VPIN]);
-   const double resil_raw = raw[ISV_RESIL_T];
-   const double quality_ok = (out.ms.state_quality01 >= bcfg.min_state_quality01 ? 1.0 : 0.0);
+   if(out.direction_dir11 == 0)
+      out.direction_dir11 = (out.alpha_raw >= 0.0 ? 1 : -1);
+
+   const bool exec_quality_ok =
+      (Clamp01(raw[ISV_VPIN]) < bcfg.theta_vpin) &&
+      (raw[ISV_RESIL_T] > bcfg.theta_resil) &&
+      (MathAbs(z[ISV_SPREAD_SHOCK]) < 2.5) &&
+      (MathAbs(z[ISV_SLIPPAGE]) < 2.5) &&
+      (MathAbs(z[ISV_DEPTH_FADE]) < 2.5);
+
+   out.exec_pass = ((out.exec_raw > bcfg.theta_exec) && exec_quality_ok ? 1 : 0);
+   out.risk_pass = (out.risk_raw < bcfg.theta_risk ? 1 : 0);
+
+   if(cfg.sigsel_enable)
+      out.pre_filter = ((out.cat_pass.signal_stack_gate > 0 && out.cat_pass.location_pass > 0) ? 1 : 0);
+   else
+      out.pre_filter = 1;
+
+   out.signal_stack_gate = out.cat_pass.signal_stack_gate;
+   out.location_pass_flag = out.cat_pass.location_pass;
+
+   out.alpha_t = (out.pre_filter > 0 ? out.alpha_raw : 0.0);
+   out.exec_t  = (out.pre_filter > 0 ? out.exec_raw : 0.0);
+   out.risk_t  = out.risk_raw;
 
    out.trade_gate =
-      (alpha_abs > bcfg.theta_alpha &&
-       out.exec_t > bcfg.theta_exec &&
-       out.risk_t < bcfg.theta_risk &&
-       vpin_raw < bcfg.theta_vpin &&
-       resil_raw > bcfg.theta_resil &&
-       quality_ok > 0.5);
+      (out.pre_filter > 0 &&
+       MathAbs(out.alpha_raw) > bcfg.theta_alpha &&
+       out.exec_pass > 0 &&
+       out.risk_pass > 0);
 
    out.size01 =
       Clamp01(
          bcfg.size_max *
-         Sigmoid(1.25 * alpha_abs) *
-         (1.0 - out.risk_t) *
-         out.exec_t
+         Sigmoid(1.25 * MathAbs(out.alpha_raw)) *
+         (1.0 - out.risk_raw) *
+         out.exec_raw
       );
 
    out.ms.alpha_score = out.alpha_t;
@@ -903,6 +1614,12 @@ inline void FillSnapshotNamedFields(Result &out)
    out.snap.structure_quality_z   = 0.30 * out.z[ISV_SD_SCORE] + 0.30 * out.z[ISV_OB_SCORE] + 0.20 * out.z[ISV_FVG_SCORE] + 0.20 * out.z[ISV_WYCKOFF_SCORE];
    out.snap.momentum_trend_z      = 0.35 * out.z[ISV_MACD] + 0.25 * out.z[ISV_MACD_HIST] + 0.20 * out.z[ISV_ROC] + 0.20 * out.z[ISV_TREND_SLOPE];
    out.snap.correlation_context_z = out.z[ISV_RHO];
+
+   // Signal-stack transport is published through Result fields:
+   // out.cat_sel, out.cat_pass, out.base_ctx, out.struct_ctx,
+   // out.aux_ctx, out.final_vector, out.pre_filter.
+   // Do not write non-existent out.snap stack fields here unless
+   // InstitutionalStateSnapshot is extended in its owning file.
 }
 
 inline bool Build(const string sym,
@@ -1296,9 +2013,11 @@ inline bool Build(const string sym,
                                                           fp_pack);
 
    double footprint_delta_raw = 0.0;
+   double stacked_imbalance_raw = 0.0;
    if(have_fp && fp_pack.valid)
    {
       footprint_delta_raw = fp_pack.footprintDelta;
+      stacked_imbalance_raw = (fp_pack.stacked_imbalance_score >= 0.50 ? 1.0 : 0.0);
       out.footprint_proxy_used = (fp_pack.proxyReliabilityTier <= FootprintProxy::FP_OBI_PROXY_TIER_FAIR);
       out.ms.footprint_delta = fp_pack.footprintDelta;
 #ifdef MICROSTRUCTURESTATS_HAS_FOOTPRINT_CUE01
@@ -1312,6 +2031,7 @@ inline bool Build(const string sym,
       out.footprint_proxy_used = true;
       footprint_delta_raw = (have_ofx ? out.ofx.signedDelta : signed_delta);
       out.ms.footprint_delta = footprint_delta_raw;
+      stacked_imbalance_raw = 0.0;
    }
 
    // -----------------------------------------------------------------------
@@ -1513,6 +2233,35 @@ inline bool Build(const string sym,
    double adx_raw = Indi::ADX(sym, tf, 14, shift);
    double trend_slope_raw = RegressionSlopeRaw(sym, tf, bcfg.trend_reg_lookback, shift);
 
+   double ema_fast_raw = EMAValueRaw(sym, tf, 12, shift);
+   double ema_slow_raw = EMAValueRaw(sym, tf, 26, shift);
+   double ema_fast_prev = EMAValueRaw(sym, tf, 12, shift + 1);
+   double ema_spread_raw = (ema_fast_raw - ema_slow_raw);
+   double ema_slope_raw = (ema_fast_raw - ema_fast_prev);
+
+   double atr_raw = MathMax(0.0, atr);
+
+   double bb_mid_raw = 0.0;
+   double bb_upper_raw = 0.0;
+   double bb_lower_raw = 0.0;
+   double bb_width_raw = 0.0;
+   double bb_pos_raw = 0.0;
+
+   if(BollingerRaw(sym, tf, 20, 2.0, shift, bb_mid_raw, bb_upper_raw, bb_lower_raw))
+   {
+      if(MathAbs(bb_mid_raw) > 1e-12)
+         bb_width_raw = (bb_upper_raw - bb_lower_raw) / bb_mid_raw;
+
+      if(MathAbs(bb_upper_raw - bb_lower_raw) > 1e-12)
+         bb_pos_raw = (close0 - bb_lower_raw) / (bb_upper_raw - bb_lower_raw);
+   }
+
+   double plus_di_raw = 0.0;
+   double minus_di_raw = 0.0;
+   double adx_dir_tmp = adx_raw;
+   if(ADXDirectionalRaw(sym, tf, 14, shift, adx_dir_tmp, plus_di_raw, minus_di_raw))
+      adx_raw = adx_dir_tmp;
+
    // -----------------------------------------------------------------------
    // 13) Pivots, Fibonacci, trendlines, correlation.
    // -----------------------------------------------------------------------
@@ -1612,23 +2361,31 @@ inline bool Build(const string sym,
    // -----------------------------------------------------------------------
    // 15) Raw vector publish in exact requested order.
    // -----------------------------------------------------------------------
+   double delta_cvd_raw = 0.0;
+   if(rt.initialized)
+      delta_cvd_raw = out.ofx.cvdT - rt.last_raw[ISV_CVD];
+
    out.raw[ISV_BID] = bid;
    out.raw[ISV_ASK] = ask;
    out.raw[ISV_SPREAD] = spread;
    out.raw[ISV_REL_SPREAD] = rel_spread;
    out.raw[ISV_MID] = mid;
    out.raw[ISV_MICRO] = micro;
+
    out.raw[ISV_DOM_BID_K] = dom_bid_k;
    out.raw[ISV_DOM_ASK_K] = dom_ask_k;
    out.raw[ISV_DOM_TOT_K] = dom_tot_k;
    out.raw[ISV_DOM_SKEW_K] = dom_skew_k;
    out.raw[ISV_DOM_PRESSURE_K] = dom_pressure_k;
+
    out.raw[ISV_BUY_FLOW] = out.ofx.buyFlowWindow;
    out.raw[ISV_SELL_FLOW] = out.ofx.sellFlowWindow;
    out.raw[ISV_NET_FLOW] = out.ofx.netFlowWindow;
    out.raw[ISV_FLOW_IMB] = out.ofx.flowImbWindow;
    out.raw[ISV_SIGNED_FLOW] = out.ofx.signedFlowWindow;
    out.raw[ISV_CVD] = out.ofx.cvdT;
+   out.raw[ISV_DELTA_CVD] = delta_cvd_raw;
+
    out.raw[ISV_OBI_1] = obi_1;
    out.raw[ISV_OBI_K] = obi_k;
    out.raw[ISV_OFI] = (event_ofi != 0.0 ? event_ofi : out.ofx.ofiNorm);
@@ -1641,21 +2398,36 @@ inline bool Build(const string sym,
    out.raw[ISV_REPL_ASK] = repl_ask;
    out.raw[ISV_RESIL_T] = (resil_t != 0.0 ? resil_t : out.ms.resiliency);
    out.raw[ISV_IMPACT_Q] = impact_q_raw;
+
    out.raw[ISV_MID_MINUS_VWAP] = mid_minus_vwap;
    out.raw[ISV_MID_MINUS_TWAP] = mid_minus_twap;
    out.raw[ISV_POV_GAP] = pov_gap_proxy;
+
+   out.raw[ISV_EMA_FAST] = ema_fast_raw;
+   out.raw[ISV_EMA_SLOW] = ema_slow_raw;
+   out.raw[ISV_EMA_SPREAD] = ema_spread_raw;
+   out.raw[ISV_EMA_SLOPE] = ema_slope_raw;
+
    out.raw[ISV_RV] = rv_raw;
    out.raw[ISV_BV] = bv_raw;
    out.raw[ISV_JUMP] = jump_raw;
    out.raw[ISV_SIGMA_P] = sigma_p_raw;
    out.raw[ISV_SIGMA_GK] = sigma_gk_raw;
+   out.raw[ISV_ATR] = atr_raw;
+   out.raw[ISV_BB_UPPER] = bb_upper_raw;
+   out.raw[ISV_BB_LOWER] = bb_lower_raw;
+   out.raw[ISV_BB_WIDTH] = bb_width_raw;
+   out.raw[ISV_BB_POS] = bb_pos_raw;
+
    out.raw[ISV_CLV] = clv_raw;
    out.raw[ISV_VOL_Z] = volz_raw;
    out.raw[ISV_ER] = er_raw;
    out.raw[ISV_FOOTPRINT_DELTA] = footprint_delta_raw;
+   out.raw[ISV_STACKED_IMBALANCE] = stacked_imbalance_raw;
    out.raw[ISV_POC_DIST] = poc_dist_raw;
    out.raw[ISV_VA_STATE] = va_state_raw;
    out.raw[ISV_TPO_STATE] = tpo_state_raw;
+
    out.raw[ISV_SWEEP_SCORE] = sweep_score_raw;
    out.raw[ISV_SPREAD_SHOCK] = spread_shock_raw;
    out.raw[ISV_SLIPPAGE] = slippage_proxy;
@@ -1669,6 +2441,7 @@ inline bool Build(const string sym,
    out.raw[ISV_OB_SCORE] = ob_score_raw;
    out.raw[ISV_WYCKOFF_SCORE] = wyckoff_score_raw;
    out.raw[ISV_FVG_SCORE] = fvg_score_raw;
+
    out.raw[ISV_RSI] = rsi_raw;
    out.raw[ISV_MACD] = macd_raw;
    out.raw[ISV_MACD_SIGNAL] = macd_signal_raw;
@@ -1686,6 +2459,41 @@ inline bool Build(const string sym,
    // 16) Single normalization policy z(x) over rolling windows.
    // -----------------------------------------------------------------------
    NormalizeRawVector(bcfg, rt, bar_time, out.raw, out.z);
+
+   bool valid_mask[];
+   ArrayResize(valid_mask, ISV_SLOT_COUNT);
+
+   for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      valid_mask[i] = (IsFinite(out.raw[i]) && IsFinite(out.z[i]));
+
+   out.direction_dir11 = DetermineDirectionFromRawBank(out.raw, close0, open0);
+
+   ComputeCategorySelection(cfg, out.raw, out.z, valid_mask, out.cat_sel);
+
+   ComputeCategoryPasses(cfg,
+                         out.raw,
+                         out.direction_dir11,
+                         plus_di_raw,
+                         minus_di_raw,
+                         out.cat_sel,
+                         out.cat_pass);
+
+   FillIntegratedContextVectors(out.z, out.base_ctx, out.struct_ctx, out.aux_ctx);
+
+   out.signal_stack_gate = out.cat_pass.signal_stack_gate;
+   out.location_pass_flag = out.cat_pass.location_pass;
+
+   if(cfg.sigsel_enable)
+      out.pre_filter = ((out.signal_stack_gate > 0 && out.location_pass_flag > 0) ? 1 : 0);
+   else
+      out.pre_filter = 1;
+
+   out.final_vector.FillFromComponents(out.base_ctx,
+                                       out.cat_sel,
+                                       out.cat_pass,
+                                       out.struct_ctx,
+                                       out.aux_ctx,
+                                       false);
 
    // -----------------------------------------------------------------------
    // 17) Snapshot / head publish.

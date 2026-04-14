@@ -799,7 +799,51 @@ namespace Policies
   }
   
   inline string GateReasonToString(const int r){ return ReasonString(r); }
-  
+
+  // --------------------------------------------------------------------------
+  // Signal-stack / location-gate transport boundary
+  //
+  // Policies.mqh may CONSUME upstream canonical gate outcomes for orchestration,
+  // cooldown semantics, and telemetry.
+  //
+  // It must NOT rebuild:
+  //   - RawSignalBank_t
+  //   - CategorySelectedVector_t
+  //   - CategoryPassVector_t
+  //   - SignalStackGate_t
+  //   - LocationPass_t
+  //   - FinalIntegratedStateVector_t
+  //
+  // Ownership of those layers remains upstream in:
+  //   InstitutionalStateVector.mqh / CategorySelector.mqh
+  // --------------------------------------------------------------------------
+  inline bool UpstreamSignalStackAllows(const bool pre_filter_pass,
+                                        const bool signal_stack_gate_pass,
+                                        const bool location_pass,
+                                        const bool execution_gate_pass,
+                                        const bool risk_gate_pass)
+  {
+    return (pre_filter_pass &&
+            signal_stack_gate_pass &&
+            location_pass &&
+            execution_gate_pass &&
+            risk_gate_pass);
+  }
+
+  inline string UpstreamSignalStackGateSummary(const bool pre_filter_pass,
+                                               const bool signal_stack_gate_pass,
+                                               const bool location_pass,
+                                               const bool execution_gate_pass,
+                                               const bool risk_gate_pass)
+  {
+    return StringFormat("pf=%d ssg=%d loc=%d exg=%d rkg=%d",
+                        (pre_filter_pass ? 1 : 0),
+                        (signal_stack_gate_pass ? 1 : 0),
+                        (location_pass ? 1 : 0),
+                        (execution_gate_pass ? 1 : 0),
+                        (risk_gate_pass ? 1 : 0));
+  }
+
   inline int GateReasonToPolicyCode(const int gr)
    {
      switch(gr)
