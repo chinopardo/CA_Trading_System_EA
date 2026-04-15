@@ -1091,6 +1091,7 @@ namespace Policies
     double spread_stress_max01;
 
     double observability_confidence01;
+    double flow_confidence01;
     double observability_min01;
     double venue_coverage01;
     double venue_coverage_min01;
@@ -1180,6 +1181,7 @@ namespace Policies
     r.spread_stress_max01 = (double)POLICIES_INST_MAX_SPREAD_STRESS01;
 
     r.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    r.flow_confidence01         = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     r.observability_min01        = (double)POLICIES_INST_MIN_OBSERVABILITY01;
     r.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
     r.venue_coverage_min01       = (double)POLICIES_INST_MIN_VENUE_COVERAGE01;
@@ -4248,8 +4250,8 @@ inline void NotifyTradeResult(const double r_multiple)
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_MICRO_OBSERVABILITY:
-         return StringFormat("MicroObservability obs=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
-                             r.observability_confidence01, r.observability_min01,
+         return StringFormat("MicroObservability obs=%.3f flow=%.3f min=%.3f alpha=%.3f exec=%.3f risk=%.3f q=%.3f",
+                             r.observability_confidence01, r.flow_confidence01, r.observability_min01,
                              r.alpha_score, r.execution_score, r.risk_score, r.state_quality01) + pool_tag;
 
        case GATE_MICRO_VENUE:
@@ -5550,6 +5552,7 @@ inline void NotifyTradeResult(const double r_multiple)
     double state_quality01;
 
     double observability_confidence01;
+    double flow_confidence01;
     double venue_coverage01;
     double cross_venue_dislocation01;
 
@@ -5606,6 +5609,7 @@ inline void NotifyTradeResult(const double r_multiple)
     ZeroMemory(v);
     v.trade_gate_pass            = true;  // neutral compat default until canonical transport is present
     v.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
+    v.flow_confidence01          = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     v.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
     v.cross_venue_dislocation01  = (double)POLICIES_INST_DEFAULT_XVENUE_DISLOCATION01;
 
@@ -5828,6 +5832,7 @@ inline void NotifyTradeResult(const double r_multiple)
       out_view.state_quality01             = Clamp01(StateInstitutionalStateQuality01(g_state));
    
       out_view.observability_confidence01  = Clamp01(sdc.observability01);
+      out_view.flow_confidence01           = Clamp01(sdc.flow_confidence01);
       out_view.venue_coverage01            = Clamp01(sdc.venue_scope01);
       out_view.cross_venue_dislocation01   = Clamp01(StateInstitutionalCrossVenueDislocation01(g_state));
    
@@ -5914,7 +5919,7 @@ inline void NotifyTradeResult(const double r_multiple)
     StateInstitutionalSymbolView sv;
     sv.Reset();
 
-    if(!State::GetInstitutionalSymbolViewBySymbol(cfg, sym, sv, required_bar_time))
+    if(!State::GetInstitutionalSymbolViewBySymbolWithFallback(cfg, sym, sv, required_bar_time))
       return false;
 
     out_view.valid                       = true;
@@ -5925,9 +5930,10 @@ inline void NotifyTradeResult(const double r_multiple)
     out_view.state_quality01             = Clamp01(sv.state_quality01);
 
     out_view.observability_confidence01  = Clamp01(sv.observability01);
+    out_view.flow_confidence01           = Clamp01(sv.flow_confidence01);
     out_view.observability_penalty01     = Clamp01(sv.observability_penalty01);
     out_view.truth_tier01                = Clamp01(sv.truth_tier01);
-    out_view.venue_coverage01            = Clamp01(sv.venue_scope01);
+    out_view.venue_coverage01            = Clamp01(sv.venue_coverage01);
 
     out_view.vpin01                      = Clamp01(sv.vpin01);
     out_view.resiliency01                = Clamp01(sv.resiliency01);
@@ -6375,6 +6381,7 @@ inline void NotifyTradeResult(const double r_multiple)
     out.spread_stress_max01            = CfgMicroSpreadStressMax01(cfg);
 
     out.observability_confidence01     = v.observability_confidence01;
+    out.flow_confidence01            = v.flow_confidence01;
     out.observability_min01            = CfgMicroObservabilityMin01(cfg);
     out.venue_coverage01               = v.venue_coverage01;
     out.venue_coverage_min01           = CfgMicroVenueCoverageMin01(cfg);
@@ -6503,6 +6510,23 @@ inline void NotifyTradeResult(const double r_multiple)
       {
         out_view.delay_recommended = true;
         out_view.gate_reason = GATE_MICRO_OBSERVABILITY;
+        return false;
+      }
+    }
+
+    // Flow confidence gate
+    {
+      const double fmin = CfgMicroObservabilityMin01(cfg);
+      if(fmin > 0.0 &&
+         (out_view.direct_micro_available || out_view.proxy_micro_available) &&
+         out_view.flow_confidence01 < fmin)
+      {
+        out_view.delay_recommended = true;
+        out_view.gate_reason = GATE_MICRO_OBSERVABILITY;
+
+        if(StringLen(out_view.veto_reason) <= 0 || out_view.veto_reason == "none")
+          out_view.veto_reason = "flow_confidence_low";
+
         return false;
       }
     }

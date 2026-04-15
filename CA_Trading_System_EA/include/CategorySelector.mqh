@@ -231,7 +231,7 @@ inline void SelectDynamicInstitutionalSignal(const Settings &cfg,
                                              const bool &valid_mask[],
                                              CategorySelectedVector &out_sel)
 {
-   if(cfg.sigsel_inst_selection_mode == INST_SELECTION_DIRECT_FULL)
+   if(cfg.sigsel_inst_selection_mode == Config::INST_SELECTION_DIRECT_FULL)
    {
       int inst_candidates[];
       SigSel_GetInstitutionalCandidates(inst_candidates);
@@ -474,7 +474,7 @@ inline CategorySelectedVector ComputeCategorySelection(const double &raw[],
    int _dir_unused = dir_t;
    _dir_unused = _dir_unused;
 
-   if(cfg.sigsel_selection_mode == SELECTION_FIXED)
+   if(cfg.sigsel_selection_mode == Config::SELECTION_FIXED)
    {
       for(int c = 0; c < CAT_COUNT; c++)
          SelectFixedCategorySignal(cfg, c, raw, z, valid_mask, out_sel);

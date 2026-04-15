@@ -1653,6 +1653,20 @@ namespace Config
      SIGSEL_VOLA_CAND_COUNT  = 8
   };
 
+  // Representative fixed Institutional candidate positions.
+  // IMPORTANT:
+  // Keep these aligned with the current SigSel_GetInstitutionalCandidates() order.
+  // Current intended examples:
+  //   0 = DOMSkew(K)
+  //   2 = FlowImb
+  //   7 = OFI
+  enum InstitutionalFixedSelectionExample
+  {
+     SIGSEL_INST_FIX_DOMSKEW_K = 0,
+     SIGSEL_INST_FIX_FLOWIMB   = 2,
+     SIGSEL_INST_FIX_OFI       = 7
+  };
+
   inline int _SigSelClampIndex(const int idx, const int count)
   {
      if(idx < 0)
@@ -2275,6 +2289,23 @@ namespace Config
      double w_mtf_zone_h1;
      double w_mtf_zone_h4;
      double mtf_zone_max_dist_atr;   // e.g., 1.0–1.5 ATR
+
+     // Signal-stack / category gating
+     // Usage notes:
+     // - FX/XAUUSD OTC:
+     //   Prefer ApplyInstitutionalFX_XAU_OTCProfile() and TruthPolicy = PROXY_ALLOWED_FX.
+     //   This keeps DOM / OFI / OBI venue-local or proxy-capable instead of pretending a consolidated tape exists.
+     // - Futures / direct CLOB:
+     //   Prefer ApplyInstitutionalFuturesCLOBProfile() and TruthPolicy = STRICT_INSTITUTIONAL
+     //   when true trade ticks + true depth are available.
+     // - Dynamic mode:
+     //   sigsel_selection_mode = SELECTION_DYNAMIC
+     //   sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY
+     // - Fixed institutional examples:
+     //   use ApplyInstitutionalSelectionExampleDOMSkew()
+     //   use ApplyInstitutionalSelectionExampleFlowImb()
+     //   use ApplyInstitutionalSelectionExampleOFI()
+     // - Strategy-local ICT hard thresholds already live in Config.mqh and must not be re-hardcoded in strategy files.
 
      // Signal-stack / category gating
      bool   sigsel_enable;                // master toggle for signal-stack + location gate
@@ -6440,7 +6471,10 @@ namespace Config
      cfg.execution_head_min  = 0.50;
      cfg.risk_head_max       = 0.65;
    #endif
-   
+
+     // Canonical shared ICT strategy thresholds live here in Config.mqh.
+     // Do not reintroduce duplicate hard-coded micro / alpha / execution / risk thresholds
+     // inside the individual strategy files once these shared knobs are wired.
    #ifdef CFG_HAS_ICT_STRATEGY_KNOBS
      // Silver Bullet: tighter, timing-sensitive
      cfg.ict_sb_require_strict_micro         = true;
@@ -13035,10 +13069,25 @@ namespace Config
     cfg.scan_vp_visible_range_sec = 0;
   }
 
+  // Market preset semantics
+  // - FX_XAU_OTC:
+  //   venue-local / proxy-capable order flow, reduced DOM assumptions, OFI best-quote path,
+  //   footprint/profile allowed to degrade into proxy/tick-volume-compatible modes.
+  // - FUTURES_CLOB:
+  //   direct trades + deeper DOM + fuller OFI path preferred.
+  // - EQUITIES_FRAGMENTED:
+  //   direct prints where available, but less aggressive depth assumptions than centralized futures.
+  // - CRYPTO_EXCHANGE:
+  //   direct venue book/trade path with medium-depth defaults.
   inline void _ApplyAssetClassPreset_NoNormalize(Settings &cfg,
                                                  const AssetClassPreset preset)
   {
     cfg.asset_class_preset = _ClampAssetClassPresetInt((int)preset);
+
+    const bool seed_inst_subfamily_weights =
+       (MathAbs(cfg.sigsel_w_orderbook - cfg.sigsel_w_tradeflow) <= 1e-9 &&
+        MathAbs(cfg.sigsel_w_orderbook - cfg.sigsel_w_impact) <= 1e-9 &&
+        MathAbs(cfg.sigsel_w_orderbook - cfg.sigsel_w_execquality) <= 1e-9);
 
     if(preset == CFG_ASSET_PRESET_FX_XAU_OTC)
     {
@@ -13056,6 +13105,14 @@ namespace Config
       cfg.scan_vp_use_footprint_ticks = false;
       cfg.scan_vp_footprint_build_mode = 0;
       cfg.scan_vp_force_tick_volume = true;
+
+      if(seed_inst_subfamily_weights)
+      {
+         cfg.sigsel_w_orderbook   = 0.20;
+         cfg.sigsel_w_tradeflow   = 0.35;
+         cfg.sigsel_w_impact      = 0.15;
+         cfg.sigsel_w_execquality = 0.30;
+      }
     }
     else if(preset == CFG_ASSET_PRESET_FUTURES_CLOB)
     {
@@ -13073,6 +13130,14 @@ namespace Config
       cfg.scan_vp_use_footprint_ticks = true;
       cfg.scan_vp_footprint_build_mode = 1;
       cfg.scan_vp_force_tick_volume = false;
+
+      if(seed_inst_subfamily_weights)
+      {
+         cfg.sigsel_w_orderbook   = 0.35;
+         cfg.sigsel_w_tradeflow   = 0.30;
+         cfg.sigsel_w_impact      = 0.20;
+         cfg.sigsel_w_execquality = 0.15;
+      }
     }
     else if(preset == CFG_ASSET_PRESET_EQUITIES_FRAGMENTED)
     {
@@ -13090,6 +13155,14 @@ namespace Config
       cfg.scan_vp_use_footprint_ticks = true;
       cfg.scan_vp_footprint_build_mode = 1;
       cfg.scan_vp_force_tick_volume = false;
+
+      if(seed_inst_subfamily_weights)
+      {
+         cfg.sigsel_w_orderbook   = 0.25;
+         cfg.sigsel_w_tradeflow   = 0.30;
+         cfg.sigsel_w_impact      = 0.20;
+         cfg.sigsel_w_execquality = 0.25;
+      }
     }
     else
     {
@@ -13107,6 +13180,14 @@ namespace Config
       cfg.scan_vp_use_footprint_ticks = true;
       cfg.scan_vp_footprint_build_mode = 1;
       cfg.scan_vp_force_tick_volume = false;
+
+      if(seed_inst_subfamily_weights)
+      {
+         cfg.sigsel_w_orderbook   = 0.30;
+         cfg.sigsel_w_tradeflow   = 0.30;
+         cfg.sigsel_w_impact      = 0.20;
+         cfg.sigsel_w_execquality = 0.20;
+      }
     }
 
     _ForceVPVisibleRangeOff_NoNormalize(cfg);
@@ -13219,6 +13300,111 @@ namespace Config
     if(log_summary)
       PrintFormat("Config::ApplyVolatilityEstimatorMode | %s",
                   VolatilityEstimatorModeName(mode));
+  }
+
+  inline void ApplyInstitutionalFX_XAU_OTCProfile(Settings &cfg,
+                                                  const bool log_summary=true)
+  {
+    _ApplyAssetClassPreset_NoNormalize(cfg, CFG_ASSET_PRESET_FX_XAU_OTC);
+    _ApplyTruthPolicyPreset_NoNormalize(cfg, CFG_TRUTH_PROXY_ALLOWED_FX);
+
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+    cfg.allow_live_degraded_inst_fallback = false;
+#endif
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+    cfg.allow_tester_degraded_inst_fallback = true;
+#endif
+
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyInstitutionalFX_XAU_OTCProfile | asset=%s | truth=%s | topN=%d | ofiMode=%d | proxyTicks=%s",
+                  AssetClassPresetName(CFG_ASSET_PRESET_FX_XAU_OTC),
+                  TruthPolicyPresetName(CFG_TRUTH_PROXY_ALLOWED_FX),
+                  cfg.scan_obi_top_levels,
+                  cfg.scan_obi_ofi_mode,
+                  BoolStr(cfg.scan_foot_allow_quote_proxy_ticks));
+  }
+
+  inline void ApplyInstitutionalFuturesCLOBProfile(Settings &cfg,
+                                                   const bool log_summary=true)
+  {
+    _ApplyAssetClassPreset_NoNormalize(cfg, CFG_ASSET_PRESET_FUTURES_CLOB);
+    _ApplyTruthPolicyPreset_NoNormalize(cfg, CFG_TRUTH_STRICT_INSTITUTIONAL);
+
+#ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
+    cfg.allow_live_degraded_inst_fallback = false;
+#endif
+#ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+    cfg.allow_tester_degraded_inst_fallback = false;
+#endif
+
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyInstitutionalFuturesCLOBProfile | asset=%s | truth=%s | topN=%d | ofiMode=%d | proxyTicks=%s",
+                  AssetClassPresetName(CFG_ASSET_PRESET_FUTURES_CLOB),
+                  TruthPolicyPresetName(CFG_TRUTH_STRICT_INSTITUTIONAL),
+                  cfg.scan_obi_top_levels,
+                  cfg.scan_obi_ofi_mode,
+                  BoolStr(cfg.scan_foot_allow_quote_proxy_ticks));
+  }
+
+  inline void ApplyInstitutionalSelectionDynamicAntiEcho(Settings &cfg,
+                                                         const bool log_summary=true)
+  {
+    cfg.sigsel_enable              = true;
+    cfg.sigsel_selection_mode      = SELECTION_DYNAMIC;
+    cfg.sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyInstitutionalSelectionDynamicAntiEcho | mode=%d | instMode=%d | wOB=%.3f | wTF=%.3f | wImp=%.3f | wExec=%.3f",
+                  cfg.sigsel_selection_mode,
+                  cfg.sigsel_inst_selection_mode,
+                  cfg.sigsel_w_orderbook,
+                  cfg.sigsel_w_tradeflow,
+                  cfg.sigsel_w_impact,
+                  cfg.sigsel_w_execquality);
+  }
+
+  inline void ApplyInstitutionalSelectionFixedIndex(Settings &cfg,
+                                                    const int fixed_inst_index,
+                                                    const bool log_summary=true)
+  {
+    cfg.sigsel_enable              = true;
+    cfg.sigsel_selection_mode      = SELECTION_FIXED;
+    cfg.sigsel_inst_selection_mode = INST_SELECTION_DIRECT_FULL;
+    cfg.sigsel_fixed_inst_index    = fixed_inst_index;
+
+    Normalize(cfg);
+    FinalizeThresholds(cfg);
+
+    if(log_summary)
+      PrintFormat("Config::ApplyInstitutionalSelectionFixedIndex | fixedInstIndex=%d",
+                  cfg.sigsel_fixed_inst_index);
+  }
+
+  inline void ApplyInstitutionalSelectionExampleDOMSkew(Settings &cfg,
+                                                        const bool log_summary=true)
+  {
+    ApplyInstitutionalSelectionFixedIndex(cfg, SIGSEL_INST_FIX_DOMSKEW_K, log_summary);
+  }
+
+  inline void ApplyInstitutionalSelectionExampleFlowImb(Settings &cfg,
+                                                        const bool log_summary=true)
+  {
+    ApplyInstitutionalSelectionFixedIndex(cfg, SIGSEL_INST_FIX_FLOWIMB, log_summary);
+  }
+
+  inline void ApplyInstitutionalSelectionExampleOFI(Settings &cfg,
+                                                    const bool log_summary=true)
+  {
+    ApplyInstitutionalSelectionFixedIndex(cfg, SIGSEL_INST_FIX_OFI, log_summary);
   }
 
   inline void ApplyMarketStructurePresetTriplet(Settings &cfg,

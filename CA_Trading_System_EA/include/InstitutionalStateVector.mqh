@@ -1,10 +1,9 @@
-
 #ifndef CA_INSTITUTIONALSTATEVECTOR_MQH
 #define CA_INSTITUTIONALSTATEVECTOR_MQH
 
 #include "Config.mqh"
 #include "Types.mqh"
-
+#include "CategorySelector.mqh"
 #include "VSA.mqh"
 #include "VWAP.mqh"
 #include "AutoVolatility.mqh"
@@ -380,30 +379,6 @@ inline bool ADXDirectionalRaw(const string sym,
 
    IndicatorRelease(handle);
    return ok;
-}
-
-inline void LoadSignalSelectionThresholdView(const Settings &cfg,
-                                             SignalSelectionThresholdView &out)
-{
-   out.Reset();
-
-   out.band_rsi       = cfg.sigsel_band_rsi;
-   out.band_stoch     = cfg.sigsel_band_stoch;
-   out.th_adx         = cfg.sigsel_th_adx;
-
-   out.th_atr_min     = cfg.sigsel_th_atr_min;
-   out.th_atr_max     = cfg.sigsel_th_atr_max;
-   out.th_bbwidth_min = cfg.sigsel_th_bbwidth_min;
-   out.th_bbwidth_max = cfg.sigsel_th_bbwidth_max;
-   out.th_rv_min      = cfg.sigsel_th_rv_min;
-   out.th_rv_max      = cfg.sigsel_th_rv_max;
-   out.th_bv_min      = cfg.sigsel_th_bv_min;
-   out.th_bv_max      = cfg.sigsel_th_bv_max;
-   out.th_jump_max    = cfg.sigsel_th_jump_max;
-   out.th_sigmap_min  = cfg.sigsel_th_sigmap_min;
-   out.th_sigmap_max  = cfg.sigsel_th_sigmap_max;
-   out.th_sigmagk_min = cfg.sigsel_th_sigmagk_min;
-   out.th_sigmagk_max = cfg.sigsel_th_sigmagk_max;
 }
 
 inline int DetermineDirectionFromRawBank(const double &raw[],
@@ -985,353 +960,48 @@ inline void NormalizeRawVector(const BuildConfig &cfg,
    rt.last_bar_time = bar_time;
 }
 
-inline double SigSelCategoryWeightByPosition(const Settings &cfg,
-                                             const int category,
-                                             const int position)
-{
-   if(position < 0)
-      return 1.0;
-
-   if(category == CAT_INSTITUTIONAL)
-   {
-      if(position < ArraySize(cfg.sigsel_inst_weights))
-         return cfg.sigsel_inst_weights[position];
-      return 1.0;
-   }
-
-   if(category == CAT_TREND)
-   {
-      if(position < ArraySize(cfg.sigsel_trend_weights))
-         return cfg.sigsel_trend_weights[position];
-      return 1.0;
-   }
-
-   if(category == CAT_MOMENTUM)
-   {
-      if(position < ArraySize(cfg.sigsel_mom_weights))
-         return cfg.sigsel_mom_weights[position];
-      return 1.0;
-   }
-
-   if(category == CAT_VOLUME)
-   {
-      if(position < ArraySize(cfg.sigsel_vol_weights))
-         return cfg.sigsel_vol_weights[position];
-      return 1.0;
-   }
-
-   if(category == CAT_VOLATILITY)
-   {
-      if(position < ArraySize(cfg.sigsel_vola_weights))
-         return cfg.sigsel_vola_weights[position];
-      return 1.0;
-   }
-
-   return 1.0;
-}
-
-inline int SigSelFixedCandidatePosition(const Settings &cfg,
-                                        const int category)
-{
-   if(category == CAT_INSTITUTIONAL) return cfg.sigsel_fixed_inst_index;
-   if(category == CAT_TREND)         return cfg.sigsel_fixed_trend_index;
-   if(category == CAT_MOMENTUM)      return cfg.sigsel_fixed_mom_index;
-   if(category == CAT_VOLUME)        return cfg.sigsel_fixed_vol_index;
-   if(category == CAT_VOLATILITY)    return cfg.sigsel_fixed_vola_index;
-   return 0;
-}
-
-inline double SigSelInstitutionalSubfamilyWeight(const Settings &cfg,
-                                                 const int subfamily)
-{
-   if(subfamily == INST_SUBFAMILY_ORDERBOOK)   return cfg.sigsel_w_orderbook;
-   if(subfamily == INST_SUBFAMILY_TRADEFLOW)   return cfg.sigsel_w_tradeflow;
-   if(subfamily == INST_SUBFAMILY_IMPACT)      return cfg.sigsel_w_impact;
-   if(subfamily == INST_SUBFAMILY_EXECQUALITY) return cfg.sigsel_w_execquality;
-   return 1.0;
-}
-
-inline void SigSelSelectBestCandidateFromList(const Settings &cfg,
-                                              const double &raw[],
-                                              const double &z[],
-                                              const bool &valid_mask[],
-                                              const int category,
-                                              const int &candidate_list[],
-                                              int &best_raw_index,
-                                              double &best_raw_value,
-                                              double &best_z_value,
-                                              double &best_score)
-{
-   best_raw_index = -1;
-   best_raw_value = 0.0;
-   best_z_value = 0.0;
-   best_score = -1.0;
-
-   for(int i = 0; i < ArraySize(candidate_list); i++)
-   {
-      int raw_idx = candidate_list[i];
-      if(raw_idx < 0 || raw_idx >= ISV_SLOT_COUNT)
-         continue;
-
-      if(!valid_mask[raw_idx])
-         continue;
-
-      double score = MathAbs(z[raw_idx]) * SigSelCategoryWeightByPosition(cfg, category, i);
-      if(score > best_score)
-      {
-         best_score = score;
-         best_raw_index = raw_idx;
-         best_raw_value = raw[raw_idx];
-         best_z_value = z[raw_idx];
-      }
-   }
-}
-
 inline void ComputeCategorySelection(const Settings &cfg,
                                      const double &raw[],
                                      const double &z[],
                                      const bool &valid_mask[],
                                      CategorySelectedVector &out_sel)
 {
-   out_sel.Reset();
-
-   if(cfg.sigsel_selection_mode == Config::SELECTION_FIXED)
-   {
-      for(int c = 0; c < CAT_COUNT; c++)
-      {
-         int cands[];
-         SigSel_GetCategoryCandidates(c, cands);
-
-         int pos = SigSelFixedCandidatePosition(cfg, c);
-         if(pos < 0) pos = 0;
-         if(pos >= ArraySize(cands)) pos = ArraySize(cands) - 1;
-
-         if(pos >= 0 && pos < ArraySize(cands))
-         {
-            int raw_idx = cands[pos];
-            if(raw_idx >= 0 && raw_idx < ISV_SLOT_COUNT && valid_mask[raw_idx])
-               out_sel.SetCategory(c, raw_idx, raw[raw_idx], z[raw_idx], 1);
-         }
-      }
-
-      return;
-   }
-
-   int best_idx = -1;
-   double best_raw = 0.0;
-   double best_z = 0.0;
-   double best_score = -1.0;
-
-   if(cfg.sigsel_inst_selection_mode == Config::INST_SELECTION_DIRECT_FULL)
-   {
-      int inst_all[];
-      SigSel_GetInstitutionalCandidates(inst_all);
-      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
-                                        inst_all, best_idx, best_raw, best_z, best_score);
-
-      if(best_idx >= 0)
-         out_sel.SetCategory(CAT_INSTITUTIONAL, best_idx, best_raw, best_z, 1);
-   }
-   else
-   {
-      int sf_lists_0[];
-      int sf_lists_1[];
-      int sf_lists_2[];
-      int sf_lists_3[];
-
-      SigSel_GetInstitutionalOrderBookCandidates(sf_lists_0);
-      SigSel_GetInstitutionalTradeFlowCandidates(sf_lists_1);
-      SigSel_GetInstitutionalImpactCandidates(sf_lists_2);
-      SigSel_GetInstitutionalExecQualityCandidates(sf_lists_3);
-
-      int sf_best_idx[INST_SUBFAMILY_COUNT];
-      double sf_best_raw[INST_SUBFAMILY_COUNT];
-      double sf_best_z[INST_SUBFAMILY_COUNT];
-      double sf_best_score[INST_SUBFAMILY_COUNT];
-
-      for(int i = 0; i < INST_SUBFAMILY_COUNT; i++)
-      {
-         sf_best_idx[i] = -1;
-         sf_best_raw[i] = 0.0;
-         sf_best_z[i] = 0.0;
-         sf_best_score[i] = -1.0;
-      }
-
-      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
-                                        sf_lists_0, sf_best_idx[0], sf_best_raw[0], sf_best_z[0], sf_best_score[0]);
-      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
-                                        sf_lists_1, sf_best_idx[1], sf_best_raw[1], sf_best_z[1], sf_best_score[1]);
-      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
-                                        sf_lists_2, sf_best_idx[2], sf_best_raw[2], sf_best_z[2], sf_best_score[2]);
-      SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_INSTITUTIONAL,
-                                        sf_lists_3, sf_best_idx[3], sf_best_raw[3], sf_best_z[3], sf_best_score[3]);
-
-      double best_sf_score = -1.0;
-      int best_sf = -1;
-
-      for(int sf = 0; sf < INST_SUBFAMILY_COUNT; sf++)
-      {
-         if(sf_best_idx[sf] < 0)
-            continue;
-
-         double total_score = MathAbs(sf_best_z[sf]) * SigSelInstitutionalSubfamilyWeight(cfg, sf);
-         if(total_score > best_sf_score)
-         {
-            best_sf_score = total_score;
-            best_sf = sf;
-         }
-      }
-
-      if(best_sf >= 0)
-         out_sel.SetCategory(CAT_INSTITUTIONAL,
-                             sf_best_idx[best_sf],
-                             sf_best_raw[best_sf],
-                             sf_best_z[best_sf],
-                             1);
-   }
-
-   int trend_cands[];
-   SigSel_GetTrendCandidates(trend_cands);
-   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_TREND,
-                                     trend_cands, best_idx, best_raw, best_z, best_score);
-   if(best_idx >= 0)
-      out_sel.SetCategory(CAT_TREND, best_idx, best_raw, best_z, 1);
-
-   int mom_cands[];
-   SigSel_GetMomentumCandidates(mom_cands);
-   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_MOMENTUM,
-                                     mom_cands, best_idx, best_raw, best_z, best_score);
-   if(best_idx >= 0)
-      out_sel.SetCategory(CAT_MOMENTUM, best_idx, best_raw, best_z, 1);
-
-   int vol_cands[];
-   SigSel_GetVolumeCandidates(vol_cands);
-   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_VOLUME,
-                                     vol_cands, best_idx, best_raw, best_z, best_score);
-   if(best_idx >= 0)
-      out_sel.SetCategory(CAT_VOLUME, best_idx, best_raw, best_z, 1);
-
-   int vola_cands[];
-   SigSel_GetVolatilityCandidates(vola_cands);
-   SigSelSelectBestCandidateFromList(cfg, raw, z, valid_mask, CAT_VOLATILITY,
-                                     vola_cands, best_idx, best_raw, best_z, best_score);
-   if(best_idx >= 0)
-      out_sel.SetCategory(CAT_VOLATILITY, best_idx, best_raw, best_z, 1);
+   out_sel = CategorySelector::ComputeCategorySelection(raw,
+                                                        z,
+                                                        valid_mask,
+                                                        cfg,
+                                                        0);
 }
 
 inline void ComputeCategoryPasses(const Settings &cfg,
                                   const double &raw[],
+                                  const double &z[],
                                   const int dir_t,
                                   const double plus_di,
                                   const double minus_di,
                                   const CategorySelectedVector &sel,
                                   CategoryPassVector &out_pass)
 {
-   out_pass.Reset();
-
-   SignalSelectionThresholdView thv;
-   LoadSignalSelectionThresholdView(cfg, thv);
-
-   if(sel.inst_active > 0)
-   {
-      int d = DirMapSelectedSignal(sel.inst_value, sel.inst_index, plus_di, minus_di, thv);
-      if(d == dir_t && MathAbs(sel.inst_z) >= cfg.sigsel_th_inst)
-         out_pass.inst_pass = 1;
-   }
-
-   if(sel.trend_active > 0)
-   {
-      int d = DirMapSelectedSignal(sel.trend_value, sel.trend_index, plus_di, minus_di, thv);
-      if(d == dir_t && MathAbs(sel.trend_z) >= cfg.sigsel_th_trend)
-         out_pass.trend_pass = 1;
-   }
-
-   if(sel.mom_active > 0)
-   {
-      int d = DirMapSelectedSignal(sel.mom_value, sel.mom_index, plus_di, minus_di, thv);
-      if(d == dir_t && MathAbs(sel.mom_z) >= cfg.sigsel_th_mom)
-         out_pass.mom_pass = 1;
-   }
-
-   if(sel.vol_active > 0)
-   {
-      int d = DirMapSelectedSignal(sel.vol_value, sel.vol_index, plus_di, minus_di, thv);
-      if(d == dir_t && MathAbs(sel.vol_z) >= cfg.sigsel_th_vol)
-         out_pass.vol_pass = 1;
-   }
-
-   if(sel.vola_active > 0)
-   {
-      int regime = RegimeMapVol(sel.vola_value, sel.vola_index, raw[ISV_BB_WIDTH], thv);
-      if(regime == 1)
-         out_pass.vola_pass = 1;
-   }
-
-   out_pass.signal_stack_score =
-      out_pass.inst_pass +
-      out_pass.trend_pass +
-      out_pass.mom_pass +
-      out_pass.vol_pass +
-      out_pass.vola_pass;
-
-   out_pass.location_score = 0;
-   if(raw[ISV_PIVOT_DIST] <= cfg.sigsel_loc_th_pivot)                out_pass.location_score++;
-   if(raw[ISV_SR_DIST] <= cfg.sigsel_loc_th_sr)                      out_pass.location_score++;
-   if(raw[ISV_FIB_DIST] <= cfg.sigsel_loc_th_fib)                    out_pass.location_score++;
-   if(raw[ISV_SD_SCORE] >= cfg.sigsel_loc_th_sd)                     out_pass.location_score++;
-   if(raw[ISV_OB_SCORE] >= cfg.sigsel_loc_th_ob)                     out_pass.location_score++;
-   if(raw[ISV_FVG_SCORE] >= cfg.sigsel_loc_th_fvg)                   out_pass.location_score++;
-   if(raw[ISV_SWEEP_SCORE] >= cfg.sigsel_loc_th_sweep)               out_pass.location_score++;
-   if(((double)dir_t * raw[ISV_WYCKOFF_SCORE]) >= cfg.sigsel_loc_th_wyckoff) out_pass.location_score++;
-
-   if(cfg.sigsel_enable)
-   {
-      out_pass.signal_stack_gate = (out_pass.signal_stack_score >= cfg.sigsel_min_category_votes ? 1 : 0);
-      out_pass.location_pass = (out_pass.location_score >= cfg.sigsel_min_location_votes ? 1 : 0);
-   }
-   else
-   {
-      out_pass.signal_stack_gate = 1;
-      out_pass.location_pass = 1;
-   }
+   out_pass = CategorySelector::ComputeCategoryPasses(sel,
+                                                      z,
+                                                      cfg,
+                                                      dir_t,
+                                                      raw,
+                                                      plus_di,
+                                                      minus_di);
 }
 
 inline void FillIntegratedContextVectors(const double &z[],
+                                         const double &raw[],
                                          BaseContextVector &base_ctx,
                                          StructureVector &struct_ctx,
                                          AuxContextVector &aux_ctx)
 {
-   base_ctx.Reset();
-   struct_ctx.Reset();
-   aux_ctx.Reset();
-
-   base_ctx.v[0] = z[ISV_BID];
-   base_ctx.v[1] = z[ISV_ASK];
-   base_ctx.v[2] = z[ISV_SPREAD];
-   base_ctx.v[3] = z[ISV_REL_SPREAD];
-   base_ctx.v[4] = z[ISV_MID];
-   base_ctx.v[5] = z[ISV_MICRO];
-
-   struct_ctx.v[0]  = z[ISV_SWEEP_SCORE];
-   struct_ctx.v[1]  = z[ISV_SPREAD_SHOCK];
-   struct_ctx.v[2]  = z[ISV_SLIPPAGE];
-   struct_ctx.v[3]  = z[ISV_DEPTH_FADE];
-   struct_ctx.v[4]  = z[ISV_SD_SCORE];
-   struct_ctx.v[5]  = z[ISV_OB_SCORE];
-   struct_ctx.v[6]  = z[ISV_WYCKOFF_SCORE];
-   struct_ctx.v[7]  = z[ISV_FVG_SCORE];
-   struct_ctx.v[8]  = z[ISV_PIVOT_DIST];
-   struct_ctx.v[9]  = z[ISV_SR_DIST];
-   struct_ctx.v[10] = z[ISV_FIB_DIST];
-   struct_ctx.v[11] = z[ISV_TREND_SLOPE];
-
-   aux_ctx.v[0] = z[ISV_POV_GAP];
-   aux_ctx.v[1] = z[ISV_DP_SHARE];
-   aux_ctx.v[2] = z[ISV_ATS_SHARE];
-   aux_ctx.v[3] = z[ISV_VENUE_MIX_ENTROPY];
-   aux_ctx.v[4] = z[ISV_INTERNALISATION_PROXY];
-   aux_ctx.v[5] = z[ISV_QUOTE_FADE];
-   aux_ctx.v[6] = z[ISV_RHO];
+   CategorySelector::ComputeContextVectors(base_ctx,
+                                           struct_ctx,
+                                           aux_ctx,
+                                           z,
+                                           raw);
 }
 
 inline void BuildHeads(const Settings &cfg,
@@ -2468,32 +2138,41 @@ inline bool Build(const string sym,
 
    out.direction_dir11 = DetermineDirectionFromRawBank(out.raw, close0, open0);
 
-   ComputeCategorySelection(cfg, out.raw, out.z, valid_mask, out.cat_sel);
-
-   ComputeCategoryPasses(cfg,
+ComputeCategorySelection(cfg,
                          out.raw,
-                         out.direction_dir11,
-                         plus_di_raw,
-                         minus_di_raw,
-                         out.cat_sel,
-                         out.cat_pass);
+                         out.z,
+                         valid_mask,
+                         out.cat_sel);
 
-   FillIntegratedContextVectors(out.z, out.base_ctx, out.struct_ctx, out.aux_ctx);
+ComputeCategoryPasses(cfg,
+                      out.raw,
+                      out.z,
+                      out.direction_dir11,
+                      plus_di_raw,
+                      minus_di_raw,
+                      out.cat_sel,
+                      out.cat_pass);
 
-   out.signal_stack_gate = out.cat_pass.signal_stack_gate;
-   out.location_pass_flag = out.cat_pass.location_pass;
+FillIntegratedContextVectors(out.z,
+                             out.raw,
+                             out.base_ctx,
+                             out.struct_ctx,
+                             out.aux_ctx);
 
-   if(cfg.sigsel_enable)
-      out.pre_filter = ((out.signal_stack_gate > 0 && out.location_pass_flag > 0) ? 1 : 0);
-   else
-      out.pre_filter = 1;
+out.signal_stack_gate = out.cat_pass.signal_stack_gate;
+out.location_pass_flag = out.cat_pass.location_pass;
 
-   out.final_vector.FillFromComponents(out.base_ctx,
-                                       out.cat_sel,
-                                       out.cat_pass,
-                                       out.struct_ctx,
-                                       out.aux_ctx,
-                                       false);
+if(cfg.sigsel_enable)
+   out.pre_filter = ((out.signal_stack_gate > 0 && out.location_pass_flag > 0) ? 1 : 0);
+else
+   out.pre_filter = 1;
+
+out.final_vector = CategorySelector::AssembleFinalVector(out.cat_sel,
+                                                         out.cat_pass,
+                                                         out.base_ctx,
+                                                         out.struct_ctx,
+                                                         out.aux_ctx,
+                                                         cfg);
 
    // -----------------------------------------------------------------------
    // 17) Snapshot / head publish.
