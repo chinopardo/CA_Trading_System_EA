@@ -2311,6 +2311,7 @@ namespace Config
      bool   sigsel_enable;                // master toggle for signal-stack + location gate
      int    sigsel_selection_mode;        // 0=fixed, 1=dynamic
      int    sigsel_inst_selection_mode;   // 0=anti-echo subfamily, 1=direct-full
+     int    sigsel_institutional_degrade_mode; // ENUM_INST_DEGRADE_MODE stored as int
 
      int    sigsel_fixed_inst_index;
      int    sigsel_fixed_trend_index;
@@ -2319,6 +2320,7 @@ namespace Config
      int    sigsel_fixed_vola_index;
 
      double sigsel_th_inst;
+     double sigsel_th_inst_proxy;
      double sigsel_th_trend;
      double sigsel_th_mom;
      double sigsel_th_vol;
@@ -2351,13 +2353,21 @@ namespace Config
      double sigsel_loc_th_sweep;
      double sigsel_loc_th_wyckoff;
 
-     int    sigsel_min_category_votes;
+     int    sigsel_min_category_votes;          // legacy/current baseline kept for back-compat callers
+     int    sigsel_min_category_votes_default;  // baseline before any degrade relaxation
+     int    sigsel_min_category_votes_floor;    // minimum floor after stack-relax
      int    sigsel_min_location_votes;
+
+     double sigsel_inst_coverage_threshold;     // InstCoverage below this means partial coverage
 
      double sigsel_w_orderbook;
      double sigsel_w_tradeflow;
      double sigsel_w_impact;
      double sigsel_w_execquality;
+
+     double sigsel_w_proxy_microprice_bias;
+     double sigsel_w_proxy_auction_bias;
+     double sigsel_w_proxy_composite;
 
      string sigsel_inst_weights_csv;      // use ';' separated values
      string sigsel_trend_weights_csv;     // use ';' separated values
@@ -4303,62 +4313,72 @@ namespace Config
      #endif
 
      // Signal-stack / category gating
-     cfg.sigsel_enable              = x.sigsel_enable;
-     cfg.sigsel_selection_mode      = x.sigsel_selection_mode;
-     cfg.sigsel_inst_selection_mode = x.sigsel_inst_selection_mode;
+     cfg.sigsel_enable                      = x.sigsel_enable;
+     cfg.sigsel_selection_mode              = x.sigsel_selection_mode;
+     cfg.sigsel_inst_selection_mode         = x.sigsel_inst_selection_mode;
+     cfg.sigsel_institutional_degrade_mode  = x.sigsel_institutional_degrade_mode;
 
-     cfg.sigsel_fixed_inst_index    = x.sigsel_fixed_inst_index;
-     cfg.sigsel_fixed_trend_index   = x.sigsel_fixed_trend_index;
-     cfg.sigsel_fixed_mom_index     = x.sigsel_fixed_mom_index;
-     cfg.sigsel_fixed_vol_index     = x.sigsel_fixed_vol_index;
-     cfg.sigsel_fixed_vola_index    = x.sigsel_fixed_vola_index;
+     cfg.sigsel_fixed_inst_index            = x.sigsel_fixed_inst_index;
+     cfg.sigsel_fixed_trend_index           = x.sigsel_fixed_trend_index;
+     cfg.sigsel_fixed_mom_index             = x.sigsel_fixed_mom_index;
+     cfg.sigsel_fixed_vol_index             = x.sigsel_fixed_vol_index;
+     cfg.sigsel_fixed_vola_index            = x.sigsel_fixed_vola_index;
 
-     cfg.sigsel_th_inst             = x.sigsel_th_inst;
-     cfg.sigsel_th_trend            = x.sigsel_th_trend;
-     cfg.sigsel_th_mom              = x.sigsel_th_mom;
-     cfg.sigsel_th_vol              = x.sigsel_th_vol;
-     cfg.sigsel_th_vola             = x.sigsel_th_vola;
+     cfg.sigsel_th_inst                     = x.sigsel_th_inst;
+     cfg.sigsel_th_inst_proxy               = x.sigsel_th_inst_proxy;
+     cfg.sigsel_th_trend                    = x.sigsel_th_trend;
+     cfg.sigsel_th_mom                      = x.sigsel_th_mom;
+     cfg.sigsel_th_vol                      = x.sigsel_th_vol;
+     cfg.sigsel_th_vola                     = x.sigsel_th_vola;
 
-     cfg.sigsel_band_rsi            = x.sigsel_band_rsi;
-     cfg.sigsel_band_stoch          = x.sigsel_band_stoch;
-     cfg.sigsel_th_adx              = x.sigsel_th_adx;
+     cfg.sigsel_band_rsi                    = x.sigsel_band_rsi;
+     cfg.sigsel_band_stoch                  = x.sigsel_band_stoch;
+     cfg.sigsel_th_adx                      = x.sigsel_th_adx;
 
-     cfg.sigsel_th_atr_min          = x.sigsel_th_atr_min;
-     cfg.sigsel_th_atr_max          = x.sigsel_th_atr_max;
-     cfg.sigsel_th_bbwidth_min      = x.sigsel_th_bbwidth_min;
-     cfg.sigsel_th_bbwidth_max      = x.sigsel_th_bbwidth_max;
-     cfg.sigsel_th_rv_min           = x.sigsel_th_rv_min;
-     cfg.sigsel_th_rv_max           = x.sigsel_th_rv_max;
-     cfg.sigsel_th_bv_min           = x.sigsel_th_bv_min;
-     cfg.sigsel_th_bv_max           = x.sigsel_th_bv_max;
-     cfg.sigsel_th_jump_max         = x.sigsel_th_jump_max;
-     cfg.sigsel_th_sigmap_min       = x.sigsel_th_sigmap_min;
-     cfg.sigsel_th_sigmap_max       = x.sigsel_th_sigmap_max;
-     cfg.sigsel_th_sigmagk_min      = x.sigsel_th_sigmagk_min;
-     cfg.sigsel_th_sigmagk_max      = x.sigsel_th_sigmagk_max;
+     cfg.sigsel_th_atr_min                  = x.sigsel_th_atr_min;
+     cfg.sigsel_th_atr_max                  = x.sigsel_th_atr_max;
+     cfg.sigsel_th_bbwidth_min              = x.sigsel_th_bbwidth_min;
+     cfg.sigsel_th_bbwidth_max              = x.sigsel_th_bbwidth_max;
+     cfg.sigsel_th_rv_min                   = x.sigsel_th_rv_min;
+     cfg.sigsel_th_rv_max                   = x.sigsel_th_rv_max;
+     cfg.sigsel_th_bv_min                   = x.sigsel_th_bv_min;
+     cfg.sigsel_th_bv_max                   = x.sigsel_th_bv_max;
+     cfg.sigsel_th_jump_max                 = x.sigsel_th_jump_max;
+     cfg.sigsel_th_sigmap_min               = x.sigsel_th_sigmap_min;
+     cfg.sigsel_th_sigmap_max               = x.sigsel_th_sigmap_max;
+     cfg.sigsel_th_sigmagk_min              = x.sigsel_th_sigmagk_min;
+     cfg.sigsel_th_sigmagk_max              = x.sigsel_th_sigmagk_max;
 
-     cfg.sigsel_loc_th_pivot        = x.sigsel_loc_th_pivot;
-     cfg.sigsel_loc_th_sr           = x.sigsel_loc_th_sr;
-     cfg.sigsel_loc_th_fib          = x.sigsel_loc_th_fib;
-     cfg.sigsel_loc_th_sd           = x.sigsel_loc_th_sd;
-     cfg.sigsel_loc_th_ob           = x.sigsel_loc_th_ob;
-     cfg.sigsel_loc_th_fvg          = x.sigsel_loc_th_fvg;
-     cfg.sigsel_loc_th_sweep        = x.sigsel_loc_th_sweep;
-     cfg.sigsel_loc_th_wyckoff      = x.sigsel_loc_th_wyckoff;
+     cfg.sigsel_loc_th_pivot                = x.sigsel_loc_th_pivot;
+     cfg.sigsel_loc_th_sr                   = x.sigsel_loc_th_sr;
+     cfg.sigsel_loc_th_fib                  = x.sigsel_loc_th_fib;
+     cfg.sigsel_loc_th_sd                   = x.sigsel_loc_th_sd;
+     cfg.sigsel_loc_th_ob                   = x.sigsel_loc_th_ob;
+     cfg.sigsel_loc_th_fvg                  = x.sigsel_loc_th_fvg;
+     cfg.sigsel_loc_th_sweep                = x.sigsel_loc_th_sweep;
+     cfg.sigsel_loc_th_wyckoff              = x.sigsel_loc_th_wyckoff;
 
-     cfg.sigsel_min_category_votes  = x.sigsel_min_category_votes;
-     cfg.sigsel_min_location_votes  = x.sigsel_min_location_votes;
+     cfg.sigsel_min_category_votes          = x.sigsel_min_category_votes;
+     cfg.sigsel_min_category_votes_default  = x.sigsel_min_category_votes_default;
+     cfg.sigsel_min_category_votes_floor    = x.sigsel_min_category_votes_floor;
+     cfg.sigsel_min_location_votes          = x.sigsel_min_location_votes;
 
-     cfg.sigsel_w_orderbook         = x.sigsel_w_orderbook;
-     cfg.sigsel_w_tradeflow         = x.sigsel_w_tradeflow;
-     cfg.sigsel_w_impact            = x.sigsel_w_impact;
-     cfg.sigsel_w_execquality       = x.sigsel_w_execquality;
+     cfg.sigsel_inst_coverage_threshold     = x.sigsel_inst_coverage_threshold;
 
-     cfg.sigsel_inst_weights_csv    = x.sigsel_inst_weights_csv;
-     cfg.sigsel_trend_weights_csv   = x.sigsel_trend_weights_csv;
-     cfg.sigsel_mom_weights_csv     = x.sigsel_mom_weights_csv;
-     cfg.sigsel_vol_weights_csv     = x.sigsel_vol_weights_csv;
-     cfg.sigsel_vola_weights_csv    = x.sigsel_vola_weights_csv;
+     cfg.sigsel_w_orderbook                 = x.sigsel_w_orderbook;
+     cfg.sigsel_w_tradeflow                 = x.sigsel_w_tradeflow;
+     cfg.sigsel_w_impact                    = x.sigsel_w_impact;
+     cfg.sigsel_w_execquality               = x.sigsel_w_execquality;
+
+     cfg.sigsel_w_proxy_microprice_bias     = x.sigsel_w_proxy_microprice_bias;
+     cfg.sigsel_w_proxy_auction_bias        = x.sigsel_w_proxy_auction_bias;
+     cfg.sigsel_w_proxy_composite           = x.sigsel_w_proxy_composite;
+
+     cfg.sigsel_inst_weights_csv            = x.sigsel_inst_weights_csv;
+     cfg.sigsel_trend_weights_csv           = x.sigsel_trend_weights_csv;
+     cfg.sigsel_mom_weights_csv             = x.sigsel_mom_weights_csv;
+     cfg.sigsel_vol_weights_csv             = x.sigsel_vol_weights_csv;
+     cfg.sigsel_vola_weights_csv            = x.sigsel_vola_weights_csv;
 
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
@@ -5063,62 +5083,72 @@ namespace Config
      x.mtf_zone_max_dist_atr = 1.25;
    
      // Signal-stack / category gating defaults
-     x.sigsel_enable              = true;
-     x.sigsel_selection_mode      = SELECTION_DYNAMIC;
-     x.sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+     x.sigsel_enable                      = true;
+     x.sigsel_selection_mode              = SELECTION_DYNAMIC;
+     x.sigsel_inst_selection_mode         = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+     x.sigsel_institutional_degrade_mode  = INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX;
 
-     x.sigsel_fixed_inst_index    = 0;
-     x.sigsel_fixed_trend_index   = 0;
-     x.sigsel_fixed_mom_index     = 0;
-     x.sigsel_fixed_vol_index     = 0;
-     x.sigsel_fixed_vola_index    = 0;
+     x.sigsel_fixed_inst_index            = 0;
+     x.sigsel_fixed_trend_index           = 0;
+     x.sigsel_fixed_mom_index             = 0;
+     x.sigsel_fixed_vol_index             = 0;
+     x.sigsel_fixed_vola_index            = 0;
 
-     x.sigsel_th_inst             = 1.0;
-     x.sigsel_th_trend            = 1.0;
-     x.sigsel_th_mom              = 1.0;
-     x.sigsel_th_vol              = 1.0;
-     x.sigsel_th_vola             = 1.0;
+     x.sigsel_th_inst                     = 1.0;
+     x.sigsel_th_inst_proxy               = 1.0;
+     x.sigsel_th_trend                    = 1.0;
+     x.sigsel_th_mom                      = 1.0;
+     x.sigsel_th_vol                      = 1.0;
+     x.sigsel_th_vola                     = 1.0;
 
-     x.sigsel_band_rsi            = 5.0;
-     x.sigsel_band_stoch          = 5.0;
-     x.sigsel_th_adx              = 20.0;
+     x.sigsel_band_rsi                    = 5.0;
+     x.sigsel_band_stoch                  = 5.0;
+     x.sigsel_th_adx                      = 20.0;
 
-     x.sigsel_th_atr_min          = 0.0;
-     x.sigsel_th_atr_max          = 10000000000.0;
-     x.sigsel_th_bbwidth_min      = 0.0;
-     x.sigsel_th_bbwidth_max      = 10000000000.0;
-     x.sigsel_th_rv_min           = 0.0;
-     x.sigsel_th_rv_max           = 10000000000.0;
-     x.sigsel_th_bv_min           = 0.0;
-     x.sigsel_th_bv_max           = 10000000000.0;
-     x.sigsel_th_jump_max         = 10000000000.0;
-     x.sigsel_th_sigmap_min       = 0.0;
-     x.sigsel_th_sigmap_max       = 10000000000.0;
-     x.sigsel_th_sigmagk_min      = 0.0;
-     x.sigsel_th_sigmagk_max      = 10000000000.0;
+     x.sigsel_th_atr_min                  = 0.0;
+     x.sigsel_th_atr_max                  = 10000000000.0;
+     x.sigsel_th_bbwidth_min              = 0.0;
+     x.sigsel_th_bbwidth_max              = 10000000000.0;
+     x.sigsel_th_rv_min                   = 0.0;
+     x.sigsel_th_rv_max                   = 10000000000.0;
+     x.sigsel_th_bv_min                   = 0.0;
+     x.sigsel_th_bv_max                   = 10000000000.0;
+     x.sigsel_th_jump_max                 = 10000000000.0;
+     x.sigsel_th_sigmap_min               = 0.0;
+     x.sigsel_th_sigmap_max               = 10000000000.0;
+     x.sigsel_th_sigmagk_min              = 0.0;
+     x.sigsel_th_sigmagk_max              = 10000000000.0;
 
-     x.sigsel_loc_th_pivot        = 0.50;
-     x.sigsel_loc_th_sr           = 0.50;
-     x.sigsel_loc_th_fib          = 0.50;
-     x.sigsel_loc_th_sd           = 0.0;
-     x.sigsel_loc_th_ob           = 0.0;
-     x.sigsel_loc_th_fvg          = 0.0;
-     x.sigsel_loc_th_sweep        = 0.0;
-     x.sigsel_loc_th_wyckoff      = 0.0;
+     x.sigsel_loc_th_pivot                = 0.50;
+     x.sigsel_loc_th_sr                   = 0.50;
+     x.sigsel_loc_th_fib                  = 0.50;
+     x.sigsel_loc_th_sd                   = 0.0;
+     x.sigsel_loc_th_ob                   = 0.0;
+     x.sigsel_loc_th_fvg                  = 0.0;
+     x.sigsel_loc_th_sweep                = 0.0;
+     x.sigsel_loc_th_wyckoff              = 0.0;
 
-     x.sigsel_min_category_votes  = 3;
-     x.sigsel_min_location_votes  = 2;
+     x.sigsel_min_category_votes          = 3;
+     x.sigsel_min_category_votes_default  = 3;
+     x.sigsel_min_category_votes_floor    = 2;
+     x.sigsel_min_location_votes          = 2;
 
-     x.sigsel_w_orderbook         = 1.0;
-     x.sigsel_w_tradeflow         = 1.0;
-     x.sigsel_w_impact            = 1.0;
-     x.sigsel_w_execquality       = 1.0;
+     x.sigsel_inst_coverage_threshold     = 0.50;
 
-     x.sigsel_inst_weights_csv    = "";
-     x.sigsel_trend_weights_csv   = "";
-     x.sigsel_mom_weights_csv     = "";
-     x.sigsel_vol_weights_csv     = "";
-     x.sigsel_vola_weights_csv    = "";
+     x.sigsel_w_orderbook                 = 1.0;
+     x.sigsel_w_tradeflow                 = 1.0;
+     x.sigsel_w_impact                    = 1.0;
+     x.sigsel_w_execquality               = 1.0;
+
+     x.sigsel_w_proxy_microprice_bias     = 1.0;
+     x.sigsel_w_proxy_auction_bias        = 1.0;
+     x.sigsel_w_proxy_composite           = 1.0;
+
+     x.sigsel_inst_weights_csv            = "";
+     x.sigsel_trend_weights_csv           = "";
+     x.sigsel_mom_weights_csv             = "";
+     x.sigsel_vol_weights_csv             = "";
+     x.sigsel_vola_weights_csv            = "";
    
      x.router_min_score = 0.0;
      x.router_fb_min    = 0.0;
@@ -11353,21 +11383,25 @@ namespace Config
     if(cfg.sigsel_inst_selection_mode < INST_SELECTION_ANTI_ECHO_SUBFAMILY || cfg.sigsel_inst_selection_mode > INST_SELECTION_DIRECT_FULL)
        cfg.sigsel_inst_selection_mode = INST_SELECTION_ANTI_ECHO_SUBFAMILY;
 
+    if(cfg.sigsel_institutional_degrade_mode < INST_DEGRADE_PROXY_SUBSTITUTE || cfg.sigsel_institutional_degrade_mode > INST_DEGRADE_HARD_BLOCK)
+       cfg.sigsel_institutional_degrade_mode = INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX;
+
     cfg.sigsel_fixed_inst_index  = _SigSelClampIndex(cfg.sigsel_fixed_inst_index,  SIGSEL_INST_CAND_COUNT);
     cfg.sigsel_fixed_trend_index = _SigSelClampIndex(cfg.sigsel_fixed_trend_index, SIGSEL_TREND_CAND_COUNT);
     cfg.sigsel_fixed_mom_index   = _SigSelClampIndex(cfg.sigsel_fixed_mom_index,   SIGSEL_MOM_CAND_COUNT);
     cfg.sigsel_fixed_vol_index   = _SigSelClampIndex(cfg.sigsel_fixed_vol_index,   SIGSEL_VOL_CAND_COUNT);
     cfg.sigsel_fixed_vola_index  = _SigSelClampIndex(cfg.sigsel_fixed_vola_index,  SIGSEL_VOLA_CAND_COUNT);
 
-    if(cfg.sigsel_th_inst <= 0.0)  cfg.sigsel_th_inst  = 1.0;
-    if(cfg.sigsel_th_trend <= 0.0) cfg.sigsel_th_trend = 1.0;
-    if(cfg.sigsel_th_mom <= 0.0)   cfg.sigsel_th_mom   = 1.0;
-    if(cfg.sigsel_th_vol <= 0.0)   cfg.sigsel_th_vol   = 1.0;
-    if(cfg.sigsel_th_vola <= 0.0)  cfg.sigsel_th_vola  = 1.0;
+    if(cfg.sigsel_th_inst <= 0.0)        cfg.sigsel_th_inst = 1.0;
+    if(cfg.sigsel_th_inst_proxy <= 0.0)  cfg.sigsel_th_inst_proxy = 1.0;
+    if(cfg.sigsel_th_trend <= 0.0)       cfg.sigsel_th_trend = 1.0;
+    if(cfg.sigsel_th_mom <= 0.0)         cfg.sigsel_th_mom = 1.0;
+    if(cfg.sigsel_th_vol <= 0.0)         cfg.sigsel_th_vol = 1.0;
+    if(cfg.sigsel_th_vola <= 0.0)        cfg.sigsel_th_vola = 1.0;
 
-    if(cfg.sigsel_band_rsi < 0.0)   cfg.sigsel_band_rsi   = 5.0;
-    if(cfg.sigsel_band_stoch < 0.0) cfg.sigsel_band_stoch = 5.0;
-    if(cfg.sigsel_th_adx <= 0.0)    cfg.sigsel_th_adx     = 20.0;
+    if(cfg.sigsel_band_rsi < 0.0)        cfg.sigsel_band_rsi = 5.0;
+    if(cfg.sigsel_band_stoch < 0.0)      cfg.sigsel_band_stoch = 5.0;
+    if(cfg.sigsel_th_adx <= 0.0)         cfg.sigsel_th_adx = 20.0;
 
     if(cfg.sigsel_th_atr_min < 0.0) cfg.sigsel_th_atr_min = 0.0;
     if(cfg.sigsel_th_atr_max <= 0.0 || cfg.sigsel_th_atr_max < cfg.sigsel_th_atr_min)
@@ -11396,24 +11430,57 @@ namespace Config
     if(cfg.sigsel_th_sigmagk_max <= 0.0 || cfg.sigsel_th_sigmagk_max < cfg.sigsel_th_sigmagk_min)
        cfg.sigsel_th_sigmagk_max = 10000000000.0;
 
-    if(cfg.sigsel_loc_th_pivot < 0.0)   cfg.sigsel_loc_th_pivot   = 0.0;
-    if(cfg.sigsel_loc_th_sr < 0.0)      cfg.sigsel_loc_th_sr      = 0.0;
-    if(cfg.sigsel_loc_th_fib < 0.0)     cfg.sigsel_loc_th_fib     = 0.0;
+    if(cfg.sigsel_loc_th_pivot < 0.0)   cfg.sigsel_loc_th_pivot = 0.0;
+    if(cfg.sigsel_loc_th_sr < 0.0)      cfg.sigsel_loc_th_sr = 0.0;
+    if(cfg.sigsel_loc_th_fib < 0.0)     cfg.sigsel_loc_th_fib = 0.0;
 
     if(cfg.sigsel_min_category_votes < 1)
        cfg.sigsel_min_category_votes = 3;
     if(cfg.sigsel_min_category_votes > 5)
        cfg.sigsel_min_category_votes = 5;
 
+    if(cfg.sigsel_min_category_votes_default < 1)
+       cfg.sigsel_min_category_votes_default = cfg.sigsel_min_category_votes;
+    if(cfg.sigsel_min_category_votes_default > 5)
+       cfg.sigsel_min_category_votes_default = 5;
+
+    if(cfg.sigsel_min_category_votes_floor < 1)
+       cfg.sigsel_min_category_votes_floor = 1;
+    if(cfg.sigsel_min_category_votes_floor > cfg.sigsel_min_category_votes_default)
+       cfg.sigsel_min_category_votes_floor = cfg.sigsel_min_category_votes_default;
+
+    cfg.sigsel_min_category_votes = cfg.sigsel_min_category_votes_default;
+
     if(cfg.sigsel_min_location_votes < 1)
        cfg.sigsel_min_location_votes = 2;
     if(cfg.sigsel_min_location_votes > 8)
        cfg.sigsel_min_location_votes = 8;
 
+    if(cfg.sigsel_inst_coverage_threshold < 0.0)
+       cfg.sigsel_inst_coverage_threshold = 0.0;
+    if(cfg.sigsel_inst_coverage_threshold > 1.0)
+       cfg.sigsel_inst_coverage_threshold = 1.0;
+
     if(cfg.sigsel_w_orderbook < 0.0)   cfg.sigsel_w_orderbook = 0.0;
     if(cfg.sigsel_w_tradeflow < 0.0)   cfg.sigsel_w_tradeflow = 0.0;
     if(cfg.sigsel_w_impact < 0.0)      cfg.sigsel_w_impact = 0.0;
     if(cfg.sigsel_w_execquality < 0.0) cfg.sigsel_w_execquality = 0.0;
+
+    if(cfg.sigsel_w_proxy_microprice_bias < 0.0)
+       cfg.sigsel_w_proxy_microprice_bias = 0.0;
+    if(cfg.sigsel_w_proxy_auction_bias < 0.0)
+       cfg.sigsel_w_proxy_auction_bias = 0.0;
+    if(cfg.sigsel_w_proxy_composite < 0.0)
+       cfg.sigsel_w_proxy_composite = 0.0;
+
+    if(cfg.sigsel_w_proxy_microprice_bias <= 0.0 &&
+       cfg.sigsel_w_proxy_auction_bias <= 0.0 &&
+       cfg.sigsel_w_proxy_composite <= 0.0)
+    {
+       cfg.sigsel_w_proxy_microprice_bias = 1.0;
+       cfg.sigsel_w_proxy_auction_bias    = 1.0;
+       cfg.sigsel_w_proxy_composite       = 1.0;
+    }
 
     double inst_sf_sum =
        cfg.sigsel_w_orderbook +
@@ -11954,6 +12021,9 @@ namespace Config
     if(cfg.sigsel_inst_selection_mode < INST_SELECTION_ANTI_ECHO_SUBFAMILY || cfg.sigsel_inst_selection_mode > INST_SELECTION_DIRECT_FULL)
        warns += "sigsel_inst_selection_mode out of range; Normalize() will clamp to anti-echo/direct-full.\n";
 
+    if(cfg.sigsel_institutional_degrade_mode < INST_DEGRADE_PROXY_SUBSTITUTE || cfg.sigsel_institutional_degrade_mode > INST_DEGRADE_HARD_BLOCK)
+       warns += "sigsel_institutional_degrade_mode out of range; Normalize() will clamp to a supported degrade mode.\n";
+
     if(cfg.sigsel_fixed_inst_index < 0 || cfg.sigsel_fixed_inst_index >= SIGSEL_INST_CAND_COUNT)
        warns += "sigsel_fixed_inst_index out of range; Normalize() will clamp to the Institutional candidate range.\n";
 
@@ -11972,6 +12042,15 @@ namespace Config
     if(cfg.sigsel_enable && cfg.sigsel_min_category_votes > 5)
        warns += "sigsel_min_category_votes > 5; Normalize() will clamp to 5.\n";
 
+    if(cfg.sigsel_enable && cfg.sigsel_min_category_votes_default > 5)
+       warns += "sigsel_min_category_votes_default > 5; Normalize() will clamp to 5.\n";
+
+    if(cfg.sigsel_min_category_votes_floor < 1)
+       warns += "sigsel_min_category_votes_floor < 1; Normalize() will clamp to 1.\n";
+
+    if(cfg.sigsel_min_category_votes_floor > cfg.sigsel_min_category_votes_default)
+       warns += "sigsel_min_category_votes_floor > sigsel_min_category_votes_default; Normalize() will clamp floor to baseline.\n";
+
     if(cfg.sigsel_enable && cfg.sigsel_min_location_votes > 8)
        warns += "sigsel_min_location_votes > 8; Normalize() will clamp to 8.\n";
 
@@ -11981,12 +12060,25 @@ namespace Config
     if(cfg.sigsel_th_adx <= 0.0)
        warns += "sigsel_th_adx <= 0; Normalize() will restore a safe ADX threshold.\n";
 
+    if(cfg.sigsel_th_inst_proxy <= 0.0)
+       warns += "sigsel_th_inst_proxy <= 0; Normalize() will restore a safe proxy Institutional threshold.\n";
+
+    if(cfg.sigsel_inst_coverage_threshold < 0.0 || cfg.sigsel_inst_coverage_threshold > 1.0)
+       warns += "sigsel_inst_coverage_threshold should be in [0,1]; Normalize() will clamp it.\n";
+
     if(cfg.sigsel_w_orderbook <= 0.0 &&
        cfg.sigsel_w_tradeflow <= 0.0 &&
        cfg.sigsel_w_impact <= 0.0 &&
        cfg.sigsel_w_execquality <= 0.0)
     {
        warns += "all Institutional anti-echo subfamily weights are <= 0; Normalize() will reset them to equal weights.\n";
+    }
+
+    if(cfg.sigsel_w_proxy_microprice_bias <= 0.0 &&
+       cfg.sigsel_w_proxy_auction_bias <= 0.0 &&
+       cfg.sigsel_w_proxy_composite <= 0.0)
+    {
+       warns += "all Institutional proxy weights are <= 0; Normalize() will reset them to equal weights.\n";
     }
 
     #ifdef CFG_HAS_MONTHLY_TARGET
@@ -13307,6 +13399,8 @@ namespace Config
   {
     _ApplyAssetClassPreset_NoNormalize(cfg, CFG_ASSET_PRESET_FX_XAU_OTC);
     _ApplyTruthPolicyPreset_NoNormalize(cfg, CFG_TRUTH_PROXY_ALLOWED_FX);
+    cfg.sigsel_institutional_degrade_mode = INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX;
+    cfg.sigsel_min_category_votes         = cfg.sigsel_min_category_votes_default;
 
 #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
     cfg.allow_live_degraded_inst_fallback = false;
@@ -13332,6 +13426,8 @@ namespace Config
   {
     _ApplyAssetClassPreset_NoNormalize(cfg, CFG_ASSET_PRESET_FUTURES_CLOB);
     _ApplyTruthPolicyPreset_NoNormalize(cfg, CFG_TRUTH_STRICT_INSTITUTIONAL);
+    cfg.sigsel_institutional_degrade_mode = INST_DEGRADE_HARD_BLOCK;
+    cfg.sigsel_min_category_votes         = cfg.sigsel_min_category_votes_default;
 
 #ifdef CFG_HAS_ALLOW_LIVE_DEGRADED_INST_FALLBACK
     cfg.allow_live_degraded_inst_fallback = false;
@@ -19817,6 +19913,7 @@ struct Settings
    bool   sigsel_enable;                // master toggle for signal-stack + location gate
    int    sigsel_selection_mode;        // 0=fixed, 1=dynamic
    int    sigsel_inst_selection_mode;   // 0=anti-echo subfamily, 1=direct-full
+   int    sigsel_institutional_degrade_mode; // ENUM_INST_DEGRADE_MODE stored as int
 
    int    sigsel_fixed_inst_index;
    int    sigsel_fixed_trend_index;
@@ -19825,6 +19922,7 @@ struct Settings
    int    sigsel_fixed_vola_index;
 
    double sigsel_th_inst;
+   double sigsel_th_inst_proxy;
    double sigsel_th_trend;
    double sigsel_th_mom;
    double sigsel_th_vol;
@@ -19858,12 +19956,19 @@ struct Settings
    double sigsel_loc_th_wyckoff;
 
    int    sigsel_min_category_votes;
+   int    sigsel_min_category_votes_default;  // baseline before any degrade relaxation
+   int    sigsel_min_category_votes_floor;    // minimum floor after stack-relax
    int    sigsel_min_location_votes;
+   double sigsel_inst_coverage_threshold;     // InstCoverage below this means partial coverage
 
    double sigsel_w_orderbook;
    double sigsel_w_tradeflow;
    double sigsel_w_impact;
    double sigsel_w_execquality;
+
+   double sigsel_w_proxy_microprice_bias;
+   double sigsel_w_proxy_auction_bias;
+   double sigsel_w_proxy_composite;
 
    string sigsel_inst_weights_csv;      // semicolon-separated
    string sigsel_trend_weights_csv;     // semicolon-separated

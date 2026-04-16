@@ -98,6 +98,20 @@ enum InstitutionalStateVectorSlot
    ISV_VENUE_MIX_ENTROPY     = RAW_VENUE_MIX_ENTROPY,
    ISV_INTERNALISATION_PROXY = RAW_INTERNALISATION_PROXY,
    ISV_QUOTE_FADE            = RAW_QUOTE_FADE,
+
+   ISV_MICROPRICE_BIAS       = RAW_MICROPRICE_BIAS,
+   ISV_AUCTION_BIAS          = RAW_AUCTION_BIAS,
+   ISV_LIQUIDITY_STRESS_PROXY= RAW_LIQUIDITY_STRESS_PROXY,
+   ISV_PROXY_INST_COMPOSITE  = RAW_PROXY_INST_COMPOSITE,
+
+   ISV_INST_COVERAGE         = RAW_INST_COVERAGE,
+   ISV_INST_AVAILABLE        = RAW_INST_AVAILABLE,
+   ISV_INST_PARTIAL          = RAW_INST_PARTIAL,
+   ISV_INST_UNAVAILABLE      = RAW_INST_UNAVAILABLE,
+   ISV_PROXY_INST_AVAILABLE  = RAW_PROXY_INST_AVAILABLE,
+   ISV_INST_SEL_SOURCE       = RAW_INST_SEL_SOURCE,
+   ISV_HARD_INST_BLOCK       = RAW_HARD_INST_BLOCK,
+
    ISV_SD_SCORE              = RAW_SD_SCORE,
    ISV_OB_SCORE              = RAW_OB_SCORE,
    ISV_WYCKOFF_SCORE         = RAW_WYCKOFF_SCORE,
@@ -845,11 +859,12 @@ struct Result
    double raw[ISV_SLOT_COUNT];
    double z[ISV_SLOT_COUNT];
 
-   CategorySelectedVector    cat_sel;
-   CategoryPassVector        cat_pass;
-   BaseContextVector         base_ctx;
-   StructureVector           struct_ctx;
-   AuxContextVector          aux_ctx;
+   CategorySelectedVector     cat_sel;
+   CategoryPassVector         cat_pass;
+   BaseContextVector          base_ctx;
+   StructureVector            struct_ctx;
+   CoverageContextVector      coverage_ctx;
+   AuxContextVector           aux_ctx;
    FinalIntegratedStateVector final_vector;
 
    int    pre_filter;
@@ -901,6 +916,7 @@ struct Result
       cat_pass.Reset();
       base_ctx.Reset();
       struct_ctx.Reset();
+      coverage_ctx.Reset();
       aux_ctx.Reset();
       final_vector.Reset();
 
@@ -960,6 +976,181 @@ inline void NormalizeRawVector(const BuildConfig &cfg,
    rt.last_bar_time = bar_time;
 }
 
+inline int ListHasEligibleCandidate(const int &candidate_list[],
+                                    const bool &eligible_mask[])
+{
+   const int count = ArraySize(candidate_list);
+   for(int i = 0; i < count; i++)
+   {
+      const int raw_index = candidate_list[i];
+      if(raw_index >= 0 && raw_index < ISV_SLOT_COUNT && eligible_mask[raw_index])
+         return 1;
+   }
+   return 0;
+}
+
+inline void BuildCanonicalEligibilityMask(const BuildConfig &bcfg,
+                                          const Result &res,
+                                          const double &raw[],
+                                          bool &eligible_mask[])
+{
+   ArrayResize(eligible_mask, ISV_SLOT_COUNT);
+
+   for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      eligible_mask[i] = IsFinite(raw[i]);
+
+   const double source_quality01 = Clamp01(MathMax(res.observability01, res.ms.state_quality01));
+   const double flow_quality01   = Clamp01(MathMax(res.ms.flow_confidence01, source_quality01));
+
+   const bool direct_dom_ok      = (!res.dom_proxy_used  && source_quality01 >= bcfg.min_state_quality01);
+   const bool direct_flow_ok     = (!res.flow_proxy_used && flow_quality01   >= bcfg.min_state_quality01);
+   const bool direct_impact_ok   = (direct_dom_ok && direct_flow_ok);
+   const bool direct_exec_ok     = (direct_dom_ok && direct_flow_ok && !res.profile_proxy_used);
+
+   if(!direct_dom_ok)
+   {
+      eligible_mask[ISV_DOM_BID_K]      = false;
+      eligible_mask[ISV_DOM_ASK_K]      = false;
+      eligible_mask[ISV_DOM_TOT_K]      = false;
+      eligible_mask[ISV_DOM_SKEW_K]     = false;
+      eligible_mask[ISV_DOM_PRESSURE_K] = false;
+      eligible_mask[ISV_OBI_1]          = false;
+      eligible_mask[ISV_OBI_K]          = false;
+   }
+
+   if(!direct_flow_ok)
+   {
+      eligible_mask[ISV_BUY_FLOW]    = false;
+      eligible_mask[ISV_SELL_FLOW]   = false;
+      eligible_mask[ISV_NET_FLOW]    = false;
+      eligible_mask[ISV_FLOW_IMB]    = false;
+      eligible_mask[ISV_SIGNED_FLOW] = false;
+      eligible_mask[ISV_CVD]         = false;
+      eligible_mask[ISV_DELTA_CVD]   = false;
+      eligible_mask[ISV_OFI]         = false;
+   }
+
+   if(!direct_impact_ok)
+   {
+      eligible_mask[ISV_BETA_T]   = false;
+      eligible_mask[ISV_LAMBDA_T] = false;
+      eligible_mask[ISV_IMPACT_Q] = false;
+   }
+
+   if(!direct_exec_ok)
+   {
+      eligible_mask[ISV_VPIN]                  = false;
+      eligible_mask[ISV_ABS_PLUS]              = false;
+      eligible_mask[ISV_ABS_MINUS]             = false;
+      eligible_mask[ISV_REPL_BID]              = false;
+      eligible_mask[ISV_REPL_ASK]              = false;
+      eligible_mask[ISV_RESIL_T]               = false;
+      eligible_mask[ISV_POV_GAP]               = false;
+      eligible_mask[ISV_DP_SHARE]              = false;
+      eligible_mask[ISV_ATS_SHARE]             = false;
+      eligible_mask[ISV_VENUE_MIX_ENTROPY]     = false;
+      eligible_mask[ISV_INTERNALISATION_PROXY] = false;
+      eligible_mask[ISV_QUOTE_FADE]            = false;
+      eligible_mask[ISV_TPO_STATE]             = false;
+   }
+
+   if(res.footprint_proxy_used)
+   {
+      eligible_mask[ISV_FOOTPRINT_DELTA]   = false;
+      eligible_mask[ISV_STACKED_IMBALANCE] = false;
+   }
+}
+
+inline void BuildCanonicalValidityMask(const BuildConfig &bcfg,
+                                       const Result &res,
+                                       const double &raw[],
+                                       const double &z[],
+                                       bool &valid_mask[])
+{
+   BuildCanonicalEligibilityMask(bcfg, res, raw, valid_mask);
+
+   for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      valid_mask[i] = (valid_mask[i] && IsFinite(z[i]));
+}
+
+inline void SeedCoverageRawStateFromEligibilityMask(const Settings &cfg,
+                                                    const bool &eligible_mask[],
+                                                    Result &out)
+{
+   int ob_candidates[];
+   int tf_candidates[];
+   int imp_candidates[];
+   int eq_candidates[];
+   int proxy_candidates[];
+
+   SigSel_GetInstitutionalOrderBookCandidates(ob_candidates);
+   SigSel_GetInstitutionalTradeFlowCandidates(tf_candidates);
+   SigSel_GetInstitutionalImpactCandidates(imp_candidates);
+   SigSel_GetInstitutionalExecQualityCandidates(eq_candidates);
+   SigSel_GetInstitutionalProxyCandidates(proxy_candidates);
+
+   const int subavail_ob = ListHasEligibleCandidate(ob_candidates, eligible_mask);
+   const int subavail_tf = ListHasEligibleCandidate(tf_candidates, eligible_mask);
+   const int subavail_imp = ListHasEligibleCandidate(imp_candidates, eligible_mask);
+   const int subavail_eq = ListHasEligibleCandidate(eq_candidates, eligible_mask);
+
+   double w_ob  = cfg.sigsel_w_orderbook;
+   double w_tf  = cfg.sigsel_w_tradeflow;
+   double w_imp = cfg.sigsel_w_impact;
+   double w_eq  = cfg.sigsel_w_execquality;
+
+   if(w_ob < 0.0)  w_ob = 0.0;
+   if(w_tf < 0.0)  w_tf = 0.0;
+   if(w_imp < 0.0) w_imp = 0.0;
+   if(w_eq < 0.0)  w_eq = 0.0;
+
+   double den = w_ob + w_tf + w_imp + w_eq;
+   if(den <= 0.0)
+   {
+      w_ob = 1.0;
+      w_tf = 1.0;
+      w_imp = 1.0;
+      w_eq = 1.0;
+      den = 4.0;
+   }
+
+   const double inst_coverage =
+      (w_ob  * (double)subavail_ob +
+       w_tf  * (double)subavail_tf +
+       w_imp * (double)subavail_imp +
+       w_eq  * (double)subavail_eq) / den;
+
+   const int inst_available =
+      ((subavail_ob == 1) || (subavail_tf == 1) || (subavail_imp == 1) || (subavail_eq == 1) ? 1 : 0);
+
+   const int inst_unavailable = (inst_available == 1 ? 0 : 1);
+   const int inst_partial =
+      ((inst_available == 1) && (inst_coverage < cfg.sigsel_inst_coverage_threshold) ? 1 : 0);
+
+   const int proxy_inst_available = ListHasEligibleCandidate(proxy_candidates, eligible_mask);
+
+   out.raw[ISV_INST_COVERAGE]        = inst_coverage;
+   out.raw[ISV_INST_AVAILABLE]       = (double)inst_available;
+   out.raw[ISV_INST_PARTIAL]         = (double)inst_partial;
+   out.raw[ISV_INST_UNAVAILABLE]     = (double)inst_unavailable;
+   out.raw[ISV_PROXY_INST_AVAILABLE] = (double)proxy_inst_available;
+
+   out.raw[ISV_INST_SEL_SOURCE]      = 0.0;
+   out.raw[ISV_HARD_INST_BLOCK]      = 0.0;
+}
+
+inline void PublishCoverageAndDegradeStateToRawBank(const CategoryPassVector &passv,
+                                                    Result &out)
+{
+   out.raw[ISV_INST_COVERAGE]        = passv.inst_coverage;
+   out.raw[ISV_INST_AVAILABLE]       = (double)passv.inst_available;
+   out.raw[ISV_INST_PARTIAL]         = (double)passv.inst_partial;
+   out.raw[ISV_INST_UNAVAILABLE]     = (double)passv.inst_unavailable;
+   out.raw[ISV_PROXY_INST_AVAILABLE] = (double)passv.proxy_inst_available;
+   out.raw[ISV_INST_SEL_SOURCE]      = (double)passv.inst_sel_source;
+   out.raw[ISV_HARD_INST_BLOCK]      = (double)passv.hard_inst_block;
+}
+
 inline void ComputeCategorySelection(const Settings &cfg,
                                      const double &raw[],
                                      const double &z[],
@@ -976,6 +1167,7 @@ inline void ComputeCategorySelection(const Settings &cfg,
 inline void ComputeCategoryPasses(const Settings &cfg,
                                   const double &raw[],
                                   const double &z[],
+                                  const bool &valid_mask[],
                                   const int dir_t,
                                   const double plus_di,
                                   const double minus_di,
@@ -984,6 +1176,7 @@ inline void ComputeCategoryPasses(const Settings &cfg,
 {
    out_pass = CategorySelector::ComputeCategoryPasses(sel,
                                                       z,
+                                                      valid_mask,
                                                       cfg,
                                                       dir_t,
                                                       raw,
@@ -991,15 +1184,19 @@ inline void ComputeCategoryPasses(const Settings &cfg,
                                                       minus_di);
 }
 
-inline void FillIntegratedContextVectors(const double &z[],
+inline void FillIntegratedContextVectors(const CategoryPassVector &passv,
+                                         const double &z[],
                                          const double &raw[],
                                          BaseContextVector &base_ctx,
                                          StructureVector &struct_ctx,
+                                         CoverageContextVector &coverage_ctx,
                                          AuxContextVector &aux_ctx)
 {
    CategorySelector::ComputeContextVectors(base_ctx,
                                            struct_ctx,
+                                           coverage_ctx,
                                            aux_ctx,
+                                           passv,
                                            z,
                                            raw);
 }
@@ -1026,6 +1223,8 @@ inline void BuildHeads(const Settings &cfg,
       out.pre_filter = (cfg.sigsel_enable ? 0 : 1);
       out.exec_pass = 0;
       out.risk_pass = 0;
+      out.signal_stack_gate = 0;
+      out.location_pass_flag = 0;
       out.trade_gate = false;
       out.size01 = 0.0;
 
@@ -1047,36 +1246,53 @@ inline void BuildHeads(const Settings &cfg,
    const int IDX_SEL_VOL    = 9;
    const int IDX_SEL_VOLA   = 10;
 
-   const int IDX_PASS_INST  = 11;
-   const int IDX_PASS_TREND = 12;
-   const int IDX_PASS_MOM   = 13;
-   const int IDX_PASS_VOL   = 14;
-   const int IDX_PASS_VOLA  = 15;
-   const int IDX_PASS_STACK = 16;
-   const int IDX_GATE_STACK = 17;
-   const int IDX_SCORE_LOC  = 18;
-   const int IDX_GATE_LOC   = 19;
+   const int IDX_PASS_INST              = 11;
+   const int IDX_PASS_TREND             = 12;
+   const int IDX_PASS_MOM               = 13;
+   const int IDX_PASS_VOL               = 14;
+   const int IDX_PASS_VOLA              = 15;
+   const int IDX_PASS_STACK_SCORE       = 16;
+   const int IDX_PASS_MIN_CATEGORY      = 17;
+   const int IDX_GATE_STACK             = 18;
+   const int IDX_SCORE_LOC              = 19;
+   const int IDX_GATE_LOC               = 20;
+   const int IDX_PASS_INST_COVERAGE     = 21;
+   const int IDX_PASS_INST_AVAILABLE    = 22;
+   const int IDX_PASS_INST_PARTIAL      = 23;
+   const int IDX_PASS_INST_UNAVAILABLE  = 24;
+   const int IDX_PASS_PROXY_AVAILABLE   = 25;
+   const int IDX_PASS_INST_SEL_SOURCE   = 26;
+   const int IDX_PASS_HARD_INST_BLOCK   = 27;
 
-   const int IDX_STRUCT_SWEEP       = 20;
-   const int IDX_STRUCT_SPREAD      = 21;
-   const int IDX_STRUCT_SLIPPAGE    = 22;
-   const int IDX_STRUCT_DEPTHFADE   = 23;
-   const int IDX_STRUCT_SD          = 24;
-   const int IDX_STRUCT_OB          = 25;
-   const int IDX_STRUCT_WYCKOFF     = 26;
-   const int IDX_STRUCT_FVG         = 27;
-   const int IDX_STRUCT_PIVOT       = 28;
-   const int IDX_STRUCT_SR          = 29;
-   const int IDX_STRUCT_FIB         = 30;
-   const int IDX_STRUCT_TRENDSLOPE  = 31;
+   const int IDX_STRUCT_SWEEP           = 28;
+   const int IDX_STRUCT_SPREAD          = 29;
+   const int IDX_STRUCT_SLIPPAGE        = 30;
+   const int IDX_STRUCT_DEPTHFADE       = 31;
+   const int IDX_STRUCT_SD              = 32;
+   const int IDX_STRUCT_OB              = 33;
+   const int IDX_STRUCT_WYCKOFF         = 34;
+   const int IDX_STRUCT_FVG             = 35;
+   const int IDX_STRUCT_PIVOT           = 36;
+   const int IDX_STRUCT_SR              = 37;
+   const int IDX_STRUCT_FIB             = 38;
+   const int IDX_STRUCT_TRENDSLOPE      = 39;
 
-   const int IDX_AUX_POV            = 32;
-   const int IDX_AUX_DPSHARE        = 33;
-   const int IDX_AUX_ATSSHARE       = 34;
-   const int IDX_AUX_VENUEENT       = 35;
-   const int IDX_AUX_INTERNAL       = 36;
-   const int IDX_AUX_QUOTEFADE      = 37;
-   const int IDX_AUX_RHO            = 38;
+   const int IDX_COV_INST_COVERAGE_Z    = 40;
+   const int IDX_COV_INST_AVAILABLE     = 41;
+   const int IDX_COV_INST_PARTIAL       = 42;
+   const int IDX_COV_INST_UNAVAILABLE   = 43;
+   const int IDX_COV_PROXY_AVAILABLE    = 44;
+   const int IDX_COV_INST_SEL_SOURCE    = 45;
+   const int IDX_COV_HARD_INST_BLOCK    = 46;
+   const int IDX_COV_EFFECTIVE_MINVOTES = 47;
+
+   const int IDX_AUX_POV                = 48;
+   const int IDX_AUX_DPSHARE            = 49;
+   const int IDX_AUX_ATSSHARE           = 50;
+   const int IDX_AUX_VENUEENT           = 51;
+   const int IDX_AUX_INTERNAL           = 52;
+   const int IDX_AUX_QUOTEFADE          = 53;
+   const int IDX_AUX_RHO                = 54;
 
    double w_alpha[SIGSEL_FINAL_VECTOR_MAX];
    double w_exec[SIGSEL_FINAL_VECTOR_MAX];
@@ -1091,15 +1307,22 @@ inline void BuildHeads(const Settings &cfg,
    w_alpha[IDX_SEL_VOL]    = 0.12;
    w_alpha[IDX_SEL_VOLA]   = 0.08;
 
-   w_alpha[IDX_PASS_INST]  = 0.07;
-   w_alpha[IDX_PASS_TREND] = 0.06;
-   w_alpha[IDX_PASS_MOM]   = 0.05;
-   w_alpha[IDX_PASS_VOL]   = 0.05;
-   w_alpha[IDX_PASS_VOLA]  = 0.04;
-   w_alpha[IDX_PASS_STACK] = 0.06;
-   w_alpha[IDX_GATE_STACK] = 0.10;
-   w_alpha[IDX_SCORE_LOC]  = 0.05;
-   w_alpha[IDX_GATE_LOC]   = 0.10;
+   w_alpha[IDX_PASS_INST]         = 0.07;
+   w_alpha[IDX_PASS_TREND]        = 0.06;
+   w_alpha[IDX_PASS_MOM]          = 0.05;
+   w_alpha[IDX_PASS_VOL]          = 0.05;
+   w_alpha[IDX_PASS_VOLA]         = 0.04;
+   w_alpha[IDX_PASS_STACK_SCORE]  = 0.06;
+   w_alpha[IDX_GATE_STACK]        = 0.10;
+   w_alpha[IDX_SCORE_LOC]         = 0.05;
+   w_alpha[IDX_GATE_LOC]          = 0.10;
+   w_alpha[IDX_PASS_INST_COVERAGE]= 0.04;
+   w_alpha[IDX_PASS_INST_AVAILABLE]   = 0.02;
+   w_alpha[IDX_PASS_INST_PARTIAL]     = -0.03;
+   w_alpha[IDX_PASS_INST_UNAVAILABLE] = -0.06;
+   w_alpha[IDX_PASS_PROXY_AVAILABLE]  = 0.01;
+   w_alpha[IDX_PASS_INST_SEL_SOURCE]  = 0.03;
+   w_alpha[IDX_PASS_HARD_INST_BLOCK]  = -0.25;
 
    w_alpha[IDX_STRUCT_SWEEP]      = 0.10;
    w_alpha[IDX_STRUCT_SPREAD]     = -0.08;
@@ -1113,6 +1336,14 @@ inline void BuildHeads(const Settings &cfg,
    w_alpha[IDX_STRUCT_SR]         = -0.04;
    w_alpha[IDX_STRUCT_FIB]        = -0.04;
    w_alpha[IDX_STRUCT_TRENDSLOPE] = 0.05;
+
+   w_alpha[IDX_COV_INST_COVERAGE_Z]  = 0.03;
+   w_alpha[IDX_COV_INST_AVAILABLE]   = 0.01;
+   w_alpha[IDX_COV_INST_PARTIAL]     = -0.02;
+   w_alpha[IDX_COV_INST_UNAVAILABLE] = -0.04;
+   w_alpha[IDX_COV_PROXY_AVAILABLE]  = 0.01;
+   w_alpha[IDX_COV_INST_SEL_SOURCE]  = 0.02;
+   w_alpha[IDX_COV_HARD_INST_BLOCK]  = -0.18;
 
    if(!fv.compact_mode)
    {
@@ -1131,15 +1362,22 @@ inline void BuildHeads(const Settings &cfg,
    w_exec[IDX_SEL_VOL]    = 0.03;
    w_exec[IDX_SEL_VOLA]   = 0.10;
 
-   w_exec[IDX_PASS_INST]  = 0.06;
-   w_exec[IDX_PASS_TREND] = 0.04;
-   w_exec[IDX_PASS_MOM]   = 0.03;
-   w_exec[IDX_PASS_VOL]   = 0.03;
-   w_exec[IDX_PASS_VOLA]  = 0.02;
-   w_exec[IDX_PASS_STACK] = 0.05;
-   w_exec[IDX_GATE_STACK] = 0.10;
-   w_exec[IDX_SCORE_LOC]  = 0.04;
-   w_exec[IDX_GATE_LOC]   = 0.08;
+   w_exec[IDX_PASS_INST]         = 0.06;
+   w_exec[IDX_PASS_TREND]        = 0.04;
+   w_exec[IDX_PASS_MOM]          = 0.03;
+   w_exec[IDX_PASS_VOL]          = 0.03;
+   w_exec[IDX_PASS_VOLA]         = 0.02;
+   w_exec[IDX_PASS_STACK_SCORE]  = 0.05;
+   w_exec[IDX_GATE_STACK]        = 0.10;
+   w_exec[IDX_SCORE_LOC]         = 0.04;
+   w_exec[IDX_GATE_LOC]          = 0.08;
+   w_exec[IDX_PASS_INST_COVERAGE]= 0.03;
+   w_exec[IDX_PASS_INST_AVAILABLE]   = 0.02;
+   w_exec[IDX_PASS_INST_PARTIAL]     = -0.04;
+   w_exec[IDX_PASS_INST_UNAVAILABLE] = -0.06;
+   w_exec[IDX_PASS_PROXY_AVAILABLE]  = 0.01;
+   w_exec[IDX_PASS_INST_SEL_SOURCE]  = 0.02;
+   w_exec[IDX_PASS_HARD_INST_BLOCK]  = -0.30;
 
    w_exec[IDX_STRUCT_SWEEP]      = 0.04;
    w_exec[IDX_STRUCT_SPREAD]     = -0.14;
@@ -1153,6 +1391,14 @@ inline void BuildHeads(const Settings &cfg,
    w_exec[IDX_STRUCT_SR]         = -0.03;
    w_exec[IDX_STRUCT_FIB]        = -0.03;
    w_exec[IDX_STRUCT_TRENDSLOPE] = 0.03;
+
+   w_exec[IDX_COV_INST_COVERAGE_Z]  = 0.02;
+   w_exec[IDX_COV_INST_AVAILABLE]   = 0.01;
+   w_exec[IDX_COV_INST_PARTIAL]     = -0.03;
+   w_exec[IDX_COV_INST_UNAVAILABLE] = -0.05;
+   w_exec[IDX_COV_PROXY_AVAILABLE]  = 0.01;
+   w_exec[IDX_COV_INST_SEL_SOURCE]  = 0.01;
+   w_exec[IDX_COV_HARD_INST_BLOCK]  = -0.25;
 
    if(!fv.compact_mode)
    {
@@ -1171,15 +1417,22 @@ inline void BuildHeads(const Settings &cfg,
    w_risk[IDX_SEL_VOL]    = 0.03;
    w_risk[IDX_SEL_VOLA]   = 0.08;
 
-   w_risk[IDX_PASS_INST]  = -0.03;
-   w_risk[IDX_PASS_TREND] = -0.03;
-   w_risk[IDX_PASS_MOM]   = -0.02;
-   w_risk[IDX_PASS_VOL]   = -0.02;
-   w_risk[IDX_PASS_VOLA]  = -0.02;
-   w_risk[IDX_PASS_STACK] = -0.03;
-   w_risk[IDX_GATE_STACK] = -0.08;
-   w_risk[IDX_SCORE_LOC]  = -0.02;
-   w_risk[IDX_GATE_LOC]   = -0.08;
+   w_risk[IDX_PASS_INST]         = -0.03;
+   w_risk[IDX_PASS_TREND]        = -0.03;
+   w_risk[IDX_PASS_MOM]          = -0.02;
+   w_risk[IDX_PASS_VOL]          = -0.02;
+   w_risk[IDX_PASS_VOLA]         = -0.02;
+   w_risk[IDX_PASS_STACK_SCORE]  = -0.03;
+   w_risk[IDX_GATE_STACK]        = -0.08;
+   w_risk[IDX_SCORE_LOC]         = -0.02;
+   w_risk[IDX_GATE_LOC]          = -0.08;
+   w_risk[IDX_PASS_INST_COVERAGE]= -0.03;
+   w_risk[IDX_PASS_INST_AVAILABLE]   = -0.02;
+   w_risk[IDX_PASS_INST_PARTIAL]     = 0.04;
+   w_risk[IDX_PASS_INST_UNAVAILABLE] = 0.06;
+   w_risk[IDX_PASS_PROXY_AVAILABLE]  = 0.01;
+   w_risk[IDX_PASS_INST_SEL_SOURCE]  = -0.02;
+   w_risk[IDX_PASS_HARD_INST_BLOCK]  = 0.25;
 
    w_risk[IDX_STRUCT_SWEEP]      = 0.04;
    w_risk[IDX_STRUCT_SPREAD]     = 0.14;
@@ -1193,6 +1446,14 @@ inline void BuildHeads(const Settings &cfg,
    w_risk[IDX_STRUCT_SR]         = 0.04;
    w_risk[IDX_STRUCT_FIB]        = 0.04;
    w_risk[IDX_STRUCT_TRENDSLOPE] = 0.02;
+
+   w_risk[IDX_COV_INST_COVERAGE_Z]  = -0.02;
+   w_risk[IDX_COV_INST_AVAILABLE]   = -0.01;
+   w_risk[IDX_COV_INST_PARTIAL]     = 0.03;
+   w_risk[IDX_COV_INST_UNAVAILABLE] = 0.05;
+   w_risk[IDX_COV_PROXY_AVAILABLE]  = 0.01;
+   w_risk[IDX_COV_INST_SEL_SOURCE]  = -0.01;
+   w_risk[IDX_COV_HARD_INST_BLOCK]  = 0.20;
 
    if(!fv.compact_mode)
    {
@@ -1234,9 +1495,16 @@ inline void BuildHeads(const Settings &cfg,
    out.risk_pass = (out.risk_raw < bcfg.theta_risk ? 1 : 0);
 
    if(cfg.sigsel_enable)
-      out.pre_filter = ((out.cat_pass.signal_stack_gate > 0 && out.cat_pass.location_pass > 0) ? 1 : 0);
+   {
+      out.pre_filter =
+         ((out.cat_pass.hard_inst_block == 0) &&
+          (out.cat_pass.signal_stack_gate > 0) &&
+          (out.cat_pass.location_pass > 0) ? 1 : 0);
+   }
    else
+   {
       out.pre_filter = 1;
+   }
 
    out.signal_stack_gate = out.cat_pass.signal_stack_gate;
    out.location_pass_flag = out.cat_pass.location_pass;
@@ -1285,11 +1553,11 @@ inline void FillSnapshotNamedFields(Result &out)
    out.snap.momentum_trend_z      = 0.35 * out.z[ISV_MACD] + 0.25 * out.z[ISV_MACD_HIST] + 0.20 * out.z[ISV_ROC] + 0.20 * out.z[ISV_TREND_SLOPE];
    out.snap.correlation_context_z = out.z[ISV_RHO];
 
-   // Signal-stack transport is published through Result fields:
+   // Signal-stack / degrade transport is published through Result fields:
    // out.cat_sel, out.cat_pass, out.base_ctx, out.struct_ctx,
-   // out.aux_ctx, out.final_vector, out.pre_filter.
-   // Do not write non-existent out.snap stack fields here unless
-   // InstitutionalStateSnapshot is extended in its owning file.
+   // out.coverage_ctx, out.aux_ctx, out.final_vector, out.pre_filter.
+   // Bind explicit out.snap degrade fields only after InstitutionalStateSnapshot
+   // and its owning bind helpers are extended in their owner file.
 }
 
 inline bool Build(const string sym,
@@ -2028,6 +2296,24 @@ inline bool Build(const string sym,
    if(depth_fade_raw == 0.0)
       depth_fade_raw = (out.ms.depth_fade_z != 0.0 ? MathAbs(out.ms.depth_fade_z) : 0.0);
 
+   const double microprice_bias_raw =
+      SafeDiv((micro - mid), spread, 0.0);
+
+   const double auction_bias_raw =
+      0.50 * va_state_raw + 0.50 * tpo_state_raw;
+
+   const double liquidity_stress_proxy_raw =
+      -(
+         MathMax(spread_shock_raw, 0.0) +
+         MathMax(depth_fade_raw, 0.0) +
+         MathAbs(slippage_proxy)
+       ) / 3.0;
+
+   const double proxy_inst_composite_raw =
+      0.50 * microprice_bias_raw +
+      0.50 * auction_bias_raw +
+      liquidity_stress_proxy_raw;
+
    // -----------------------------------------------------------------------
    // 15) Raw vector publish in exact requested order.
    // -----------------------------------------------------------------------
@@ -2107,6 +2393,20 @@ inline bool Build(const string sym,
    out.raw[ISV_VENUE_MIX_ENTROPY] = venue_mix_entropy_raw;
    out.raw[ISV_INTERNALISATION_PROXY] = internalisation_proxy_raw;
    out.raw[ISV_QUOTE_FADE] = quote_fade_raw;
+
+   out.raw[ISV_MICROPRICE_BIAS] = microprice_bias_raw;
+   out.raw[ISV_AUCTION_BIAS] = auction_bias_raw;
+   out.raw[ISV_LIQUIDITY_STRESS_PROXY] = liquidity_stress_proxy_raw;
+   out.raw[ISV_PROXY_INST_COMPOSITE] = proxy_inst_composite_raw;
+
+   out.raw[ISV_INST_COVERAGE] = 0.0;
+   out.raw[ISV_INST_AVAILABLE] = 0.0;
+   out.raw[ISV_INST_PARTIAL] = 0.0;
+   out.raw[ISV_INST_UNAVAILABLE] = 0.0;
+   out.raw[ISV_PROXY_INST_AVAILABLE] = 0.0;
+   out.raw[ISV_INST_SEL_SOURCE] = 0.0;
+   out.raw[ISV_HARD_INST_BLOCK] = 0.0;
+
    out.raw[ISV_SD_SCORE] = sd_score_raw;
    out.raw[ISV_OB_SCORE] = ob_score_raw;
    out.raw[ISV_WYCKOFF_SCORE] = wyckoff_score_raw;
@@ -2126,56 +2426,73 @@ inline bool Build(const string sym,
    out.raw[ISV_TREND_SLOPE] = trend_slope_raw;
 
    // -----------------------------------------------------------------------
-   // 16) Single normalization policy z(x) over rolling windows.
+   // 16) Seed coverage / degrade raw slots before normalization.
+   // -----------------------------------------------------------------------
+   bool eligibility_mask[];
+   BuildCanonicalEligibilityMask(bcfg, out, out.raw, eligibility_mask);
+   SeedCoverageRawStateFromEligibilityMask(cfg, eligibility_mask, out);
+
+   // -----------------------------------------------------------------------
+   // 17) Single normalization policy z(x) over rolling windows.
    // -----------------------------------------------------------------------
    NormalizeRawVector(bcfg, rt, bar_time, out.raw, out.z);
 
    bool valid_mask[];
-   ArrayResize(valid_mask, ISV_SLOT_COUNT);
-
-   for(int i = 0; i < ISV_SLOT_COUNT; i++)
-      valid_mask[i] = (IsFinite(out.raw[i]) && IsFinite(out.z[i]));
+   BuildCanonicalValidityMask(bcfg, out, out.raw, out.z, valid_mask);
 
    out.direction_dir11 = DetermineDirectionFromRawBank(out.raw, close0, open0);
 
-ComputeCategorySelection(cfg,
+   ComputeCategorySelection(cfg,
+                            out.raw,
+                            out.z,
+                            valid_mask,
+                            out.cat_sel);
+
+   ComputeCategoryPasses(cfg,
                          out.raw,
                          out.z,
                          valid_mask,
-                         out.cat_sel);
+                         out.direction_dir11,
+                         plus_di_raw,
+                         minus_di_raw,
+                         out.cat_sel,
+                         out.cat_pass);
 
-ComputeCategoryPasses(cfg,
-                      out.raw,
-                      out.z,
-                      out.direction_dir11,
-                      plus_di_raw,
-                      minus_di_raw,
-                      out.cat_sel,
-                      out.cat_pass);
+   PublishCoverageAndDegradeStateToRawBank(out.cat_pass, out);
 
-FillIntegratedContextVectors(out.z,
-                             out.raw,
-                             out.base_ctx,
-                             out.struct_ctx,
-                             out.aux_ctx);
+   FillIntegratedContextVectors(out.cat_pass,
+                                out.z,
+                                out.raw,
+                                out.base_ctx,
+                                out.struct_ctx,
+                                out.coverage_ctx,
+                                out.aux_ctx);
 
-out.signal_stack_gate = out.cat_pass.signal_stack_gate;
-out.location_pass_flag = out.cat_pass.location_pass;
+   out.signal_stack_gate = out.cat_pass.signal_stack_gate;
+   out.location_pass_flag = out.cat_pass.location_pass;
 
-if(cfg.sigsel_enable)
-   out.pre_filter = ((out.signal_stack_gate > 0 && out.location_pass_flag > 0) ? 1 : 0);
-else
-   out.pre_filter = 1;
+   if(cfg.sigsel_enable)
+   {
+      out.pre_filter =
+         ((out.cat_pass.hard_inst_block == 0) &&
+          (out.signal_stack_gate > 0) &&
+          (out.location_pass_flag > 0) ? 1 : 0);
+   }
+   else
+   {
+      out.pre_filter = 1;
+   }
 
-out.final_vector = CategorySelector::AssembleFinalVector(out.cat_sel,
-                                                         out.cat_pass,
-                                                         out.base_ctx,
-                                                         out.struct_ctx,
-                                                         out.aux_ctx,
-                                                         cfg);
+   out.final_vector = CategorySelector::AssembleFinalVector(out.cat_sel,
+                                                            out.cat_pass,
+                                                            out.base_ctx,
+                                                            out.struct_ctx,
+                                                            out.coverage_ctx,
+                                                            out.aux_ctx,
+                                                            cfg);
 
    // -----------------------------------------------------------------------
-   // 17) Snapshot / head publish.
+   // 18) Snapshot / head publish.
    // -----------------------------------------------------------------------
    out.observability01 = MathMax(out.observability01, Clamp01(0.50 * out.venue_coverage01 + 0.50 * out.ms.state_quality01));
    out.observability_penalty01 = Clamp01(1.0 - out.observability01);

@@ -683,40 +683,41 @@ inline bool _WithinLocalWindowMins(const int open_min, const int close_min, cons
 // ----------------------------------------------------------------------------
 enum PolicyBlockCode
 {
-  POLICY_OK                     = 0,
-  POLICY_SESSION_OFF            = 1,
-  POLICY_NEWS_BLOCK             = 2,
-  POLICY_MAX_LOSSES             = 3,
-  POLICY_MAX_TRADES             = 4,
-  POLICY_SPREAD_HIGH            = 5,
-  POLICY_COOLDOWN               = 6,
-  POLICY_MONTH_TARGET           = 7,
-  POLICY_MOD_SPREAD_HIGH        = 8,
-  POLICY_DAILY_DD               = 9,
-  POLICY_ACCOUNT_DD             = 10,
-  POLICY_VOLATILITY             = 11,
-  POLICY_REGIME_FAIL            = 12,
-  POLICY_CALM_MARKET            = 13,
-  POLICY_DAYLOSS_STOP           = 14,
-  POLICY_LIQUIDITY_FAIL         = 15,
-  POLICY_CONFLICT               = 16,
-  POLICY_ADR_CAP                = 17,
-  POLICY_INSTITUTIONAL_GATE     = 18,
-  POLICY_MICRO_VPIN             = 19,
-  POLICY_SB_NOT_IN_WINDOW       = 20,
-  POLICY_SB_ALREADY_USED        = 21,
-  POLICY_MICRO_RESILIENCY       = 22,
-  POLICY_MICRO_OBSERVABILITY    = 23,
-  POLICY_MICRO_VENUE            = 24,
-  POLICY_MICRO_IMPACT           = 25,
-  POLICY_MICRO_DARKPOOL         = 26,
-  POLICY_SM_INVALIDATION        = 27,
-  POLICY_LIQUIDITY_TRAP         = 28,
+  POLICY_OK                      = 0,
+  POLICY_SESSION_OFF             = 1,
+  POLICY_NEWS_BLOCK              = 2,
+  POLICY_MAX_LOSSES              = 3,
+  POLICY_MAX_TRADES              = 4,
+  POLICY_SPREAD_HIGH             = 5,
+  POLICY_COOLDOWN                = 6,
+  POLICY_MONTH_TARGET            = 7,
+  POLICY_MOD_SPREAD_HIGH         = 8,
+  POLICY_DAILY_DD                = 9,
+  POLICY_ACCOUNT_DD              = 10,
+  POLICY_VOLATILITY              = 11,
+  POLICY_REGIME_FAIL             = 12,
+  POLICY_CALM_MARKET             = 13,
+  POLICY_DAYLOSS_STOP            = 14,
+  POLICY_LIQUIDITY_FAIL          = 15,
+  POLICY_CONFLICT                = 16,
+  POLICY_ADR_CAP                 = 17,
+  POLICY_INSTITUTIONAL_GATE      = 18,
+  POLICY_MICRO_VPIN              = 19,
+  POLICY_SB_NOT_IN_WINDOW        = 20,
+  POLICY_SB_ALREADY_USED         = 21,
+  POLICY_MICRO_RESILIENCY        = 22,
+  POLICY_MICRO_OBSERVABILITY     = 23,
+  POLICY_MICRO_VENUE             = 24,
+  POLICY_MICRO_IMPACT            = 25,
+  POLICY_MICRO_DARKPOOL          = 26,
+  POLICY_SM_INVALIDATION         = 27,
+  POLICY_LIQUIDITY_TRAP          = 28,
   POLICY_MICRO_QUOTE_INSTABILITY = 29,
   POLICY_MICRO_THIN_LIQUIDITY    = 30,
   POLICY_MICRO_TOXICITY          = 31,
   POLICY_MICRO_SPREAD_STRESS     = 32,
   POLICY_MICRO_TRUTH             = 33,
+  POLICY_INST_HARD_BLOCK         = 34,
   POLICY_BLOCKED_OTHER           = 99
 };
 
@@ -755,7 +756,8 @@ namespace Policies
     GATE_MICRO_THIN_LIQUIDITY    = 37,
     GATE_MICRO_TOXICITY          = 38,
     GATE_MICRO_SPREAD_STRESS     = 39,
-    GATE_MICRO_TRUTH             = 40
+    GATE_MICRO_TRUTH             = 40,
+    GATE_INST_HARD_BLOCK         = 41
   };
 
   inline string ReasonString(const int r)
@@ -792,8 +794,8 @@ namespace Policies
       case GATE_MICRO_THIN_LIQUIDITY:    return "MICRO_THIN_LIQUIDITY";
       case GATE_MICRO_TOXICITY:          return "MICRO_TOXICITY";
       case GATE_MICRO_SPREAD_STRESS:     return "MICRO_SPREAD_STRESS";
-      case GATE_MICRO_TRUTH:            return "MICRO_TRUTH";
-
+      case GATE_MICRO_TRUTH:             return "MICRO_TRUTH";
+      case GATE_INST_HARD_BLOCK:         return "INST_HARD_BLOCK";
       default: return "UNKNOWN";
     }
   }
@@ -812,6 +814,7 @@ namespace Policies
   //   - CategoryPassVector_t
   //   - SignalStackGate_t
   //   - LocationPass_t
+  //   - HardInstBlock_t
   //   - FinalIntegratedStateVector_t
   //
   // Ownership of those layers remains upstream in:
@@ -821,9 +824,11 @@ namespace Policies
                                         const bool signal_stack_gate_pass,
                                         const bool location_pass,
                                         const bool execution_gate_pass,
-                                        const bool risk_gate_pass)
+                                        const bool risk_gate_pass,
+                                        const bool hard_inst_block)
   {
-    return (pre_filter_pass &&
+    return (!hard_inst_block &&
+            pre_filter_pass &&
             signal_stack_gate_pass &&
             location_pass &&
             execution_gate_pass &&
@@ -834,55 +839,76 @@ namespace Policies
                                                const bool signal_stack_gate_pass,
                                                const bool location_pass,
                                                const bool execution_gate_pass,
-                                               const bool risk_gate_pass)
+                                               const bool risk_gate_pass,
+                                               const bool hard_inst_block)
   {
-    return StringFormat("pf=%d ssg=%d loc=%d exg=%d rkg=%d",
+    return StringFormat("pf=%d ssg=%d loc=%d exg=%d rkg=%d hib=%d",
                         (pre_filter_pass ? 1 : 0),
                         (signal_stack_gate_pass ? 1 : 0),
                         (location_pass ? 1 : 0),
                         (execution_gate_pass ? 1 : 0),
-                        (risk_gate_pass ? 1 : 0));
+                        (risk_gate_pass ? 1 : 0),
+                        (hard_inst_block ? 1 : 0));
+  }
+
+  inline bool ReasonTextHasTokenI(const string text,
+                                  const string token)
+  {
+    string a = text;
+    string b = token;
+    StringToLower(a);
+    StringToLower(b);
+    return (StringFind(a, b, 0) >= 0);
+  }
+
+  inline bool GateReasonTextHasTokenI(const string route_reason,
+                                      const string veto_reason,
+                                      const string token)
+  {
+    return (ReasonTextHasTokenI(route_reason, token) ||
+            ReasonTextHasTokenI(veto_reason, token));
   }
 
   inline int GateReasonToPolicyCode(const int gr)
    {
      switch(gr)
      {
-       case GATE_OK:            return POLICY_OK;
-       case GATE_SESSION:       return POLICY_SESSION_OFF;
-       case GATE_NEWS:          return POLICY_NEWS_BLOCK;
-       case GATE_COOLDOWN:      return POLICY_COOLDOWN;
-       case GATE_MONTH_TARGET:  return POLICY_MONTH_TARGET;
+       case GATE_OK:                 return POLICY_OK;
+       case GATE_SESSION:            return POLICY_SESSION_OFF;
+       case GATE_NEWS:               return POLICY_NEWS_BLOCK;
+       case GATE_COOLDOWN:           return POLICY_COOLDOWN;
+       case GATE_MONTH_TARGET:       return POLICY_MONTH_TARGET;
 
-       case GATE_SPREAD:        return POLICY_SPREAD_HIGH;
-       case GATE_MOD_SPREAD:    return POLICY_MOD_SPREAD_HIGH;
+       case GATE_SPREAD:             return POLICY_SPREAD_HIGH;
+       case GATE_MOD_SPREAD:         return POLICY_MOD_SPREAD_HIGH;
 
-       case GATE_MAX_LOSSES_DAY:return POLICY_MAX_LOSSES;
-       case GATE_MAX_TRADES_DAY:return POLICY_MAX_TRADES;
+       case GATE_MAX_LOSSES_DAY:     return POLICY_MAX_LOSSES;
+       case GATE_MAX_TRADES_DAY:     return POLICY_MAX_TRADES;
 
-       case GATE_DAYLOSS:       return POLICY_DAYLOSS_STOP;
-       case GATE_DAILYDD:       return POLICY_DAILY_DD;
-       case GATE_ACCOUNT_DD:    return POLICY_ACCOUNT_DD;
-       case GATE_VOLATILITY:    return POLICY_VOLATILITY;
-       case GATE_REGIME:        return POLICY_REGIME_FAIL;
-       case GATE_CALM:          return POLICY_CALM_MARKET;
-       case GATE_LIQUIDITY:     return POLICY_LIQUIDITY_FAIL;
-       case GATE_CONFLICT:      return POLICY_CONFLICT;
-       case GATE_ADR:           return POLICY_ADR_CAP;
-       case GATE_INSTITUTIONAL:       return POLICY_INSTITUTIONAL_GATE;
-       case GATE_MICRO_VPIN:          return POLICY_MICRO_VPIN;
-       case GATE_MICRO_RESILIENCY:    return POLICY_MICRO_RESILIENCY;
-       case GATE_MICRO_OBSERVABILITY: return POLICY_MICRO_OBSERVABILITY;
-       case GATE_MICRO_VENUE:         return POLICY_MICRO_VENUE;
-       case GATE_MICRO_IMPACT:        return POLICY_MICRO_IMPACT;
-       case GATE_MICRO_DARKPOOL:      return POLICY_MICRO_DARKPOOL;
-       case GATE_SM_INVALIDATION:     return POLICY_SM_INVALIDATION;
-       case GATE_LIQUIDITY_TRAP:      return POLICY_LIQUIDITY_TRAP;
+       case GATE_DAYLOSS:            return POLICY_DAYLOSS_STOP;
+       case GATE_DAILYDD:            return POLICY_DAILY_DD;
+       case GATE_ACCOUNT_DD:         return POLICY_ACCOUNT_DD;
+       case GATE_VOLATILITY:         return POLICY_VOLATILITY;
+       case GATE_REGIME:             return POLICY_REGIME_FAIL;
+       case GATE_CALM:               return POLICY_CALM_MARKET;
+       case GATE_LIQUIDITY:          return POLICY_LIQUIDITY_FAIL;
+       case GATE_CONFLICT:           return POLICY_CONFLICT;
+       case GATE_ADR:                return POLICY_ADR_CAP;
+       case GATE_INSTITUTIONAL:      return POLICY_INSTITUTIONAL_GATE;
+       case GATE_MICRO_VPIN:         return POLICY_MICRO_VPIN;
+       case GATE_MICRO_RESILIENCY:   return POLICY_MICRO_RESILIENCY;
+       case GATE_MICRO_OBSERVABILITY:return POLICY_MICRO_OBSERVABILITY;
+       case GATE_MICRO_VENUE:        return POLICY_MICRO_VENUE;
+       case GATE_MICRO_IMPACT:       return POLICY_MICRO_IMPACT;
+       case GATE_MICRO_DARKPOOL:     return POLICY_MICRO_DARKPOOL;
+       case GATE_SM_INVALIDATION:    return POLICY_SM_INVALIDATION;
+       case GATE_LIQUIDITY_TRAP:     return POLICY_LIQUIDITY_TRAP;
        case GATE_MICRO_QUOTE_INSTABILITY: return POLICY_MICRO_QUOTE_INSTABILITY;
        case GATE_MICRO_THIN_LIQUIDITY:    return POLICY_MICRO_THIN_LIQUIDITY;
        case GATE_MICRO_TOXICITY:          return POLICY_MICRO_TOXICITY;
        case GATE_MICRO_SPREAD_STRESS:     return POLICY_MICRO_SPREAD_STRESS;
        case GATE_MICRO_TRUTH:             return POLICY_MICRO_TRUTH;
+       case GATE_INST_HARD_BLOCK:         return POLICY_INST_HARD_BLOCK;
 
        default: return POLICY_BLOCKED_OTHER;
      }
@@ -5543,6 +5569,14 @@ inline void NotifyTradeResult(const double r_multiple)
   {
     bool   valid;
     bool   trade_gate_pass;
+
+    bool   upstream_pre_filter_pass;
+    bool   upstream_signal_stack_gate_pass;
+    bool   upstream_location_pass;
+    bool   upstream_execution_gate_pass;
+    bool   upstream_risk_gate_pass;
+    bool   upstream_hard_inst_block;
+
     bool   delay_recommended;
     bool   derisk_recommended;
 
@@ -5607,7 +5641,15 @@ inline void NotifyTradeResult(const double r_multiple)
   inline void ResetInstitutionalStatePolicyView(InstitutionalStatePolicyView &v)
   {
     ZeroMemory(v);
-    v.trade_gate_pass            = true;  // neutral compat default until canonical transport is present
+    v.trade_gate_pass                = true;  // neutral compat default until canonical transport is present
+
+    v.upstream_pre_filter_pass       = true;
+    v.upstream_signal_stack_gate_pass= true;
+    v.upstream_location_pass         = true;
+    v.upstream_execution_gate_pass   = true;
+    v.upstream_risk_gate_pass        = true;
+    v.upstream_hard_inst_block       = false;
+
     v.observability_confidence01 = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     v.flow_confidence01          = (double)POLICIES_INST_DEFAULT_OBSERVABILITY01;
     v.venue_coverage01           = (double)POLICIES_INST_DEFAULT_VENUE_COVERAGE01;
@@ -5620,44 +5662,44 @@ inline void NotifyTradeResult(const double r_multiple)
     v.toxicity01                 = (double)POLICIES_INST_DEFAULT_TOXICITY01;
     v.spread_stress01            = (double)POLICIES_INST_DEFAULT_SPREAD_STRESS01;
 
-    v.impact_beta01                  = (double)POLICIES_INST_DEFAULT_IMPACT_BETA01;
-    v.impact_lambda01                = (double)POLICIES_INST_DEFAULT_IMPACT_LAMBDA01;
+    v.impact_beta01              = (double)POLICIES_INST_DEFAULT_IMPACT_BETA01;
+    v.impact_lambda01            = (double)POLICIES_INST_DEFAULT_IMPACT_LAMBDA01;
 
-    v.truth_tier01                  = 1.0;
-    v.execution_posture_mode        = 0;
-    v.reduced_only                  = false;
-    v.invalidation_event01          = false;
-    v.liquidity_trap_event01        = false;
+    v.truth_tier01               = 1.0;
+    v.execution_posture_mode     = 0;
+    v.reduced_only               = false;
+    v.invalidation_event01       = false;
+    v.liquidity_trap_event01     = false;
 
-    v.darkpool01                     = (double)POLICIES_INST_DEFAULT_DARKPOOL01;
-    v.darkpool_contradiction01       = (double)POLICIES_INST_DEFAULT_DARKPOOL_CONTRADICTION01;
+    v.darkpool01                 = (double)POLICIES_INST_DEFAULT_DARKPOOL01;
+    v.darkpool_contradiction01   = (double)POLICIES_INST_DEFAULT_DARKPOOL_CONTRADICTION01;
 
     v.sd_ob_invalidation_proximity01 = (double)POLICIES_INST_DEFAULT_SD_OB_INVALIDATION_PROXIMITY01;
 
-    v.liquidity_vacuum01             = (double)POLICIES_INST_DEFAULT_LIQUIDITY_VACUUM01;
-    v.liquidity_hunt01               = (double)POLICIES_INST_DEFAULT_LIQUIDITY_HUNT01;
+    v.liquidity_vacuum01         = (double)POLICIES_INST_DEFAULT_LIQUIDITY_VACUUM01;
+    v.liquidity_hunt01           = (double)POLICIES_INST_DEFAULT_LIQUIDITY_HUNT01;
 
-    v.observability_penalty01       = Clamp01(1.0 - v.observability_confidence01);
+    v.observability_penalty01    = Clamp01(1.0 - v.observability_confidence01);
 
-    v.direct_micro_available        = false;
-    v.proxy_micro_available         = false;
-    v.flow_mode                     = POLICIES_INST_FLOW_MODE_PROXY;
+    v.direct_micro_available     = false;
+    v.proxy_micro_available      = false;
+    v.flow_mode                  = POLICIES_INST_FLOW_MODE_PROXY;
 
-    v.inst_ofi01                    = 0.5;
-    v.inst_obi01                    = 0.5;
-    v.inst_cvd01                    = 0.5;
+    v.inst_ofi01                 = 0.5;
+    v.inst_obi01                 = 0.5;
+    v.inst_cvd01                 = 0.5;
 
-    v.inst_delta_proxy01            = 0.5;
-    v.inst_footprint01              = 0.5;
-    v.inst_profile01                = 0.5;
-    v.inst_absorption01             = 0.5;
-    v.inst_replenishment01          = 0.5;
-    v.inst_vwap_location01          = 0.5;
-    v.inst_liquidity_reject01       = 0.0;
+    v.inst_delta_proxy01         = 0.5;
+    v.inst_footprint01           = 0.5;
+    v.inst_profile01             = 0.5;
+    v.inst_absorption01          = 0.5;
+    v.inst_replenishment01       = 0.5;
+    v.inst_vwap_location01       = 0.5;
+    v.inst_liquidity_reject01    = 0.0;
 
-    v.confluence_veto_mask          = 0;
-    v.route_reason                  = "";
-    v.veto_reason                   = "none";
+    v.confluence_veto_mask       = 0;
+    v.route_reason               = "";
+    v.veto_reason                = "none";
   }
 
   inline void ApplyNeutralInstitutionalStatePolicyView(InstitutionalStatePolicyView &v,
@@ -5718,6 +5760,95 @@ inline void NotifyTradeResult(const double r_multiple)
     v.confluence_veto_mask       = 0;
     v.route_reason               = reason_text;
     v.veto_reason                = reason_text;
+  }
+
+  inline void ApplyUpstreamGateReasonHints(InstitutionalStatePolicyView &v)
+  {
+    v.upstream_pre_filter_pass        = true;
+    v.upstream_signal_stack_gate_pass = true;
+    v.upstream_location_pass          = true;
+    v.upstream_execution_gate_pass    = true;
+    v.upstream_risk_gate_pass         = true;
+    v.upstream_hard_inst_block        = false;
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "hard_inst_block") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "inst_hard_block") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "hard institutional block"))
+    {
+      v.upstream_hard_inst_block = true;
+      v.trade_gate_pass = false;
+    }
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "signal_stack_gate_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "signal_stack_gate=0") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "stack_gate_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "signal stack gate"))
+    {
+      v.upstream_signal_stack_gate_pass = false;
+      v.trade_gate_pass = false;
+    }
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "location_pass_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "location_pass=0") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "location_gate_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "location gate"))
+    {
+      v.upstream_location_pass = false;
+      v.trade_gate_pass = false;
+    }
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "pre_filter_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "pre_filter=0") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "prefilter_fail"))
+    {
+      v.upstream_pre_filter_pass = false;
+      v.trade_gate_pass = false;
+    }
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "execution_gate_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "execution_gate=0") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "exec_gate_fail"))
+    {
+      v.upstream_execution_gate_pass = false;
+      v.trade_gate_pass = false;
+    }
+
+    if(GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "risk_gate_fail") ||
+       GateReasonTextHasTokenI(v.route_reason, v.veto_reason, "risk_gate=0"))
+    {
+      v.upstream_risk_gate_pass = false;
+      v.trade_gate_pass = false;
+    }
+
+    if(v.upstream_hard_inst_block ||
+       !v.upstream_signal_stack_gate_pass ||
+       !v.upstream_location_pass ||
+       !v.upstream_execution_gate_pass ||
+       !v.upstream_risk_gate_pass)
+    {
+      v.upstream_pre_filter_pass = false;
+    }
+  }
+
+  inline int UpstreamInstitutionalGateReasonFromView(const InstitutionalStatePolicyView &v)
+  {
+    if(v.upstream_hard_inst_block)
+      return GATE_INST_HARD_BLOCK;
+
+    return GATE_INSTITUTIONAL;
+  }
+
+  inline bool InstitutionalUpstreamDegradeVeto(const InstitutionalStatePolicyView &v)
+  {
+    if(v.upstream_hard_inst_block)
+      return true;
+    if(!v.upstream_pre_filter_pass)
+      return true;
+    if(!v.upstream_signal_stack_gate_pass)
+      return true;
+    if(!v.upstream_location_pass)
+      return true;
+    return false;
   }
 
   inline double InstitutionalQuoteInstability01(const InstitutionalStatePolicyView &v)
@@ -5967,6 +6098,8 @@ inline void NotifyTradeResult(const double r_multiple)
     out_view.confluence_veto_mask        = sv.confluence_veto_mask;
     out_view.route_reason                = sv.source_tag;
     out_view.veto_reason                 = (sv.confluence_veto_mask != 0 ? "state_confluence_veto" : "none");
+
+    ApplyUpstreamGateReasonHints(out_view);
 
     return true;
   }
@@ -6349,6 +6482,8 @@ inline void NotifyTradeResult(const double r_multiple)
         if(StringLen(out_view.veto_reason) <= 0)
           out_view.veto_reason = "none";
 
+        ApplyUpstreamGateReasonHints(out_view);
+
         return true;
       #endif
     #endif
@@ -6450,6 +6585,7 @@ inline void NotifyTradeResult(const double r_multiple)
     }
 
     out_view.gate_reason = GATE_OK;
+
     // Canonical fused veto from Confluence transport beats any local optimism.
     if(out_view.confluence_veto_mask != 0)
     {
@@ -6458,6 +6594,47 @@ inline void NotifyTradeResult(const double r_multiple)
 
       if(StringLen(out_view.veto_reason) <= 0)
         out_view.veto_reason = "confluence_veto";
+
+      return false;
+    }
+
+    // Upstream hard institutional block is terminal here.
+    // Policies may consume it, but must not override it.
+    if(out_view.upstream_hard_inst_block)
+    {
+      out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_INST_HARD_BLOCK;
+
+      if(StringLen(out_view.veto_reason) <= 0 || out_view.veto_reason == "none")
+        out_view.veto_reason = "hard_inst_block";
+
+      return false;
+    }
+
+    // Upstream signal-stack / location / prefilter gate failures also win here.
+    // Policies must not rebuild or override those decisions.
+    if(!out_view.upstream_pre_filter_pass ||
+       !out_view.upstream_signal_stack_gate_pass ||
+       !out_view.upstream_location_pass ||
+       !out_view.upstream_execution_gate_pass ||
+       !out_view.upstream_risk_gate_pass)
+    {
+      out_view.delay_recommended = true;
+      out_view.gate_reason = GATE_INSTITUTIONAL;
+
+      if(StringLen(out_view.veto_reason) <= 0 || out_view.veto_reason == "none")
+      {
+        if(!out_view.upstream_signal_stack_gate_pass)
+          out_view.veto_reason = "signal_stack_gate_fail";
+        else if(!out_view.upstream_location_pass)
+          out_view.veto_reason = "location_pass_fail";
+        else if(!out_view.upstream_execution_gate_pass)
+          out_view.veto_reason = "execution_gate_fail";
+        else if(!out_view.upstream_risk_gate_pass)
+          out_view.veto_reason = "risk_gate_fail";
+        else
+          out_view.veto_reason = "pre_filter_fail";
+      }
 
       return false;
     }
@@ -6488,10 +6665,14 @@ inline void NotifyTradeResult(const double r_multiple)
     if(out_view.flow_mode == POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY)
       out_view.reduced_only = true;
 
-    // Hard canonical veto from the fused transport
+    // Generic canonical veto from the fused transport
     if(!out_view.trade_gate_pass)
     {
-      out_view.gate_reason = GATE_INSTITUTIONAL;
+      out_view.gate_reason = UpstreamInstitutionalGateReasonFromView(out_view);
+
+      if(StringLen(out_view.veto_reason) <= 0 || out_view.veto_reason == "none")
+        out_view.veto_reason = "trade_gate_fail";
+
       return false;
     }
 
@@ -6777,19 +6958,20 @@ inline void NotifyTradeResult(const double r_multiple)
 
   inline ulong InstitutionalMaskForGateReason(const int gr)
   {
-    if(gr == GATE_MICRO_VPIN)              return CA_POLMASK_MICRO_VPIN;
-    if(gr == GATE_MICRO_RESILIENCY)        return CA_POLMASK_MICRO_RESILIENCY;
-    if(gr == GATE_MICRO_OBSERVABILITY)     return CA_POLMASK_MICRO_OBSERVABILITY;
-    if(gr == GATE_MICRO_VENUE)             return CA_POLMASK_MICRO_VENUE;
-    if(gr == GATE_MICRO_IMPACT)            return CA_POLMASK_MICRO_IMPACT;
-    if(gr == GATE_MICRO_DARKPOOL)          return CA_POLMASK_MICRO_DARKPOOL;
-    if(gr == GATE_SM_INVALIDATION)         return CA_POLMASK_SM_INVALIDATION;
-    if(gr == GATE_LIQUIDITY_TRAP)          return CA_POLMASK_LIQUIDITY_TRAP;
-    if(gr == GATE_MICRO_QUOTE_INSTABILITY) return CA_POLMASK_MICRO_QUOTE_INSTABILITY;
-    if(gr == GATE_MICRO_THIN_LIQUIDITY)    return CA_POLMASK_MICRO_THIN_LIQUIDITY;
-    if(gr == GATE_MICRO_TOXICITY)          return CA_POLMASK_MICRO_TOXICITY;
-    if(gr == GATE_MICRO_SPREAD_STRESS)     return CA_POLMASK_MICRO_SPREAD_STRESS;
-    if(gr == GATE_MICRO_TRUTH)             return CA_POLMASK_MICRO_TRUTH;
+    if(gr == GATE_INST_HARD_BLOCK)        return CA_POLMASK_INSTITUTIONAL;
+    if(gr == GATE_MICRO_VPIN)             return CA_POLMASK_MICRO_VPIN;
+    if(gr == GATE_MICRO_RESILIENCY)       return CA_POLMASK_MICRO_RESILIENCY;
+    if(gr == GATE_MICRO_OBSERVABILITY)    return CA_POLMASK_MICRO_OBSERVABILITY;
+    if(gr == GATE_MICRO_VENUE)            return CA_POLMASK_MICRO_VENUE;
+    if(gr == GATE_MICRO_IMPACT)           return CA_POLMASK_MICRO_IMPACT;
+    if(gr == GATE_MICRO_DARKPOOL)         return CA_POLMASK_MICRO_DARKPOOL;
+    if(gr == GATE_SM_INVALIDATION)        return CA_POLMASK_SM_INVALIDATION;
+    if(gr == GATE_LIQUIDITY_TRAP)         return CA_POLMASK_LIQUIDITY_TRAP;
+    if(gr == GATE_MICRO_QUOTE_INSTABILITY)return CA_POLMASK_MICRO_QUOTE_INSTABILITY;
+    if(gr == GATE_MICRO_THIN_LIQUIDITY)   return CA_POLMASK_MICRO_THIN_LIQUIDITY;
+    if(gr == GATE_MICRO_TOXICITY)         return CA_POLMASK_MICRO_TOXICITY;
+    if(gr == GATE_MICRO_SPREAD_STRESS)    return CA_POLMASK_MICRO_SPREAD_STRESS;
+    if(gr == GATE_MICRO_TRUTH)            return CA_POLMASK_MICRO_TRUTH;
     return CA_POLMASK_INSTITUTIONAL;
   }
 
@@ -6818,7 +7000,9 @@ inline void NotifyTradeResult(const double r_multiple)
 
     if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
     {
-      if(PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg))
+      if((PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg)) &&
+         !InstitutionalUpstreamDegradeVeto(inst_view) &&
+         inst_view.gate_reason != GATE_INST_HARD_BLOCK)
       {
         ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_relaxed");
         _PolicyMergeInstitutionalView(cfg, inst_view, out);
@@ -6907,7 +7091,9 @@ inline void NotifyTradeResult(const double r_multiple)
 
     if(!ApplyInstitutionalStatePolicy(cfg, sym, ss, inst_view))
     {
-      if(PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg))
+      if((PolicyTesterLooseModeActive(cfg) || PolicyMicroRelaxActive(cfg)) &&
+         !InstitutionalUpstreamDegradeVeto(inst_view) &&
+         inst_view.gate_reason != GATE_INST_HARD_BLOCK)
       {
         ApplyNeutralInstitutionalStatePolicyView(inst_view, "micro_relaxed");
         _PolicyMergeInstitutionalView(cfg, inst_view, out);

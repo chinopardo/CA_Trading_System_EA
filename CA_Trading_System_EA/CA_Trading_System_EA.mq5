@@ -868,6 +868,7 @@ input int    Inp_MinFeaturesMet            = 1;     // Router/Confluence Thresho
 input bool   InpSigSel_Enable                 = true;   // Signal-stack: master enable
 input string InpSigSel_Mode                   = "dynamic"; // Signal-stack: "fixed" or "dynamic"
 input string InpSigSel_InstMode               = "anti_echo_subfamily"; // Institutional selection: "anti_echo_subfamily" or "direct_full"
+input string InpSigSel_InstDegradeMode        = "proxy_substitute_then_stack_relax"; // Institutional degrade mode
 
 input int    InpSigSel_FixedInstIndex         = 0;      // Fixed mode: Institutional candidate index
 input int    InpSigSel_FixedTrendIndex        = 0;      // Fixed mode: Trend candidate index
@@ -875,7 +876,8 @@ input int    InpSigSel_FixedMomIndex          = 0;      // Fixed mode: Momentum 
 input int    InpSigSel_FixedVolIndex          = 0;      // Fixed mode: Volume candidate index
 input int    InpSigSel_FixedVolaIndex         = 0;      // Fixed mode: Volatility candidate index
 
-input double InpSigSel_ThInst                 = 1.0;    // Category pass threshold: Institutional |z|
+input double InpSigSel_ThInst                 = 1.0;    // Category pass threshold: direct Institutional |z|
+input double InpSigSel_ThInstProxy            = 1.0;    // Category pass threshold: proxy Institutional |z|
 input double InpSigSel_ThTrend                = 1.0;    // Category pass threshold: Trend |z|
 input double InpSigSel_ThMom                  = 1.0;    // Category pass threshold: Momentum |z|
 input double InpSigSel_ThVol                  = 1.0;    // Category pass threshold: Volume |z|
@@ -908,13 +910,20 @@ input double InpSigSel_LocFVG                 = 0.0;    // Location gate: FVGSco
 input double InpSigSel_LocSweep               = 0.0;    // Location gate: SweepScore min
 input double InpSigSel_LocWyckoff             = 0.0;    // Location gate: Dir * WyckoffScore min
 
-input int    InpSigSel_MinCategoryVotes       = 3;      // Signal-stack gate: minimum category passes
+input int    InpSigSel_MinCategoryVotes       = 3;      // Signal-stack gate baseline before degrade relaxation
+input int    InpSigSel_MinCategoryVotesFloor  = 2;      // Signal-stack gate minimum floor after relax
 input int    InpSigSel_MinLocationVotes       = 2;      // Location gate: minimum location passes
+
+input double InpSigSel_InstCoverageThreshold  = 0.50;   // InstCoverage below this means partial coverage
 
 input double InpSigSel_W_OrderBook            = 1.0;    // Institutional anti-echo weight: OrderBook
 input double InpSigSel_W_TradeFlow            = 1.0;    // Institutional anti-echo weight: TradeFlow
 input double InpSigSel_W_Impact               = 1.0;    // Institutional anti-echo weight: Impact
 input double InpSigSel_W_ExecQuality          = 1.0;    // Institutional anti-echo weight: ExecQuality
+
+input double InpSigSel_W_ProxyMicropriceBias  = 1.0;    // Proxy Institutional weight: MicropriceBias
+input double InpSigSel_W_ProxyAuctionBias     = 1.0;    // Proxy Institutional weight: AuctionBias
+input double InpSigSel_W_ProxyComposite       = 1.0;    // Proxy Institutional weight: ProxyInstComposite
 
 input string InpSigSel_InstWeightsCSV         = "";     // Institutional candidate weights; semicolon-separated
 input string InpSigSel_TrendWeightsCSV        = "";     // Trend candidate weights; semicolon-separated
@@ -2238,6 +2247,17 @@ string EA_SigSelInstModeName(const int mode)
    return "anti_echo_subfamily";
 }
 
+string EA_SigSelInstDegradeModeName(const int mode)
+{
+   if(mode == INST_DEGRADE_PROXY_SUBSTITUTE)
+      return "proxy_substitute";
+   if(mode == INST_DEGRADE_SOFT_NEUTRAL_THEN_STACK_RELAX)
+      return "soft_neutral_then_stack_relax";
+   if(mode == INST_DEGRADE_HARD_BLOCK)
+      return "hard_block";
+   return "proxy_substitute_then_stack_relax";
+}
+
 int EA_ParseSigSelModeInput(const string mode_text)
 {
    if(mode_text == "fixed" || mode_text == "FIXED" || mode_text == "Fixed")
@@ -2252,6 +2272,100 @@ int EA_ParseSigSelInstModeInput(const string mode_text)
       return Config::INST_SELECTION_DIRECT_FULL;
 
    return Config::INST_SELECTION_ANTI_ECHO_SUBFAMILY;
+}
+
+int EA_ParseSigSelInstDegradeModeInput(const string mode_text)
+{
+   string t = mode_text;
+   StringToLower(t);
+
+   if(t == "proxy_substitute")
+      return INST_DEGRADE_PROXY_SUBSTITUTE;
+   if(t == "soft_neutral_then_stack_relax")
+      return INST_DEGRADE_SOFT_NEUTRAL_THEN_STACK_RELAX;
+   if(t == "hard_block")
+      return INST_DEGRADE_HARD_BLOCK;
+
+   return INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX;
+}
+
+string EA_InstSignalSourceName(const int src)
+{
+   if(src == INST_SIGNAL_SOURCE_PROXY)
+      return "proxy";
+   if(src == INST_SIGNAL_SOURCE_DIRECT)
+      return "direct";
+   return "none";
+}
+
+bool EA_RuntimeInstitutionalDegradeActive()
+{
+   if(StateInstitutionalHardInstBlock(g_state))
+      return true;
+   if(StateInstitutionalPartial(g_state))
+      return true;
+   if(StateInstitutionalUnavailable(g_state))
+      return true;
+   if(StateInstitutionalSignalSource(g_state) == INST_SIGNAL_SOURCE_PROXY)
+      return true;
+
+   return false;
+}
+
+void EA_LogInstitutionalDegradeStateOncePerBar(const string sym,
+                                               const datetime bar_time)
+{
+   if(!InpDebug)
+      return;
+
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+   if(use_sym == "")
+      return;
+
+   const bool degraded_active = EA_RuntimeInstitutionalDegradeActive();
+   const bool hard_block      = StateInstitutionalHardInstBlock(g_state);
+
+   if(!degraded_active && !hard_block)
+      return;
+
+   static string   last_sym = "";
+   static datetime last_bar_time = 0;
+   static int      last_sel_source = -1;
+   static int      last_hard_block = -1;
+
+   const datetime key           = (bar_time > 0 ? bar_time : TimeCurrent());
+   const int      sel_source    = StateInstitutionalSignalSource(g_state);
+   const int      hard_block_i  = (hard_block ? 1 : 0);
+
+   if(use_sym == last_sym &&
+      key == last_bar_time &&
+      sel_source == last_sel_source &&
+      hard_block_i == last_hard_block)
+   {
+      return;
+   }
+
+   last_sym        = use_sym;
+   last_bar_time   = key;
+   last_sel_source = sel_source;
+   last_hard_block = hard_block_i;
+
+   LogX::Warn(StringFormat(
+      "[InstDegrade] sym=%s degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyAvail=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}",
+      use_sym,
+      (degraded_active ? 1 : 0),
+      StateInstitutionalCoverage01(g_state),
+      (StateInstitutionalAvailable(g_state) ? 1 : 0),
+      (StateInstitutionalPartial(g_state) ? 1 : 0),
+      (StateInstitutionalUnavailable(g_state) ? 1 : 0),
+      (StateInstitutionalProxyInstitutionalAvailable(g_state) ? 1 : 0),
+      EA_InstSignalSourceName(sel_source),
+      sel_source,
+      hard_block_i,
+      StateInstitutionalEffectiveMinCategoryVotes(g_state),
+      (StateInstitutionalPreFilterPass(g_state) ? 1 : 0),
+      (StateInstitutionalSignalStackGatePass(g_state) ? 1 : 0),
+      (StateInstitutionalLocationPass(g_state) ? 1 : 0)));
 }
 
 bool TesterSoftMicroFreshnessFailure(const string detail)
@@ -2326,11 +2440,30 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
    j += ",\"timer_sec\":" + IntegerToString(EA_ResolveHubTimerSec(cfg));
    j += ",\"timer_force_every_heartbeat\":" + ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? "true" : "false");
 
+   const double runtime_inst_coverage01 = StateInstitutionalCoverage01(g_state);
+   const int    runtime_inst_sel_source = StateInstitutionalSignalSource(g_state);
+   const bool   runtime_inst_degrade_active = EA_RuntimeInstitutionalDegradeActive();
+
    j += ",\"sigsel_enable\":" + (cfg.sigsel_enable ? "true" : "false");
    j += ",\"sigsel_mode\":" + Telemetry::JsonStringOrNull(true, EA_SigSelModeName(cfg.sigsel_selection_mode));
    j += ",\"sigsel_inst_mode\":" + Telemetry::JsonStringOrNull(true, EA_SigSelInstModeName(cfg.sigsel_inst_selection_mode));
+   j += ",\"sigsel_inst_degrade_mode\":" + Telemetry::JsonStringOrNull(true, EA_SigSelInstDegradeModeName(cfg.sigsel_institutional_degrade_mode));
+   j += ",\"sigsel_inst_coverage_threshold\":" + DoubleToString(cfg.sigsel_inst_coverage_threshold, 3);
    j += ",\"sigsel_min_category_votes\":" + IntegerToString(cfg.sigsel_min_category_votes);
+   j += ",\"sigsel_min_category_votes_default\":" + IntegerToString(cfg.sigsel_min_category_votes_default);
+   j += ",\"sigsel_min_category_votes_floor\":" + IntegerToString(cfg.sigsel_min_category_votes_floor);
    j += ",\"sigsel_min_location_votes\":" + IntegerToString(cfg.sigsel_min_location_votes);
+
+   j += ",\"runtime_inst_degrade_active\":" + (runtime_inst_degrade_active ? "true" : "false");
+   j += ",\"runtime_inst_coverage01\":" + DoubleToString(runtime_inst_coverage01, 3);
+   j += ",\"runtime_inst_available\":" + (StateInstitutionalAvailable(g_state) ? "true" : "false");
+   j += ",\"runtime_inst_partial\":" + (StateInstitutionalPartial(g_state) ? "true" : "false");
+   j += ",\"runtime_inst_unavailable\":" + (StateInstitutionalUnavailable(g_state) ? "true" : "false");
+   j += ",\"runtime_proxy_inst_available\":" + (StateInstitutionalProxyInstitutionalAvailable(g_state) ? "true" : "false");
+   j += ",\"runtime_inst_sel_source\":" + IntegerToString(runtime_inst_sel_source);
+   j += ",\"runtime_inst_sel_source_name\":" + Telemetry::JsonStringOrNull(true, EA_InstSignalSourceName(runtime_inst_sel_source));
+   j += ",\"runtime_hard_inst_block\":" + (StateInstitutionalHardInstBlock(g_state) ? "true" : "false");
+   j += ",\"runtime_effective_min_category_votes\":" + IntegerToString(StateInstitutionalEffectiveMinCategoryVotes(g_state));
 
    j += ",\"last_pre_filter_pass\":" + (Risk::LastDiagPreFilterPass() ? "true" : "false");
    j += ",\"last_signal_stack_gate_pass\":" + (Risk::LastDiagSignalStackGatePass() ? "true" : "false");
@@ -2354,6 +2487,16 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
                                             degraded_policy_type,
                                             degraded_policy_mag);
 
+   const double inst_coverage01 = StateInstitutionalCoverage01(g_state);
+   const int    inst_sel_source = StateInstitutionalSignalSource(g_state);
+   const bool   inst_degrade_active = EA_RuntimeInstitutionalDegradeActive();
+   const bool   inst_available = StateInstitutionalAvailable(g_state);
+   const bool   inst_partial = StateInstitutionalPartial(g_state);
+   const bool   inst_unavailable = StateInstitutionalUnavailable(g_state);
+   const bool   proxy_inst_available = StateInstitutionalProxyInstitutionalAvailable(g_state);
+   const bool   hard_inst_block = StateInstitutionalHardInstBlock(g_state);
+   const int    eff_min_votes = StateInstitutionalEffectiveMinCategoryVotes(g_state);
+
    LogX::Info(StringFormat(
       "%s runtime_gates tester=%d degraded=%d router_min=%.3f news_gate=%d regime_gate=%d liquidity_gate=%d tester_policy_bypass=%d tester_gate_mode=%s tester_gate_soft_micro=%d degraded_score_policy=%d degraded_score_type=%s degraded_score_mag=%.3f timer_sec=%d force_timer_every_heartbeat=%d",
       where,
@@ -2373,20 +2516,52 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
       ((IsTesterRuntime() && InpTester_ForceTimerEveryHeartbeat) ? 1 : 0)));
 
    LogX::Info(StringFormat(
-      "%s signal_stack cfg{enable=%d mode=%s inst_mode=%s min_cat=%d min_loc=%d} gates{pf=%d ssg=%d loc=%d exg=%d rkg=%d internal=%.2f depthFade=%.2f}",
+      "%s signal_stack cfg{enable=%d mode=%s inst_mode=%s degrade_mode=%s min_cat=%d min_cat_floor=%d min_loc=%d inst_cov_th=%.2f} gates{pf=%d ssg=%d loc=%d exg=%d rkg=%d internal=%.2f depthFade=%.2f} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyAvail=%d src=%s(%d) hardBlock=%d effMinVotes=%d}",
       where,
       (cfg.sigsel_enable ? 1 : 0),
       EA_SigSelModeName(cfg.sigsel_selection_mode),
       EA_SigSelInstModeName(cfg.sigsel_inst_selection_mode),
-      cfg.sigsel_min_category_votes,
+      EA_SigSelInstDegradeModeName(cfg.sigsel_institutional_degrade_mode),
+      cfg.sigsel_min_category_votes_default,
+      cfg.sigsel_min_category_votes_floor,
       cfg.sigsel_min_location_votes,
+      cfg.sigsel_inst_coverage_threshold,
       (Risk::LastDiagPreFilterPass() ? 1 : 0),
       (Risk::LastDiagSignalStackGatePass() ? 1 : 0),
       (Risk::LastDiagLocationPass() ? 1 : 0),
       (Risk::LastDiagExecutionGatePass() ? 1 : 0),
       (Risk::LastDiagRiskGatePass() ? 1 : 0),
       Risk::LastDiagInternalisation01(),
-      Risk::LastDiagDepthFade01()));
+      Risk::LastDiagDepthFade01(),
+      (inst_degrade_active ? 1 : 0),
+      inst_coverage01,
+      (inst_available ? 1 : 0),
+      (inst_partial ? 1 : 0),
+      (inst_unavailable ? 1 : 0),
+      (proxy_inst_available ? 1 : 0),
+      EA_InstSignalSourceName(inst_sel_source),
+      inst_sel_source,
+      (hard_inst_block ? 1 : 0),
+      eff_min_votes));
+
+   if(inst_degrade_active || hard_inst_block)
+   {
+      LogX::Warn(StringFormat(
+         "%s institutional_degrade active{coverage=%.2f available=%d partial=%d unavailable=%d proxyAvail=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d pf=%d ssg=%d loc=%d}",
+         where,
+         inst_coverage01,
+         (inst_available ? 1 : 0),
+         (inst_partial ? 1 : 0),
+         (inst_unavailable ? 1 : 0),
+         (proxy_inst_available ? 1 : 0),
+         EA_InstSignalSourceName(inst_sel_source),
+         inst_sel_source,
+         (hard_inst_block ? 1 : 0),
+         eff_min_votes,
+         (StateInstitutionalPreFilterPass(g_state) ? 1 : 0),
+         (StateInstitutionalSignalStackGatePass(g_state) ? 1 : 0),
+         (StateInstitutionalLocationPass(g_state) ? 1 : 0)));
+   }
 }
 
 void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
@@ -4575,62 +4750,72 @@ void BuildSettingsFromInputs(Settings &cfg)
    #endif
 
    // --- Signal-stack / category gating ---
-   cfg.sigsel_enable              = (InpSigSel_Enable ? true : false);
-   cfg.sigsel_selection_mode      = EA_ParseSigSelModeInput(InpSigSel_Mode);
-   cfg.sigsel_inst_selection_mode = EA_ParseSigSelInstModeInput(InpSigSel_InstMode);
+   cfg.sigsel_enable                      = (InpSigSel_Enable ? true : false);
+   cfg.sigsel_selection_mode              = EA_ParseSigSelModeInput(InpSigSel_Mode);
+   cfg.sigsel_inst_selection_mode         = EA_ParseSigSelInstModeInput(InpSigSel_InstMode);
+   cfg.sigsel_institutional_degrade_mode  = EA_ParseSigSelInstDegradeModeInput(InpSigSel_InstDegradeMode);
 
-   cfg.sigsel_fixed_inst_index    = InpSigSel_FixedInstIndex;
-   cfg.sigsel_fixed_trend_index   = InpSigSel_FixedTrendIndex;
-   cfg.sigsel_fixed_mom_index     = InpSigSel_FixedMomIndex;
-   cfg.sigsel_fixed_vol_index     = InpSigSel_FixedVolIndex;
-   cfg.sigsel_fixed_vola_index    = InpSigSel_FixedVolaIndex;
+   cfg.sigsel_fixed_inst_index            = InpSigSel_FixedInstIndex;
+   cfg.sigsel_fixed_trend_index           = InpSigSel_FixedTrendIndex;
+   cfg.sigsel_fixed_mom_index             = InpSigSel_FixedMomIndex;
+   cfg.sigsel_fixed_vol_index             = InpSigSel_FixedVolIndex;
+   cfg.sigsel_fixed_vola_index            = InpSigSel_FixedVolaIndex;
 
-   cfg.sigsel_th_inst             = InpSigSel_ThInst;
-   cfg.sigsel_th_trend            = InpSigSel_ThTrend;
-   cfg.sigsel_th_mom              = InpSigSel_ThMom;
-   cfg.sigsel_th_vol              = InpSigSel_ThVol;
-   cfg.sigsel_th_vola             = InpSigSel_ThVola;
+   cfg.sigsel_th_inst                     = InpSigSel_ThInst;
+   cfg.sigsel_th_inst_proxy               = InpSigSel_ThInstProxy;
+   cfg.sigsel_th_trend                    = InpSigSel_ThTrend;
+   cfg.sigsel_th_mom                      = InpSigSel_ThMom;
+   cfg.sigsel_th_vol                      = InpSigSel_ThVol;
+   cfg.sigsel_th_vola                     = InpSigSel_ThVola;
 
-   cfg.sigsel_band_rsi            = InpSigSel_BandRSI;
-   cfg.sigsel_band_stoch          = InpSigSel_BandStoch;
-   cfg.sigsel_th_adx              = InpSigSel_ThADX;
+   cfg.sigsel_band_rsi                    = InpSigSel_BandRSI;
+   cfg.sigsel_band_stoch                  = InpSigSel_BandStoch;
+   cfg.sigsel_th_adx                      = InpSigSel_ThADX;
 
-   cfg.sigsel_th_atr_min          = InpSigSel_ATRMin;
-   cfg.sigsel_th_atr_max          = InpSigSel_ATRMax;
-   cfg.sigsel_th_bbwidth_min      = InpSigSel_BBWidthMin;
-   cfg.sigsel_th_bbwidth_max      = InpSigSel_BBWidthMax;
-   cfg.sigsel_th_rv_min           = InpSigSel_RVMin;
-   cfg.sigsel_th_rv_max           = InpSigSel_RVMax;
-   cfg.sigsel_th_bv_min           = InpSigSel_BVMin;
-   cfg.sigsel_th_bv_max           = InpSigSel_BVMax;
-   cfg.sigsel_th_jump_max         = InpSigSel_JumpMax;
-   cfg.sigsel_th_sigmap_min       = InpSigSel_SigmaPMin;
-   cfg.sigsel_th_sigmap_max       = InpSigSel_SigmaPMax;
-   cfg.sigsel_th_sigmagk_min      = InpSigSel_SigmaGKMin;
-   cfg.sigsel_th_sigmagk_max      = InpSigSel_SigmaGKMax;
+   cfg.sigsel_th_atr_min                  = InpSigSel_ATRMin;
+   cfg.sigsel_th_atr_max                  = InpSigSel_ATRMax;
+   cfg.sigsel_th_bbwidth_min              = InpSigSel_BBWidthMin;
+   cfg.sigsel_th_bbwidth_max              = InpSigSel_BBWidthMax;
+   cfg.sigsel_th_rv_min                   = InpSigSel_RVMin;
+   cfg.sigsel_th_rv_max                   = InpSigSel_RVMax;
+   cfg.sigsel_th_bv_min                   = InpSigSel_BVMin;
+   cfg.sigsel_th_bv_max                   = InpSigSel_BVMax;
+   cfg.sigsel_th_jump_max                 = InpSigSel_JumpMax;
+   cfg.sigsel_th_sigmap_min               = InpSigSel_SigmaPMin;
+   cfg.sigsel_th_sigmap_max               = InpSigSel_SigmaPMax;
+   cfg.sigsel_th_sigmagk_min              = InpSigSel_SigmaGKMin;
+   cfg.sigsel_th_sigmagk_max              = InpSigSel_SigmaGKMax;
 
-   cfg.sigsel_loc_th_pivot        = InpSigSel_LocPivot;
-   cfg.sigsel_loc_th_sr           = InpSigSel_LocSR;
-   cfg.sigsel_loc_th_fib          = InpSigSel_LocFib;
-   cfg.sigsel_loc_th_sd           = InpSigSel_LocSD;
-   cfg.sigsel_loc_th_ob           = InpSigSel_LocOB;
-   cfg.sigsel_loc_th_fvg          = InpSigSel_LocFVG;
-   cfg.sigsel_loc_th_sweep        = InpSigSel_LocSweep;
-   cfg.sigsel_loc_th_wyckoff      = InpSigSel_LocWyckoff;
+   cfg.sigsel_loc_th_pivot                = InpSigSel_LocPivot;
+   cfg.sigsel_loc_th_sr                   = InpSigSel_LocSR;
+   cfg.sigsel_loc_th_fib                  = InpSigSel_LocFib;
+   cfg.sigsel_loc_th_sd                   = InpSigSel_LocSD;
+   cfg.sigsel_loc_th_ob                   = InpSigSel_LocOB;
+   cfg.sigsel_loc_th_fvg                  = InpSigSel_LocFVG;
+   cfg.sigsel_loc_th_sweep                = InpSigSel_LocSweep;
+   cfg.sigsel_loc_th_wyckoff              = InpSigSel_LocWyckoff;
 
-   cfg.sigsel_min_category_votes  = InpSigSel_MinCategoryVotes;
-   cfg.sigsel_min_location_votes  = InpSigSel_MinLocationVotes;
+   cfg.sigsel_min_category_votes          = InpSigSel_MinCategoryVotes;
+   cfg.sigsel_min_category_votes_default  = InpSigSel_MinCategoryVotes;
+   cfg.sigsel_min_category_votes_floor    = InpSigSel_MinCategoryVotesFloor;
+   cfg.sigsel_min_location_votes          = InpSigSel_MinLocationVotes;
 
-   cfg.sigsel_w_orderbook         = InpSigSel_W_OrderBook;
-   cfg.sigsel_w_tradeflow         = InpSigSel_W_TradeFlow;
-   cfg.sigsel_w_impact            = InpSigSel_W_Impact;
-   cfg.sigsel_w_execquality       = InpSigSel_W_ExecQuality;
+   cfg.sigsel_inst_coverage_threshold     = InpSigSel_InstCoverageThreshold;
 
-   cfg.sigsel_inst_weights_csv    = InpSigSel_InstWeightsCSV;
-   cfg.sigsel_trend_weights_csv   = InpSigSel_TrendWeightsCSV;
-   cfg.sigsel_mom_weights_csv     = InpSigSel_MomWeightsCSV;
-   cfg.sigsel_vol_weights_csv     = InpSigSel_VolWeightsCSV;
-   cfg.sigsel_vola_weights_csv    = InpSigSel_VolaWeightsCSV;
+   cfg.sigsel_w_orderbook                 = InpSigSel_W_OrderBook;
+   cfg.sigsel_w_tradeflow                 = InpSigSel_W_TradeFlow;
+   cfg.sigsel_w_impact                    = InpSigSel_W_Impact;
+   cfg.sigsel_w_execquality               = InpSigSel_W_ExecQuality;
+
+   cfg.sigsel_w_proxy_microprice_bias     = InpSigSel_W_ProxyMicropriceBias;
+   cfg.sigsel_w_proxy_auction_bias        = InpSigSel_W_ProxyAuctionBias;
+   cfg.sigsel_w_proxy_composite           = InpSigSel_W_ProxyComposite;
+
+   cfg.sigsel_inst_weights_csv            = InpSigSel_InstWeightsCSV;
+   cfg.sigsel_trend_weights_csv           = InpSigSel_TrendWeightsCSV;
+   cfg.sigsel_mom_weights_csv             = InpSigSel_MomWeightsCSV;
+   cfg.sigsel_vol_weights_csv             = InpSigSel_VolWeightsCSV;
+   cfg.sigsel_vola_weights_csv            = InpSigSel_VolaWeightsCSV;
 
    #ifdef CFG_HAS_POLICY_ENABLE_NEWS_BLOCK
       cfg.enable_news_block = true;
@@ -6041,6 +6226,9 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    // Publish canonical runtime transport only.
    // Do NOT add confluence scoring, strategy math, or direct order-routing logic here.
    PublishMicrostructureSnapshot(sym);
+
+   EA_LogInstitutionalDegradeStateOncePerBar((sym == "" ? CanonicalRouterSymbol() : sym),
+                                             requested_bar_time);
 }
 
 bool PreseedRuntimeSymbolStateAtStartup(const string sym,
