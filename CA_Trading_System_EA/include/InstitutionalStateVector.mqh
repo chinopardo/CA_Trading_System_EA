@@ -133,6 +133,168 @@ enum InstitutionalStateVectorSlot
    ISV_SLOT_COUNT            = RAW_COUNT
 };
 
+// -----------------------------------------------------------------------------
+// ISV-owned transport wrappers.
+// Keep shared cross-module vectors in their existing owner file.
+// Do NOT redeclare CategorySelectedVector, CategoryPassVector,
+// BaseContextVector, StructureVector, CoverageContextVector,
+// AuxContextVector, or FinalIntegratedStateVector here.
+// -----------------------------------------------------------------------------
+
+struct CanonicalDegradeState_t
+{
+   bool dom_proxy_used;
+   bool flow_proxy_used;
+   bool tick_volume_proxy_used;
+   bool footprint_proxy_used;
+   bool profile_proxy_used;
+
+   double inst_coverage;
+   int    inst_available;
+   int    inst_partial;
+   int    inst_unavailable;
+   int    proxy_inst_available;
+   int    inst_sel_source;
+   int    hard_inst_block;
+
+   double observability01;
+   double observability_penalty01;
+   double venue_coverage01;
+
+   void Reset()
+   {
+      dom_proxy_used = false;
+      flow_proxy_used = false;
+      tick_volume_proxy_used = false;
+      footprint_proxy_used = false;
+      profile_proxy_used = false;
+
+      inst_coverage = 0.0;
+      inst_available = 0;
+      inst_partial = 0;
+      inst_unavailable = 0;
+      proxy_inst_available = 0;
+      inst_sel_source = 0;
+      hard_inst_block = 0;
+
+      observability01 = 0.0;
+      observability_penalty01 = 1.0;
+      venue_coverage01 = 0.0;
+   }
+};
+
+struct SignalStackGate_t
+{
+   int    pass;
+   int    hard_inst_block;
+   double inst_coverage;
+   int    inst_available;
+   int    inst_partial;
+   int    inst_unavailable;
+   int    proxy_inst_available;
+   int    inst_sel_source;
+
+   void Reset()
+   {
+      pass = 0;
+      hard_inst_block = 0;
+      inst_coverage = 0.0;
+      inst_available = 0;
+      inst_partial = 0;
+      inst_unavailable = 0;
+      proxy_inst_available = 0;
+      inst_sel_source = 0;
+   }
+};
+
+struct LocationPass_t
+{
+   int      pass;
+   double   sweep_score;
+   double   liquidity_gap;
+   double   spread_shock_z;
+   double   slippage_z;
+   double   depth_fade_z;
+   double   poc_dist_z;
+   double   va_state_z;
+   double   poi_score01;
+   double   poi_distance_atr01;
+   int      poi_kind;
+   datetime liquidity_event_time;
+   double   liquidity_event_price;
+
+   void Reset()
+   {
+      pass = 0;
+      sweep_score = 0.0;
+      liquidity_gap = 0.0;
+      spread_shock_z = 0.0;
+      slippage_z = 0.0;
+      depth_fade_z = 0.0;
+      poc_dist_z = 0.0;
+      va_state_z = 0.0;
+      poi_score01 = 0.0;
+      poi_distance_atr01 = 0.0;
+      poi_kind = 0;
+      liquidity_event_time = 0;
+      liquidity_event_price = 0.0;
+   }
+};
+
+struct RawSignalBank_t
+{
+   bool valid;
+   string symbol;
+   ENUM_TIMEFRAMES tf;
+   datetime bar_time;
+
+   int direction_dir11;
+
+   double open0;
+   double high0;
+   double low0;
+   double close0;
+   double atr_price;
+   double plus_di;
+   double minus_di;
+
+   double raw[ISV_SLOT_COUNT];
+   double z[ISV_SLOT_COUNT];
+
+   CanonicalDegradeState_t   degrade;
+   MicrostructureStats       ms;
+   InstitutionalStateSnapshot snap;
+   OrderFlowDisplaySnapshot   ofx;
+
+   void Reset()
+   {
+      valid = false;
+      symbol = "";
+      tf = PERIOD_CURRENT;
+      bar_time = 0;
+      direction_dir11 = 0;
+
+      open0 = 0.0;
+      high0 = 0.0;
+      low0 = 0.0;
+      close0 = 0.0;
+      atr_price = 0.0;
+      plus_di = 0.0;
+      minus_di = 0.0;
+
+      for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      {
+         raw[i] = 0.0;
+         z[i] = 0.0;
+      }
+
+      degrade.Reset();
+      ms.Reset();
+      snap.Reset();
+      ofx.Reset();
+   }
+};
+
 inline double Clamp01(const double v)
 {
    if(v < 0.0) return 0.0;
@@ -856,6 +1018,14 @@ struct Result
 
    int  direction_dir11;
 
+   double open0;
+   double high0;
+   double low0;
+   double close0;
+   double atr_price;
+   double plus_di_value;
+   double minus_di_value;
+
    double raw[ISV_SLOT_COUNT];
    double z[ISV_SLOT_COUNT];
 
@@ -906,6 +1076,14 @@ struct Result
 
       direction_dir11 = 0;
 
+      open0 = 0.0;
+      high0 = 0.0;
+      low0 = 0.0;
+      close0 = 0.0;
+      atr_price = 0.0;
+      plus_di_value = 0.0;
+      minus_di_value = 0.0;
+
       for(int i = 0; i < ISV_SLOT_COUNT; i++)
       {
          raw[i] = 0.0;
@@ -945,6 +1123,197 @@ struct Result
       ofx.Reset();
    }
 };
+
+inline void CopySlotVector(const double &src[],
+                           double &dst[])
+{
+   for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      dst[i] = src[i];
+}
+
+inline void FillCanonicalDegradeState(const Result &src,
+                                      CanonicalDegradeState_t &dst)
+{
+   dst.Reset();
+
+   dst.dom_proxy_used = src.dom_proxy_used;
+   dst.flow_proxy_used = src.flow_proxy_used;
+   dst.tick_volume_proxy_used = src.tick_volume_proxy_used;
+   dst.footprint_proxy_used = src.footprint_proxy_used;
+   dst.profile_proxy_used = src.profile_proxy_used;
+
+   dst.inst_coverage = src.raw[ISV_INST_COVERAGE];
+   dst.inst_available = (int)MathRound(src.raw[ISV_INST_AVAILABLE]);
+   dst.inst_partial = (int)MathRound(src.raw[ISV_INST_PARTIAL]);
+   dst.inst_unavailable = (int)MathRound(src.raw[ISV_INST_UNAVAILABLE]);
+   dst.proxy_inst_available = (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]);
+   dst.inst_sel_source = (int)MathRound(src.raw[ISV_INST_SEL_SOURCE]);
+   dst.hard_inst_block = (int)MathRound(src.raw[ISV_HARD_INST_BLOCK]);
+
+   dst.observability01 = src.observability01;
+   dst.observability_penalty01 = src.observability_penalty01;
+   dst.venue_coverage01 = src.venue_coverage01;
+}
+
+inline void FillSignalStackGateFromResult(const Result &src,
+                                          SignalStackGate_t &dst)
+{
+   dst.Reset();
+   dst.pass = src.signal_stack_gate;
+   dst.hard_inst_block = (int)MathRound(src.raw[ISV_HARD_INST_BLOCK]);
+   dst.inst_coverage = src.raw[ISV_INST_COVERAGE];
+   dst.inst_available = (int)MathRound(src.raw[ISV_INST_AVAILABLE]);
+   dst.inst_partial = (int)MathRound(src.raw[ISV_INST_PARTIAL]);
+   dst.inst_unavailable = (int)MathRound(src.raw[ISV_INST_UNAVAILABLE]);
+   dst.proxy_inst_available = (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]);
+   dst.inst_sel_source = (int)MathRound(src.raw[ISV_INST_SEL_SOURCE]);
+}
+
+inline void FillLocationPassFromResult(const Result &src,
+                                       LocationPass_t &dst)
+{
+   dst.Reset();
+   dst.pass = src.location_pass_flag;
+   dst.sweep_score = src.raw[ISV_SWEEP_SCORE];
+   dst.liquidity_gap = MathAbs(src.raw[ISV_LIQUIDITY_STRESS_PROXY]);
+   dst.spread_shock_z = src.z[ISV_SPREAD_SHOCK];
+   dst.slippage_z = src.z[ISV_SLIPPAGE];
+   dst.depth_fade_z = src.z[ISV_DEPTH_FADE];
+   dst.poc_dist_z = src.z[ISV_POC_DIST];
+   dst.va_state_z = src.z[ISV_VA_STATE];
+   dst.poi_score01 = src.ms.poi_score01;
+   dst.poi_distance_atr01 = src.ms.poi_distance_atr01;
+   dst.poi_kind = src.ms.poi_kind;
+   dst.liquidity_event_time = src.ms.liquidity_event_time;
+   dst.liquidity_event_price = src.ms.liquidity_event_price;
+}
+
+inline void ProjectResultToRawSignalBank(const Result &src,
+                                         RawSignalBank_t &dst)
+{
+   dst.Reset();
+
+   dst.valid = src.valid;
+   dst.symbol = src.symbol;
+   dst.tf = src.tf;
+   dst.bar_time = src.bar_time;
+   dst.direction_dir11 = src.direction_dir11;
+
+   dst.open0 = src.open0;
+   dst.high0 = src.high0;
+   dst.low0 = src.low0;
+   dst.close0 = src.close0;
+   dst.atr_price = src.atr_price;
+   dst.plus_di = src.plus_di_value;
+   dst.minus_di = src.minus_di_value;
+
+   CopySlotVector(src.raw, dst.raw);
+   CopySlotVector(src.z, dst.z);
+
+   FillCanonicalDegradeState(src, dst.degrade);
+
+   dst.ms = src.ms;
+   dst.snap = src.snap;
+   dst.ofx = src.ofx;
+}
+
+inline double GetRawSlot(const RawSignalBank_t &bank,
+                         const int slot,
+                         const double fallback = 0.0)
+{
+   if(slot < 0 || slot >= ISV_SLOT_COUNT)
+      return fallback;
+   return bank.raw[slot];
+}
+
+inline double GetZSlot(const RawSignalBank_t &bank,
+                       const int slot,
+                       const double fallback = 0.0)
+{
+   if(slot < 0 || slot >= ISV_SLOT_COUNT)
+      return fallback;
+   return bank.z[slot];
+}
+
+inline double GetOrderFlowImbalance(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_FLOW_IMB, 0.0);
+}
+
+inline double GetOFI(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_OFI, 0.0);
+}
+
+inline double GetOBI1(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_OBI_1, 0.0);
+}
+
+inline double GetOBIK(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_OBI_K, 0.0);
+}
+
+inline double GetVWAPDistance(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_MID_MINUS_VWAP, 0.0);
+}
+
+inline double GetTWAPDistance(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_MID_MINUS_TWAP, 0.0);
+}
+
+inline double GetSweepScore(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_SWEEP_SCORE, 0.0);
+}
+
+inline double GetLiquidityGap(const RawSignalBank_t &bank)
+{
+   return MathAbs(GetRawSlot(bank, ISV_LIQUIDITY_STRESS_PROXY, 0.0));
+}
+
+inline bool PriceSweepOccurred(const RawSignalBank_t &bank)
+{
+   return (MathAbs(GetSweepScore(bank)) > 0.0);
+}
+
+inline int GetDirection(const RawSignalBank_t &bank)
+{
+   return bank.direction_dir11;
+}
+
+inline CanonicalDegradeState_t GetDegradeState(const RawSignalBank_t &bank)
+{
+   return bank.degrade;
+}
+
+inline int ResolveObservabilityTier(const OrderFlowDisplaySnapshot &src)
+{
+   return OBS_TIER_UNKNOWN;
+}
+
+inline int ResolveSnapshotFreshnessCode(const OrderFlowDisplaySnapshot &src)
+{
+   return SCAN_FRESH_UNKNOWN;
+}
+
+inline int ResolveSignalFreshnessCode(const OrderFlowDisplaySnapshot &src)
+{
+   return SCAN_FRESH_UNKNOWN;
+}
+
+inline int ResolvePOIFlags(const OrderFlowDisplaySnapshot &src)
+{
+   return INST_POIFLAG_NONE;
+}
+
+inline int ResolveLiquidityEventFlags(const OrderFlowDisplaySnapshot &src)
+{
+   return INST_LIQFLAG_NONE;
+}
 
 inline void NormalizeRawVector(const BuildConfig &cfg,
                                Runtime &rt,
@@ -1151,6 +1520,12 @@ inline void PublishCoverageAndDegradeStateToRawBank(const CategoryPassVector &pa
    out.raw[ISV_HARD_INST_BLOCK]      = (double)passv.hard_inst_block;
 }
 
+// -----------------------------------------------------------------------------
+// Internal compatibility path only.
+// New strategy/router code must consume RawSignalBank_t through read-only accessors
+// and must not call back into ISV to recompute canonical category state.
+// CategorySelector remains the owner of category selection / pass / context logic.
+// -----------------------------------------------------------------------------
 inline void ComputeCategorySelection(const Settings &cfg,
                                      const double &raw[],
                                      const double &z[],
@@ -1616,6 +1991,12 @@ inline bool Build(const string sym,
    out.tf = tf;
    out.bar_time = bar_time;
    out.tick_volume_proxy_used = otc_like;
+
+   out.open0 = open0;
+   out.high0 = high0;
+   out.low0 = low0;
+   out.close0 = close0;
+   out.atr_price = atr;
 
    out.ms.Reset();
    out.ms.valid = true;
@@ -2200,6 +2581,9 @@ inline bool Build(const string sym,
    if(ADXDirectionalRaw(sym, tf, 14, shift, adx_dir_tmp, plus_di_raw, minus_di_raw))
       adx_raw = adx_dir_tmp;
 
+   out.plus_di_value = plus_di_raw;
+   out.minus_di_value = minus_di_raw;
+
    // -----------------------------------------------------------------------
    // 13) Pivots, Fibonacci, trendlines, correlation.
    // -----------------------------------------------------------------------
@@ -2556,11 +2940,7 @@ inline bool Build(const string sym,
 
    BindExtendedContextToInstitutionalStateSnapshot(out.snap,
                                                    out.ofx.executionPostureMode,
-#ifdef OFDS_HAS_SCANNER_CONTEXT_FIELDS
-                                                   out.ofx.observabilityTier,
-#else
-                                                   OBS_TIER_UNKNOWN,
-#endif
+                                                   ResolveObservabilityTier(out.ofx),
                                                    out.observability_penalty01,
                                                    Clamp01(1.0 - out.venue_coverage01),
                                                    Clamp01(MathAbs(out.raw[ISV_SLIPPAGE])),
@@ -2580,21 +2960,11 @@ inline bool Build(const string sym,
                                                    bar_time);
 
    BindScannerContextToInstitutionalStateSnapshot(out.snap,
-#ifdef OFDS_HAS_SCANNER_CONTEXT_FIELDS
-                                                  out.ofx.snapshotFreshnessCode,
-                                                  out.ofx.signalFreshnessCode,
-#else
-                                                  SCAN_FRESH_UNKNOWN,
-                                                  SCAN_FRESH_UNKNOWN,
-#endif
+                                                  ResolveSnapshotFreshnessCode(out.ofx),
+                                                  ResolveSignalFreshnessCode(out.ofx),
                                                   VETO_NONE,
-#ifdef OFDS_HAS_SCANNER_CONTEXT_FIELDS
-                                                  out.ofx.poiFlags,
-                                                  out.ofx.liquidityEventFlags
-#else
-                                                  INST_POIFLAG_NONE,
-                                                  INST_LIQFLAG_NONE
-#endif
+                                                  ResolvePOIFlags(out.ofx),
+                                                  ResolveLiquidityEventFlags(out.ofx)
                                                   );
 
    FillSnapshotNamedFields(out);
@@ -2606,6 +2976,43 @@ inline bool Build(const string sym,
    out.snap.trade_gate_pass = out.trade_gate;
    out.snap.state_quality01 = out.ms.state_quality01;
 
+   return true;
+}
+
+// -----------------------------------------------------------------------------
+// Public raw-bank entrypoints.
+// Keep legacy Build(...) for backward compatibility.
+// New orchestration should prefer BuildRawSignalBank(...).
+// -----------------------------------------------------------------------------
+
+inline bool BuildRawSignalBank(const Result &src,
+                               RawSignalBank_t &out_bank)
+{
+   if(!src.valid)
+   {
+      out_bank.Reset();
+      return false;
+   }
+
+   ProjectResultToRawSignalBank(src, out_bank);
+   return true;
+}
+
+inline bool BuildRawSignalBank(const string sym,
+                               const ENUM_TIMEFRAMES tf,
+                               const Settings &cfg,
+                               Runtime &rt,
+                               RawSignalBank_t &out_bank,
+                               const int closed_shift = 1)
+{
+   Result tmp;
+   if(!Build(sym, tf, cfg, rt, tmp, closed_shift))
+   {
+      out_bank.Reset();
+      return false;
+   }
+
+   ProjectResultToRawSignalBank(tmp, out_bank);
    return true;
 }
 

@@ -26,6 +26,7 @@
 #ifndef POLICIES_HAS_POOL_TELEMETRY_FRAME_EX
 #define POLICIES_HAS_POOL_TELEMETRY_FRAME_EX 1
 #endif
+
 //=============================================================================
 // Policies.mqh - Core gates, filters & orchestration (Persistent)
 //-----------------------------------------------------------------------------
@@ -4343,6 +4344,32 @@ inline void NotifyTradeResult(const double r_multiple)
      }
    }
 
+  inline string PolicyPrimaryVetoTag(const PolicyResult &r)
+  {
+     return GateReasonToString(r.primary_reason);
+  }
+
+  inline void PolicyApplyResultToIntegratedState(const PolicyResult &r,
+                                                 FinalStrategyIntegratedStateVector_t &io_state)
+  {
+     io_state.policy_pass = r.allowed;
+
+     if(!r.allowed)
+     {
+        io_state.veto_code   = r.primary_reason;
+        io_state.veto_tag    = PolicyPrimaryVetoTag(r);
+        io_state.veto_reason = FormatPrimaryVetoDetail(r);
+     }
+     else
+     {
+        if(StringLen(io_state.veto_tag) <= 0)
+           io_state.veto_tag = "none";
+
+        if(StringLen(io_state.veto_reason) <= 0)
+           io_state.veto_reason = "none";
+     }
+  }
+
   inline string PolicyVetoKV(const PolicyResult &r)
   {
      const string sym = (StringLen(s_last_eval_sym) > 0 ? s_last_eval_sym : _Symbol);
@@ -6571,6 +6598,190 @@ inline void NotifyTradeResult(const double r_multiple)
     out.veto_reason                    = v.veto_reason;
   }
 
+  inline Direction _IntegratedStateDir(const FinalStrategyIntegratedStateVector_t &st)
+  {
+     if(st.hypothesis.intended_direction == TDIR_SELL)
+        return DIR_SELL;
+     return DIR_BUY;
+  }
+
+  inline void _IntegratedStateToStratScore(const FinalStrategyIntegratedStateVector_t &st,
+                                           StratScore &ss)
+  {
+     ZeroMemory(ss);
+
+     ss.id        = (StrategyID)st.hypothesis.strategy_id;
+     ss.score     = Clamp01((st.confidence_score + st.alpha_score + st.execution_score + (1.0 - st.risk_score)) / 4.0);
+     ss.risk_mult = Clamp(1.0 - (0.50 * Clamp01(st.risk_score)), 0.25, 1.0);
+
+     ss.hint_sl_price = st.hypothesis.stop_loss;
+     ss.hint_tp_price = st.hypothesis.take_profit;
+  }
+
+  inline double PolicyISV_RawSlot(const RawSignalBank_t &bank,
+                                  const int slot,
+                                  const double fallback = 0.0)
+  {
+     if(slot < 0 || slot >= ISV::ISV_SLOT_COUNT)
+        return fallback;
+     return bank.raw[slot];
+  }
+
+  inline double PolicyISV_ZSlot(const RawSignalBank_t &bank,
+                                const int slot,
+                                const double fallback = 0.0)
+  {
+     if(slot < 0 || slot >= ISV::ISV_SLOT_COUNT)
+        return fallback;
+     return bank.z[slot];
+  }
+
+  inline double PolicyISV_Clamp11(const double x)
+  {
+     if(x > 1.0)  return 1.0;
+     if(x < -1.0) return -1.0;
+     return x;
+  }
+
+  inline double PolicyISV_Toxicity01(const RawSignalBank_t &bank)
+  {
+     const double vpin01 =
+        Clamp01(PolicyISV_RawSlot(bank, ISV::ISV_VPIN, 0.0));
+
+     const double lambda01 =
+        Clamp01(MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_LAMBDA_T, 0.0)));
+
+     const double resiliency01 =
+        Clamp01(1.0 - Clamp01(MathAbs(PolicyISV_ZSlot(bank, ISV::ISV_DEPTH_FADE, 0.0)) / 3.0));
+
+     return Clamp01(0.45 * vpin01 +
+                    0.35 * lambda01 +
+                    0.20 * (1.0 - resiliency01));
+  }
+
+  inline double PolicyISV_DeltaProxy01(const RawSignalBank_t &bank)
+  {
+     const double signed_flow =
+        PolicyISV_RawSlot(bank, ISV::ISV_SIGNED_FLOW, 0.0);
+
+     return Clamp01(0.50 + 0.50 * PolicyISV_Clamp11(signed_flow));
+  }
+
+  inline double PolicyISV_Absorption01(const RawSignalBank_t &bank)
+  {
+     return Clamp01(
+        MathMax(
+           MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_ABS_PLUS, 0.0)),
+           MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_ABS_MINUS, 0.0))
+        )
+     );
+  }
+
+  inline double PolicyISV_Replenishment01(const RawSignalBank_t &bank)
+  {
+     return Clamp01(
+        MathMax(
+           MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_REPL_BID, 0.0)),
+           MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_REPL_ASK, 0.0))
+        )
+     );
+  }
+
+  inline double PolicyISV_LiquidityReject01(const RawSignalBank_t &bank)
+  {
+     return Clamp01(MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_SWEEP_SCORE, 0.0)));
+  }
+
+  inline void _PolicyMergeIntegratedState(const Settings &cfg,
+                                          const FinalStrategyIntegratedStateVector_t &st,
+                                          PolicyResult &out)
+  {
+     out.institutional_state_loaded       = st.valid;
+     out.institutional_gate_pass          = (st.signal_stack_gate_pass &&
+                                             st.location_pass &&
+                                             st.pre_filter_pass &&
+                                             st.execution_pass &&
+                                             st.risk_pass);
+     out.institutional_delay_recommended  = false;
+     out.institutional_derisk_recommended = false;
+
+     out.alpha_score      = Clamp01(st.alpha_score);
+     out.execution_score  = Clamp01(st.execution_score);
+     out.risk_score       = Clamp01(st.risk_score);
+     out.state_quality01  = Clamp01((st.confidence_score + st.alpha_score + st.execution_score + (1.0 - st.risk_score)) / 4.0);
+
+     out.vpin01                        = Clamp01(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_VPIN, 0.0));
+     out.vpin_limit01                  = CfgMicroVPINMax01(cfg);
+     out.resiliency01                  = Clamp01(1.0 - Clamp01(MathAbs(PolicyISV_ZSlot(st.raw_bank, ISV::ISV_DEPTH_FADE, 0.0)) / 3.0));
+     out.resiliency_min01              = CfgMicroResiliencyMin01(cfg);
+
+     out.toxicity01                    = PolicyISV_Toxicity01(st.raw_bank);
+     out.toxicity_max01                = CfgMicroToxicityMax01(cfg);
+     out.spread_stress01               = Clamp01(MathAbs(PolicyISV_ZSlot(st.raw_bank, ISV::ISV_SPREAD_SHOCK, 0.0)) / 3.0);
+     out.spread_stress_max01           = CfgMicroSpreadStressMax01(cfg);
+
+     out.observability_confidence01    = Clamp01(st.raw_bank.degrade.observability01);
+     out.flow_confidence01             = Clamp01(1.0 - st.raw_bank.degrade.observability_penalty01);
+     out.observability_min01           = CfgMicroObservabilityMin01(cfg);
+     out.venue_coverage01              = Clamp01(st.raw_bank.degrade.venue_coverage01);
+     out.venue_coverage_min01          = CfgMicroVenueCoverageMin01(cfg);
+     out.cross_venue_dislocation01     = 0.0;
+     out.cross_venue_dislocation_max01 = CfgMicroXVenueDislocationMax01(cfg);
+
+     out.impact_beta01                 = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_BETA_T, 0.0)));
+     out.impact_beta_max01             = CfgMicroImpactBetaMax01(cfg);
+     out.impact_lambda01               = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_LAMBDA_T, 0.0)));
+     out.impact_lambda_max01           = CfgMicroImpactLambdaMax01(cfg);
+
+     out.truth_tier01                  = Clamp01(1.0 - st.raw_bank.degrade.observability_penalty01);
+     out.truth_tier_aggressive_min01   = CfgMicroTruthTierAggressiveMin01(cfg);
+     out.execution_posture_mode        = 0;
+     out.reduced_only                  = (st.raw_bank.degrade.inst_unavailable == 1 && st.raw_bank.degrade.proxy_inst_available == 0);
+     out.invalidation_event01          = false;
+     out.liquidity_trap_event01        = false;
+
+     out.darkpool01                    = 1.0;
+     out.darkpool_min01                = CfgMicroDarkPoolMin01(cfg);
+     out.darkpool_contradiction01      = 0.0;
+     out.darkpool_contradiction_max01  = CfgMicroDarkPoolContradictionMax01(cfg);
+
+     out.sd_ob_invalidation_proximity01 = 0.0;
+     out.sd_ob_invalidation_max01       = CfgSmartMoneyInvalidationMax01(cfg);
+
+     out.liquidity_vacuum01             = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_LIQUIDITY_STRESS_PROXY, 0.0)));
+     out.liquidity_vacuum_max01         = CfgLiquidityVacuumMax01(cfg);
+     out.liquidity_hunt01               = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_SWEEP_SCORE, 0.0)));
+     out.liquidity_hunt_max01           = CfgLiquidityHuntMax01(cfg);
+
+     out.observability_penalty01        = Clamp01(st.raw_bank.degrade.observability_penalty01);
+
+     out.direct_micro_available         = (st.raw_bank.degrade.inst_available > 0 && st.raw_bank.degrade.inst_unavailable == 0);
+     out.proxy_micro_available          = (st.raw_bank.degrade.proxy_inst_available > 0);
+
+     if(out.direct_micro_available)
+        out.flow_mode = POLICIES_INST_FLOW_MODE_DIRECT;
+     else if(out.proxy_micro_available)
+        out.flow_mode = POLICIES_INST_FLOW_MODE_PROXY;
+     else
+        out.flow_mode = POLICIES_INST_FLOW_MODE_STRUCTURE_ONLY;
+
+     out.inst_ofi01                     = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_OFI, 0.0)));
+     out.inst_obi01                     = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_OBI_1, 0.0)));
+     out.inst_cvd01                     = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_FLOW_IMB, 0.0)));
+
+     out.inst_delta_proxy01             = PolicyISV_DeltaProxy01(st.raw_bank);
+     out.inst_footprint01               = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_FOOTPRINT_DELTA, 0.0)));
+     out.inst_profile01                 = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_POC_DIST, 0.0)));
+     out.inst_absorption01              = PolicyISV_Absorption01(st.raw_bank);
+     out.inst_replenishment01           = PolicyISV_Replenishment01(st.raw_bank);
+     out.inst_vwap_location01           = Clamp01(MathAbs(PolicyISV_RawSlot(st.raw_bank, ISV::ISV_MID_MINUS_VWAP, 0.0)));
+     out.inst_liquidity_reject01        = PolicyISV_LiquidityReject01(st.raw_bank);
+
+     out.confluence_veto_mask           = 0;
+     out.route_reason                   = "integrated_state";
+     out.veto_reason                    = (StringLen(st.veto_reason) > 0 ? st.veto_reason : "none");
+  }
+
   inline bool ApplyInstitutionalStatePolicy(const Settings &cfg,
                                             const string sym,
                                             StratScore &ss,
@@ -7064,6 +7275,101 @@ inline void NotifyTradeResult(const double r_multiple)
                                          InstitutionalStatePolicyView &inst_view)
   {
     return _EvaluateFinalSendGateEx(cfg, _Symbol, ss, out, inst_view, true);
+  }
+
+  inline bool _EvaluateFinalSendGateFromIntegratedStateEx(const Settings &cfg,
+                                                          FinalStrategyIntegratedStateVector_t &io_state,
+                                                          PolicyResult &out,
+                                                          const bool audit)
+  {
+     const string sym =
+        (StringLen(io_state.symbol) > 0 ? io_state.symbol :
+         (StringLen(io_state.raw_bank.symbol) > 0 ? io_state.raw_bank.symbol : _Symbol));
+
+     const bool ok_full = _EvaluateFullEx(cfg, sym, out, audit);
+     if(!audit && !ok_full)
+     {
+        PolicyApplyResultToIntegratedState(out, io_state);
+        return false;
+     }
+
+     _PolicyMergeIntegratedState(cfg, io_state, out);
+
+     if(!io_state.valid)
+     {
+        _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(!io_state.signal_stack_gate_pass ||
+        !io_state.location_pass ||
+        !io_state.pre_filter_pass ||
+        !io_state.execution_pass ||
+        !io_state.risk_pass)
+     {
+        _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
+
+        if(StringLen(out.veto_reason) <= 0 || out.veto_reason == "none")
+        {
+           if(!io_state.signal_stack_gate_pass) out.veto_reason = "signal_stack_gate_fail";
+           else if(!io_state.location_pass)     out.veto_reason = "location_pass_fail";
+           else if(!io_state.execution_pass)    out.veto_reason = "execution_gate_fail";
+           else if(!io_state.risk_pass)         out.veto_reason = "risk_gate_fail";
+           else                                 out.veto_reason = "pre_filter_fail";
+        }
+
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(io_state.raw_bank.degrade.hard_inst_block == 1)
+     {
+        _PolicyVeto(out, GATE_INST_HARD_BLOCK, CA_POLMASK_INSTITUTIONAL);
+        out.veto_reason = "hard_inst_block";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(out.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
+     {
+        _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
+        out.veto_reason = "execution_score_too_low";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(out.risk_score <= (double)POLICIES_INST_VETO_RISK_SCORE01)
+     {
+        _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
+        out.veto_reason = "risk_score_veto";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(out.risk_score < (double)POLICIES_INST_DERISK_RISK_SCORE01)
+        out.institutional_derisk_recommended = true;
+
+     out.allowed = true;
+     out.primary_reason = GATE_OK;
+     out.veto_mask = 0;
+
+     PolicyApplyResultToIntegratedState(out, io_state);
+     return true;
+  }
+
+  inline bool EvaluateFinalSendGateFromIntegratedState(const Settings &cfg,
+                                                       FinalStrategyIntegratedStateVector_t &io_state,
+                                                       PolicyResult &out)
+  {
+     return _EvaluateFinalSendGateFromIntegratedStateEx(cfg, io_state, out, false);
+  }
+
+  inline bool EvaluateFinalSendGateFromIntegratedStateAudit(const Settings &cfg,
+                                                            FinalStrategyIntegratedStateVector_t &io_state,
+                                                            PolicyResult &out)
+  {
+     return _EvaluateFinalSendGateFromIntegratedStateEx(cfg, io_state, out, true);
   }
 
   inline bool _EvaluateMicrostructurePolicyEx(const Settings &cfg,
@@ -7933,6 +8239,70 @@ inline void NotifyTradeResult(const double r_multiple)
     out_intent.tag       = MakeTag(symbol, (StringLen(strat_name)>0?strat_name:"strategy"), dir, SS.score);
     out_intent.reason    = GATE_OK;
     return true;
+  }
+
+  inline bool BuildTradeIntentFromIntegratedState(const Settings &cfg,
+                                                  FinalStrategyIntegratedStateVector_t &io_state,
+                                                  TradeIntent &out_intent,
+                                                  int &gate_reason)
+  {
+     _EnsureLoaded(cfg);
+
+     ResetIntent(out_intent);
+
+     const string symbol =
+        (StringLen(io_state.symbol) > 0 ? io_state.symbol :
+         (StringLen(io_state.raw_bank.symbol) > 0 ? io_state.raw_bank.symbol : _Symbol));
+
+     out_intent.symbol = symbol;
+
+     PolicyResult final_gate;
+     _PolicyReset(final_gate);
+
+     if(!EvaluateFinalSendGateFromIntegratedState(cfg, io_state, final_gate))
+     {
+        _FillIntentInstitutionalPolicy(out_intent, final_gate);
+        gate_reason       = final_gate.primary_reason;
+        out_intent.reason = gate_reason;
+        return false;
+     }
+
+     OrderPlan plan;
+     ZeroMemory(plan);
+
+     if(!Risk::ComputeFromIntegratedStateForSymbol(symbol, io_state, cfg, plan))
+     {
+        gate_reason       = GATE_CONFLICT;
+        out_intent.reason = gate_reason;
+        io_state.risk_pass = false;
+        io_state.veto_tag = "risk_engine";
+        io_state.veto_reason = Risk::LastRejectReason();
+        return false;
+     }
+
+     const Direction dir = _IntegratedStateDir(io_state);
+
+     out_intent.ok         = true;
+     out_intent.dir        = dir;
+     out_intent.strat_id   = (StrategyID)io_state.hypothesis.strategy_id;
+     out_intent.strat_name = StringFormat("strategy_%d", io_state.hypothesis.strategy_id);
+     out_intent.score      = Clamp01(io_state.route_rank > 0.0 ? io_state.route_rank : io_state.confidence_score);
+     out_intent.risk_mult  = Clamp(1.0 - (0.50 * Clamp01(io_state.risk_score)), 0.25, 1.0);
+
+     out_intent.entry      = plan.price;
+     out_intent.sl         = plan.sl;
+     out_intent.tp         = plan.tp;
+     out_intent.lots       = plan.lots;
+
+     _FillIntentInstitutionalPolicy(out_intent, final_gate);
+
+     out_intent.tag        = MakeTag(symbol,
+                                     out_intent.strat_name,
+                                     dir,
+                                     out_intent.score);
+     out_intent.reason     = GATE_OK;
+
+     return true;
   }
 
   struct PolicySignal

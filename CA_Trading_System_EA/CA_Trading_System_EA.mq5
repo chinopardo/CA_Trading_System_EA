@@ -66,6 +66,9 @@ void MSH_RouteEvent(const Scan::ScanEvent &e);
 #define MARKETSCANNERHUB_CUSTOM_ROUTE(e)  MSH_RouteEvent(e)
 
 #include "include/MarketScannerHub.mqh"
+#include "include/InstitutionalStateVector.mqh"
+#include "include/CategorySelector.mqh"
+#include "include/StrategyHypothesisBank.mqh"
 
 // Optional meta-layers
 #define ENABLE_ML_BLENDER
@@ -104,6 +107,21 @@ EAState    g_state;      // global EA state (market buffers, ICT_Context, etc.)
 CArrayObj g_strategies;  // StrategyBase*
 Router   g_exec_router;     // strategy router / dispatcher
 bool     g_inited = false;
+
+// Canonical timer-owned transport scratch.
+// State.mqh remains the ownership layer for freshness/cache.
+// These are per-pass working objects consumed by router/risk/execution.
+ISV::RawSignalBank_t                g_raw_bank;
+CategorySelectedVector_t            g_cat_selected;
+CategoryPassVector_t                g_cat_pass;
+ISV::SignalStackGate_t              g_sig_stack_gate;
+ISV::LocationPass_t                 g_location_pass;
+StrategyHypothesisBank_t            g_hyp_bank;
+FinalStrategyIntegratedStateVector_t g_final_integrated;
+
+bool                                g_transport_ready = false;
+datetime                            g_transport_bar_time = 0;
+string                              g_transport_sym = "";
 
 //--------------------------------------------------------------------
 // Forward declarations for helper functions we add in this file
@@ -190,6 +208,11 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
                                         const Settings &cfg,
                                         string &diag_out);
 void PreseedRuntimeSymbolPoolAtStartup(const Settings &cfg);
+void ResetCanonicalSignalStackTransport();
+
+bool BuildCanonicalSignalStackTransport(const string sym,
+                                       const datetime required_bar_time,
+                                       string &diag_out);
 
 // ------------------------------------------------------------------
 // Provide ONE global, guarded helper used by strategies.
@@ -6192,6 +6215,115 @@ void RefreshRuntimeContextLight(const string sym = "")
    RefreshICTContext(g_state);
 }
 
+void ResetCanonicalSignalStackTransport()
+{
+   g_raw_bank.Reset();
+   g_cat_selected.Reset();
+   g_cat_pass.Reset();
+   g_sig_stack_gate.Reset();
+   g_location_pass.Reset();
+   g_hyp_bank.Clear();
+   g_final_integrated.Reset();
+
+   g_transport_ready = false;
+   g_transport_bar_time = 0;
+   g_transport_sym = "";
+}
+
+bool BuildCanonicalSignalStackTransport(const string sym,
+                                       const datetime required_bar_time,
+                                       string &diag_out)
+{
+   diag_out = "";
+
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+   if(use_sym == "")
+   {
+      ResetCanonicalSignalStackTransport();
+      diag_out = "router_symbol_empty";
+      return false;
+   }
+
+   ResetCanonicalSignalStackTransport();
+
+   // 1) Canonical raw market state + derived category transport
+   const ENUM_TIMEFRAMES isv_tf = Warmup::TF_Entry(g_cfg);
+   if(isv_tf == PERIOD_CURRENT)
+   {
+      diag_out = "raw_bank_tf_invalid";
+      return false;
+   }
+
+   const int isv_closed_shift = CanonicalInstitutionalRequiredBarShift();
+   const int isv_z_window = (g_cfg.scan_obi_z_window > 0 ? g_cfg.scan_obi_z_window : 80);
+
+   static ISV::Runtime s_isv_runtime;
+   static string s_isv_runtime_symbol = "";
+   static ENUM_TIMEFRAMES s_isv_runtime_tf = PERIOD_CURRENT;
+
+   if((!s_isv_runtime.initialized) ||
+      s_isv_runtime_symbol != use_sym ||
+      s_isv_runtime_tf != isv_tf)
+   {
+      s_isv_runtime.Reset(isv_z_window);
+      s_isv_runtime_symbol = use_sym;
+      s_isv_runtime_tf = isv_tf;
+   }
+
+   ISV::Result isv_result;
+   if(!ISV::Build(use_sym,
+                  isv_tf,
+                  g_cfg,
+                  s_isv_runtime,
+                  isv_result,
+                  isv_closed_shift))
+   {
+      diag_out = "raw_bank_build_failed";
+      return false;
+   }
+
+   if(required_bar_time > 0 &&
+      isv_result.bar_time > 0 &&
+      isv_result.bar_time != required_bar_time)
+   {
+      diag_out = "raw_bank_bar_mismatch";
+      return false;
+   }
+
+   if(!ISV::BuildRawSignalBank(isv_result, g_raw_bank))
+   {
+      diag_out = "raw_bank_project_failed";
+      return false;
+   }
+
+   g_cat_selected = isv_result.cat_sel;
+   g_cat_pass     = isv_result.cat_pass;
+   ISV::FillSignalStackGateFromResult(isv_result, g_sig_stack_gate);
+   ISV::FillLocationPassFromResult(isv_result, g_location_pass);
+
+   // 2) Strategy hypothesis bank
+   g_hyp_bank.Clear();
+
+   if(!StratReg::BuildHypothesesFromRegistry(g_cfg,
+                                             g_state,
+                                             g_raw_bank,
+                                             g_cat_selected,
+                                             g_cat_pass,
+                                             g_sig_stack_gate,
+                                             g_location_pass,
+                                             g_hyp_bank))
+   {
+      diag_out = "hypothesis_bank_build_failed";
+      return false;
+   }
+
+   g_transport_ready = true;
+   g_transport_bar_time = required_bar_time;
+   g_transport_sym = use_sym;
+
+   return true;
+}
+
 void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refresh)
 {
    if(sym != "")
@@ -6224,7 +6356,9 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    }
 
    // Publish canonical runtime transport only.
-   // Do NOT add confluence scoring, strategy math, or direct order-routing logic here.
+   // Do NOT build strategy hypotheses or route orders here.
+   // The timer-owned route pass is the single owner of:
+   // raw-bank build -> category selection -> hypothesis build -> router evaluation.
    PublishMicrostructureSnapshot(sym);
 
    EA_LogInstitutionalDegradeStateOncePerBar((sym == "" ? CanonicalRouterSymbol() : sym),
@@ -6526,16 +6660,19 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
-   // Canonical new-order orchestration must remain:
-   // OnTimer() -> scanners/signals -> confluence/state -> StrategyRegistry -> Router -> Policies/Risk -> Execution -> trade fill.
-   // This helper consumes cached timer-owned context only and must never be used as a tick-owned router entrypoint.
-
-   // Signal-stack / category selection ownership:
-   // The raw bank, category-selected vector, category pass vector,
-   // signal-stack gate, location gate, and final integrated state vector
-   // are computed upstream by InstitutionalStateVector / CategorySelector.
-   // Do not duplicate that computation in the EA entry file.
-   // This file consumes the resulting gate transport through Router / Risk / Execution.
+   // Canonical new-order orchestration must remain timer-owned:
+   // OnTimer()
+   //    -> scanners / snapshots / confluence refresh
+   //    -> canonical institutional state refresh
+   //    -> raw bank build
+   //    -> category selector + hard gates
+   //    -> strategy hypothesis bank build
+   //    -> router
+   //    -> policies / risk
+   //    -> execution
+   //
+   // Do not duplicate canonical raw-bank or category-selection assembly
+   // anywhere else in this EA entry file.
    if(!WarmupGateOK())
    {
       DecisionTelemetry_MarkGateBlocked("router", "warmup");
@@ -6574,15 +6711,46 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
+   string transport_diag = "";
+   if(!BuildCanonicalSignalStackTransport(router_sym, required_bar_time, transport_diag))
+   {
+      DecisionTelemetry_MarkGateBlocked("router", "canonical_transport_not_ready");
+
+      if(InpDebug && transport_diag != "")
+      {
+         PrintFormat("[Router][%s] Skipping hypothesis route; detail=%s",
+                     origin_tag,
+                     transport_diag);
+      }
+
+      return false;
+   }
+
+   if(g_hyp_bank.Size() <= 0)
+   {
+      DecisionTelemetry_MarkNoCandidates("router", "hypothesis_bank_empty");
+      MSH_DirtyClear();
+      return false;
+   }
+
    const int router_seq_before = Telemetry::RouterDecisionSeq();
 
-   ICT_Context ictCtx = StateGetICTContext(g_state);
-   RouterEvaluateAll(g_exec_router, g_cfg, ictCtx);
+   const bool routed =
+      RouterEvaluateHypothesisBank(g_exec_router,
+                                   g_cfg,
+                                   g_state,
+                                   g_raw_bank,
+                                   g_cat_selected,
+                                   g_cat_pass,
+                                   g_sig_stack_gate,
+                                   g_location_pass,
+                                   g_hyp_bank,
+                                   g_final_integrated);
 
-   if(Telemetry::RouterDecisionSeq() != router_seq_before)
+   if(routed && Telemetry::RouterDecisionSeq() != router_seq_before)
       DecisionTelemetry_RecordPassFromRouterSnapshot("router");
    else
-      DecisionTelemetry_MarkNoCandidates("router", "router_no_candidates");
+      DecisionTelemetry_MarkNoCandidates("router", "router_no_hypothesis_pick");
 
    MSH_DirtyClear();
    return true;
@@ -6927,6 +7095,7 @@ int OnInit()
    StateInit(g_state, g_cfg);
    Inst_ResetTransportStamp();
    Inst_CommitTransportStampToState(g_state);
+   ResetCanonicalSignalStackTransport();
 
    MarketData::EnsureWarmup_ADX(_Symbol, g_cfg.tf_entry, g_cfg.adx_period, 1);
    ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)Policies::CfgCorrTF(S);
@@ -7068,11 +7237,16 @@ void OnTick()
        g_use_registry = false;
        
    // Canonical ownership rule:
-   // OnTimer() is the only owner of scanner cadence, routing cadence, and new-order dispatch.
-   // OnTick() is consumer-only: lightweight runtime refresh, open-position management,
-   // telemetry/UI helpers, and diagnostics against already-cached state.
-   // OnTick() must never call RouterEvaluateAll(), RunCachedRouterPass(), ProcessSymbol(),
-   // EvaluateOneSymbol(), or any helper that would become an alternate routing owner.
+   // OnTimer() is the only owner of:
+   // - scanner cadence
+   // - canonical raw-bank/category pipeline
+   // - strategy hypothesis building
+   // - router dispatch
+   // - new-order execution
+   //
+   // OnTick() is consumer-only:
+   // lightweight runtime refresh, open-position management, telemetry/UI, diagnostics.
+   // OnTick() must never build the canonical signal stack and must never become an alternate routing owner.
    const string runtime_sym = (UseLegacyProcessSymbolEngine() ? _Symbol : CanonicalRouterSymbol());
    RefreshRuntimeContextLight(runtime_sym);
 
@@ -7117,13 +7291,15 @@ void OnTick()
       // OnTick may refresh lightweight runtime state for UI / open-position management,
       // but it must NOT call RouterEvaluateAll() and must NOT trigger scanner cadence.
       //
-      // Canonical live chain remains:
-      // scanners/signals (OnTimer via MSH)
-      // -> confluence/state refresh
-      // -> StrategyRegistry
-      // -> Router
-      // -> Policies/Risk
-      // -> Execution
+      // Canonical live chain remains timer-owned:
+      // scanners / signals
+      // -> canonical institutional state
+      // -> raw bank
+      // -> category selector
+      // -> strategy hypothesis bank
+      // -> router
+      // -> policies / risk
+      // -> execution
       // -> trade fill
    }
 
@@ -7186,13 +7362,21 @@ void OnTimer()
    const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));
    const bool legacy_runtime_requested = LegacyProcessSymbolRuntimeRequested();
 
-   // Canonical parity policy:
-   // live and tester use the same routing owner.
-   // 1) OnTimer() runs MSH::HubTimerTick(S)
+   // Canonical timer-owned routing policy:
+   // 1) MSH::HubTimerTick(S)
    // 2) RefreshRuntimeContextFromHub(router_sym, true)
+   //    - refresh microstructure snapshot
+   //    - refresh light runtime state
+   //    - confirm canonical institutional freshness / degrade state
    // 3) RunCachedRouterPass(router_sym, now_srv, "Timer")
-   // 4) RouterEvaluateAll() executes only inside that timer-owned cached-context path
-   // Non-canonical routes are diagnostics-only and disabled for trade execution.
+   //    - build RawSignalBank_t
+   //    - run CategorySelector
+   //    - build StrategyHypothesisBank_t
+   //    - router consumes hypotheses
+   //    - policies / risk veto
+   //    - execution sends
+   //
+   // Non-canonical routes remain diagnostics-only and must not dispatch trades.
    MSH::HubTimerTick(S);
    // Always refresh the microstructure snapshot.  Without this, the canonical
    // institutional state never becomes "fresh" in the tester, causing the

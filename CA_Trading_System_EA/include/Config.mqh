@@ -2375,6 +2375,24 @@ namespace Config
      string sigsel_vol_weights_csv;       // use ';' separated values
      string sigsel_vola_weights_csv;      // use ';' separated values
 
+     // Strategy hypothesis template defaults
+     // These are shared defaults consumed by StrategyBase / StrategyRegistry
+     // when a strategy does not supply a more specific override.
+     int    strat_required_category_confirmations_default;
+     int    strat_required_structure_mask_default;
+     int    strat_risk_template_default;
+     int    strat_execution_style_default;
+     double strat_rr_min_default;
+     bool   strat_allow_proxy_degrade_default;
+
+     // Main strategy override (Strat_MainTradingLogic / staged ICT path)
+     int    strat_main_required_category_confirmations;
+     int    strat_main_required_structure_mask;
+     int    strat_main_risk_template;
+     int    strat_main_execution_style;
+     double strat_main_rr_min;
+     bool   strat_main_allow_proxy_degrade;
+
      // Router / gates / require toggles
       bool   enable_hard_gate;
       double router_min_score;
@@ -2569,6 +2587,66 @@ namespace Config
    {
      return ConfigCore::EnableStrategyByName(cfg, name, on);
    }
+
+  inline int CfgStrategyRequiredCategoryConfirmationsDefault(const Settings &cfg)
+  {
+     return MathMax(1, cfg.strat_required_category_confirmations_default);
+  }
+
+  inline int CfgStrategyRequiredStructureMaskDefault(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_required_structure_mask_default);
+  }
+
+  inline int CfgStrategyRiskTemplateDefault(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_risk_template_default);
+  }
+
+  inline int CfgStrategyExecutionStyleDefault(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_execution_style_default);
+  }
+
+  inline double CfgStrategyRRMinDefault(const Settings &cfg)
+  {
+     return MathMax(0.25, cfg.strat_rr_min_default);
+  }
+
+  inline bool CfgStrategyAllowProxyDegradeDefault(const Settings &cfg)
+  {
+     return (cfg.strat_allow_proxy_degrade_default ? true : false);
+  }
+
+  inline int CfgMainStrategyRequiredCategoryConfirmations(const Settings &cfg)
+  {
+     return MathMax(1, cfg.strat_main_required_category_confirmations);
+  }
+
+  inline int CfgMainStrategyRequiredStructureMask(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_main_required_structure_mask);
+  }
+
+  inline int CfgMainStrategyRiskTemplate(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_main_risk_template);
+  }
+
+  inline int CfgMainStrategyExecutionStyle(const Settings &cfg)
+  {
+     return MathMax(0, cfg.strat_main_execution_style);
+  }
+
+  inline double CfgMainStrategyRRMin(const Settings &cfg)
+  {
+     return MathMax(0.25, cfg.strat_main_rr_min);
+  }
+
+  inline bool CfgMainStrategyAllowProxyDegrade(const Settings &cfg)
+  {
+     return (cfg.strat_main_allow_proxy_degrade ? true : false);
+  }
 
    void ConfigCore::Normalize(Settings &cfg)
    {
@@ -4380,6 +4458,20 @@ namespace Config
      cfg.sigsel_vol_weights_csv             = x.sigsel_vol_weights_csv;
      cfg.sigsel_vola_weights_csv            = x.sigsel_vola_weights_csv;
 
+     cfg.strat_required_category_confirmations_default = x.strat_required_category_confirmations_default;
+     cfg.strat_required_structure_mask_default         = x.strat_required_structure_mask_default;
+     cfg.strat_risk_template_default                   = x.strat_risk_template_default;
+     cfg.strat_execution_style_default                 = x.strat_execution_style_default;
+     cfg.strat_rr_min_default                          = x.strat_rr_min_default;
+     cfg.strat_allow_proxy_degrade_default             = x.strat_allow_proxy_degrade_default;
+
+     cfg.strat_main_required_category_confirmations    = x.strat_main_required_category_confirmations;
+     cfg.strat_main_required_structure_mask            = x.strat_main_required_structure_mask;
+     cfg.strat_main_risk_template                      = x.strat_main_risk_template;
+     cfg.strat_main_execution_style                    = x.strat_main_execution_style;
+     cfg.strat_main_rr_min                             = x.strat_main_rr_min;
+     cfg.strat_main_allow_proxy_degrade                = x.strat_main_allow_proxy_degrade;
+
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
        cfg.enable_hard_gate = x.enable_hard_gate;
@@ -5149,7 +5241,23 @@ namespace Config
      x.sigsel_mom_weights_csv             = "";
      x.sigsel_vol_weights_csv             = "";
      x.sigsel_vola_weights_csv            = "";
-   
+
+     // Strategy hypothesis template defaults
+     x.strat_required_category_confirmations_default = 2;
+     x.strat_required_structure_mask_default         = 0;
+     x.strat_risk_template_default                   = 0;
+     x.strat_execution_style_default                 = 0;
+     x.strat_rr_min_default                          = 1.50;
+     x.strat_allow_proxy_degrade_default             = true;
+
+     // Main strategy override
+     x.strat_main_required_category_confirmations    = 2;
+     x.strat_main_required_structure_mask            = 0;
+     x.strat_main_risk_template                      = 0;
+     x.strat_main_execution_style                    = 0;
+     x.strat_main_rr_min                             = 1.50;
+     x.strat_main_allow_proxy_degrade                = true;
+
      x.router_min_score = 0.0;
      x.router_fb_min    = 0.0;
       
@@ -11508,6 +11616,55 @@ namespace Config
     _SigSelParseWeightsCSV(cfg.sigsel_vol_weights_csv,   SIGSEL_VOL_CAND_COUNT,   cfg.sigsel_vol_weights);
     _SigSelParseWeightsCSV(cfg.sigsel_vola_weights_csv,  SIGSEL_VOLA_CAND_COUNT,  cfg.sigsel_vola_weights);
 
+    // Strategy hypothesis template normalization
+    if(cfg.strat_required_category_confirmations_default < 1)
+       cfg.strat_required_category_confirmations_default = 2;
+    if(cfg.strat_required_category_confirmations_default > 5)
+       cfg.strat_required_category_confirmations_default = 5;
+
+    if(cfg.strat_required_structure_mask_default < 0)
+       cfg.strat_required_structure_mask_default = 0;
+
+    if(cfg.strat_risk_template_default < 0)
+       cfg.strat_risk_template_default = 0;
+
+    if(cfg.strat_execution_style_default < 0)
+       cfg.strat_execution_style_default = 0;
+
+    if(cfg.strat_rr_min_default < 0.25)
+       cfg.strat_rr_min_default = 1.50;
+    if(cfg.strat_rr_min_default > 10.0)
+       cfg.strat_rr_min_default = 10.0;
+
+    cfg.strat_allow_proxy_degrade_default =
+       (cfg.strat_allow_proxy_degrade_default ? true : false);
+
+    if(cfg.strat_main_required_category_confirmations < 1)
+       cfg.strat_main_required_category_confirmations =
+          cfg.strat_required_category_confirmations_default;
+    if(cfg.strat_main_required_category_confirmations > 5)
+       cfg.strat_main_required_category_confirmations = 5;
+
+    if(cfg.strat_main_required_structure_mask < 0)
+       cfg.strat_main_required_structure_mask =
+          cfg.strat_required_structure_mask_default;
+
+    if(cfg.strat_main_risk_template < 0)
+       cfg.strat_main_risk_template =
+          cfg.strat_risk_template_default;
+
+    if(cfg.strat_main_execution_style < 0)
+       cfg.strat_main_execution_style =
+          cfg.strat_execution_style_default;
+
+    if(cfg.strat_main_rr_min < 0.25)
+       cfg.strat_main_rr_min = cfg.strat_rr_min_default;
+    if(cfg.strat_main_rr_min > 10.0)
+       cfg.strat_main_rr_min = 10.0;
+
+    cfg.strat_main_allow_proxy_degrade =
+       (cfg.strat_main_allow_proxy_degrade ? true : false);
+
     // Keep router fallback threshold and legacy alias in sync
     _SyncRouterFallbackAlias(cfg);
     // Strategy toggles & ICT-specific thresholds
@@ -12080,6 +12237,42 @@ namespace Config
     {
        warns += "all Institutional proxy weights are <= 0; Normalize() will reset them to equal weights.\n";
     }
+
+    if(cfg.strat_required_category_confirmations_default < 1 ||
+       cfg.strat_required_category_confirmations_default > 5)
+    {
+       warns += "strat_required_category_confirmations_default should be in [1,5]; Normalize() will clamp it.\n";
+    }
+
+    if(cfg.strat_required_structure_mask_default < 0)
+       warns += "strat_required_structure_mask_default < 0; Normalize() will clamp it to 0.\n";
+
+    if(cfg.strat_risk_template_default < 0)
+       warns += "strat_risk_template_default < 0; Normalize() will clamp it to 0.\n";
+
+    if(cfg.strat_execution_style_default < 0)
+       warns += "strat_execution_style_default < 0; Normalize() will clamp it to 0.\n";
+
+    if(cfg.strat_rr_min_default < 0.25 || cfg.strat_rr_min_default > 10.0)
+       warns += "strat_rr_min_default should be in [0.25,10.0]; Normalize() will clamp it.\n";
+
+    if(cfg.strat_main_required_category_confirmations < 1 ||
+       cfg.strat_main_required_category_confirmations > 5)
+    {
+       warns += "strat_main_required_category_confirmations should be in [1,5]; Normalize() will clamp it.\n";
+    }
+
+    if(cfg.strat_main_required_structure_mask < 0)
+       warns += "strat_main_required_structure_mask < 0; Normalize() will clamp it.\n";
+
+    if(cfg.strat_main_risk_template < 0)
+       warns += "strat_main_risk_template < 0; Normalize() will clamp it.\n";
+
+    if(cfg.strat_main_execution_style < 0)
+       warns += "strat_main_execution_style < 0; Normalize() will clamp it.\n";
+
+    if(cfg.strat_main_rr_min < 0.25 || cfg.strat_main_rr_min > 10.0)
+       warns += "strat_main_rr_min should be in [0.25,10.0]; Normalize() will clamp it.\n";
 
     #ifdef CFG_HAS_MONTHLY_TARGET
       const double mt = CfgMonthlyTargetPct(cfg);
@@ -19981,6 +20174,22 @@ struct Settings
    double sigsel_mom_weights[];
    double sigsel_vol_weights[];
    double sigsel_vola_weights[];
+
+   // ===== Strategy hypothesis template defaults =====
+   int    strat_required_category_confirmations_default;
+   int    strat_required_structure_mask_default;
+   int    strat_risk_template_default;
+   int    strat_execution_style_default;
+   double strat_rr_min_default;
+   bool   strat_allow_proxy_degrade_default;
+
+   // Main strategy override (Strat_MainTradingLogic / staged ICT path)
+   int    strat_main_required_category_confirmations;
+   int    strat_main_required_structure_mask;
+   int    strat_main_risk_template;
+   int    strat_main_execution_style;
+   double strat_main_rr_min;
+   bool   strat_main_allow_proxy_degrade;
 
    #ifdef CFG_HAS_TRADE_CD_SEC
      int    trade_cd_sec;    // global per-trade cooldown seconds (Policies::CfgTradeCooldownSec)

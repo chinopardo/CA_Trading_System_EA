@@ -488,6 +488,11 @@
       "path":"include\\CategorySelector.mqh",
       "compile":false,
       "relative_to_project":true
+    },
+    {
+      "path":"include\\StrategyHypothesisBank.mqh",
+      "compile":false,
+      "relative_to_project":true
     }
   ]
 }

@@ -3,6 +3,7 @@
 
 #include "Config.mqh"
 #include "Types.mqh"
+#include "InstitutionalStateVector.mqh"
 
 namespace CategorySelector
 {
@@ -27,6 +28,239 @@ inline bool IsValidInputArraySizes(const double &raw[],
    if(ArraySize(valid_mask) < RAW_COUNT)
       return false;
    return true;
+}
+
+inline void BuildBankSelectionViews(const RawSignalBank_t &bank,
+                                    double &raw[],
+                                    double &z[],
+                                    bool &valid_mask[])
+{
+   ArrayResize(raw, RAW_COUNT);
+   ArrayResize(z, RAW_COUNT);
+   ArrayResize(valid_mask, RAW_COUNT);
+
+   for(int i = 0; i < RAW_COUNT; i++)
+   {
+      raw[i] = bank.raw[i];
+      z[i]   = bank.z[i];
+
+      valid_mask[i] =
+         (bank.valid &&
+          MathIsValidNumber(bank.raw[i]) &&
+          MathIsValidNumber(bank.z[i]));
+   }
+}
+
+inline bool IsInstitutionalProxyRawIndex(const int raw_index)
+{
+   int proxy_candidates[];
+   SigSel_GetInstitutionalProxyCandidates(proxy_candidates);
+   return (FindRawIndexPositionInList(proxy_candidates, raw_index) >= 0);
+}
+
+inline int ResolveInstitutionalSelectionSourceFromBank(const RawSignalBank_t &bank,
+                                                       const CategorySelectedVector &sel)
+{
+   if(bank.degrade.inst_sel_source == INST_SIGNAL_SOURCE_DIRECT ||
+      bank.degrade.inst_sel_source == INST_SIGNAL_SOURCE_PROXY)
+      return bank.degrade.inst_sel_source;
+
+   if(sel.inst_active <= 0 || sel.inst_index < 0)
+      return INST_SIGNAL_SOURCE_NONE;
+
+   if(IsInstitutionalProxyRawIndex(sel.inst_index))
+      return INST_SIGNAL_SOURCE_PROXY;
+
+   return INST_SIGNAL_SOURCE_DIRECT;
+}
+
+inline int ResolveEffectiveMinCategoryVotesFromBank(const Settings &cfg,
+                                                    const RawSignalBank_t &bank)
+{
+   const int base_votes  = GetEffectiveMinCategoryVotesBase(cfg);
+   const int floor_votes = GetEffectiveMinCategoryVotesFloor(cfg, base_votes);
+
+   int effective_votes = base_votes;
+
+   if(bank.degrade.inst_unavailable == 1 &&
+      bank.degrade.proxy_inst_available == 1 &&
+      cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX)
+   {
+      effective_votes = RelaxMinCategoryVotesByOne(base_votes, floor_votes);
+   }
+   else
+   if(bank.degrade.inst_unavailable == 1 &&
+      bank.degrade.proxy_inst_available == 0 &&
+      cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_SOFT_NEUTRAL_THEN_STACK_RELAX)
+   {
+      effective_votes = RelaxMinCategoryVotesByOne(base_votes, floor_votes);
+   }
+   else
+   if(bank.degrade.inst_unavailable == 1 &&
+      cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX)
+   {
+      effective_votes = RelaxMinCategoryVotesByOne(base_votes, floor_votes);
+   }
+
+   return effective_votes;
+}
+
+inline void ClearInstitutionalSelection(CategorySelectedVector &sel)
+{
+   sel.inst_index  = -1;
+   sel.inst_value  = 0.0;
+   sel.inst_z      = 0.0;
+   sel.inst_active = 0;
+}
+
+inline void ApplyInstitutionalAntiEchoFromBank(const Settings &cfg,
+                                               const RawSignalBank_t &bank,
+                                               CategorySelectedVector &sel)
+{
+   if(bank.degrade.hard_inst_block == 1)
+   {
+      ClearInstitutionalSelection(sel);
+      return;
+   }
+
+   if(sel.inst_active <= 0)
+      return;
+
+   const int resolved_source = ResolveInstitutionalSelectionSourceFromBank(bank, sel);
+
+   if(bank.degrade.inst_unavailable == 1 &&
+      bank.degrade.proxy_inst_available == 0 &&
+      cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_HARD_BLOCK)
+   {
+      ClearInstitutionalSelection(sel);
+      return;
+   }
+
+   if(bank.degrade.inst_unavailable == 1 &&
+      resolved_source == INST_SIGNAL_SOURCE_DIRECT &&
+      (cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_PROXY_SUBSTITUTE ||
+       cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_PROXY_SUBSTITUTE_THEN_STACK_RELAX ||
+       cfg.sigsel_institutional_degrade_mode == INST_DEGRADE_SOFT_NEUTRAL_THEN_STACK_RELAX))
+   {
+      ClearInstitutionalSelection(sel);
+   }
+}
+
+inline void OverlayInstitutionalPassMetaFromBank(const Settings &cfg,
+                                                 const RawSignalBank_t &bank,
+                                                 const CategorySelectedVector &sel,
+                                                 CategoryPassVector &passv)
+{
+   passv.inst_coverage        = bank.degrade.inst_coverage;
+   passv.inst_available       = bank.degrade.inst_available;
+   passv.inst_partial         = bank.degrade.inst_partial;
+   passv.inst_unavailable     = bank.degrade.inst_unavailable;
+   passv.proxy_inst_available = bank.degrade.proxy_inst_available;
+   passv.inst_sel_source      = ResolveInstitutionalSelectionSourceFromBank(bank, sel);
+   passv.hard_inst_block      = bank.degrade.hard_inst_block;
+
+   passv.effective_min_category_votes =
+      ResolveEffectiveMinCategoryVotesFromBank(cfg, bank);
+}
+
+inline void RefreshStackAndLocationGates(const Settings &cfg,
+                                         CategoryPassVector &passv)
+{
+   passv.signal_stack_score =
+      passv.inst_pass +
+      passv.trend_pass +
+      passv.mom_pass +
+      passv.vol_pass +
+      passv.vola_pass;
+
+   if(cfg.sigsel_enable)
+   {
+      if(passv.hard_inst_block == 1)
+         passv.signal_stack_gate = 0;
+      else
+         passv.signal_stack_gate =
+            (passv.signal_stack_score >= passv.effective_min_category_votes ? 1 : 0);
+   }
+   else
+   {
+      passv.signal_stack_gate = 1;
+   }
+
+   if(cfg.sigsel_enable)
+      passv.location_pass = (passv.location_score >= cfg.sigsel_min_location_votes ? 1 : 0);
+   else
+      passv.location_pass = 1;
+}
+
+inline void FillSignalStackGateFromPass(const CategoryPassVector &passv,
+                                        SignalStackGate_t &out_gate)
+{
+   out_gate.Reset();
+   out_gate.pass = passv.signal_stack_gate;
+   out_gate.hard_inst_block = passv.hard_inst_block;
+   out_gate.inst_coverage = passv.inst_coverage;
+   out_gate.inst_available = passv.inst_available;
+   out_gate.inst_partial = passv.inst_partial;
+   out_gate.inst_unavailable = passv.inst_unavailable;
+   out_gate.proxy_inst_available = passv.proxy_inst_available;
+   out_gate.inst_sel_source = passv.inst_sel_source;
+}
+
+inline void FillLocationPassFromBank(const CategoryPassVector &passv,
+                                     const RawSignalBank_t &bank,
+                                     LocationPass_t &out_loc)
+{
+   out_loc.Reset();
+   out_loc.pass = passv.location_pass;
+   out_loc.sweep_score = bank.raw[RAW_SWEEP_SCORE];
+   out_loc.liquidity_gap = MathAbs(bank.raw[RAW_LIQUIDITY_STRESS_PROXY]);
+   out_loc.spread_shock_z = bank.z[RAW_SPREAD_SHOCK];
+   out_loc.slippage_z = bank.z[RAW_SLIPPAGE];
+   out_loc.depth_fade_z = bank.z[RAW_DEPTH_FADE];
+   out_loc.poc_dist_z = bank.z[RAW_POC_DIST];
+   out_loc.va_state_z = bank.z[RAW_VA_STATE];
+   out_loc.poi_score01 = bank.ms.poi_score01;
+   out_loc.poi_distance_atr01 = bank.ms.poi_distance_atr01;
+   out_loc.poi_kind = bank.ms.poi_kind;
+   out_loc.liquidity_event_time = bank.ms.liquidity_event_time;
+   out_loc.liquidity_event_price = bank.ms.liquidity_event_price;
+}
+
+inline string BuildSelectionDiagnosticSummary(const CategorySelectedVector &sel,
+                                              const CategoryPassVector &passv,
+                                              const RawSignalBank_t &bank)
+{
+   return StringFormat(
+      "sym=%s tf=%d inst[idx=%d z=%.4f src=%d cov=%.3f hard=%d] "
+      "trend[idx=%d z=%.4f] mom[idx=%d z=%.4f] vol[idx=%d z=%.4f] vola[idx=%d z=%.4f] "
+      "passes[i=%d t=%d m=%d v=%d va=%d] stack=%d/%d loc=%d/%d",
+      bank.symbol,
+      (int)bank.tf,
+      sel.inst_index, sel.inst_z, passv.inst_sel_source, passv.inst_coverage, passv.hard_inst_block,
+      sel.trend_index, sel.trend_z,
+      sel.mom_index, sel.mom_z,
+      sel.vol_index, sel.vol_z,
+      sel.vola_index, sel.vola_z,
+      passv.inst_pass,
+      passv.trend_pass,
+      passv.mom_pass,
+      passv.vol_pass,
+      passv.vola_pass,
+      passv.signal_stack_score,
+      passv.signal_stack_gate,
+      passv.location_score,
+      passv.location_pass
+   );
+}
+
+inline void EmitSelectionDiagnosticLog(const CategorySelectedVector &sel,
+                                       const CategoryPassVector &passv,
+                                       const RawSignalBank_t &bank,
+                                       const string log_tag)
+{
+   PrintFormat("[%s] %s",
+               log_tag,
+               BuildSelectionDiagnosticSummary(sel, passv, bank));
 }
 
 inline void LoadThresholdViewFromSettings(const Settings &cfg,
@@ -901,6 +1135,15 @@ inline bool UseCompactFinalVectorMode(const Settings &cfg)
 }
 
 // ============================================================================
+// Legacy compatibility API
+// ----------------------------------------------------------------------------
+// The array-based API remains in place for backward compatibility.
+// New orchestration should prefer the raw-bank consumer API added below.
+// Canonical market truth must come from RawSignalBank_t, not from local
+// recomputation inside strategies or the router.
+// ============================================================================
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -969,6 +1212,11 @@ inline CategoryPassVector ComputeCategoryPasses(const CategorySelectedVector &se
    out_pass.inst_sel_source              = inst_diag.inst_sel_source;
    out_pass.hard_inst_block              = inst_diag.hard_inst_block;
    out_pass.effective_min_category_votes = inst_diag.effective_min_category_votes;
+
+   // Legacy array-path note:
+   // these institutional coverage/degrade fields are later overridden by the
+   // raw-bank consumer API so that canonical availability/degrade ownership
+   // stays with RawSignalBank_t.
 
    for(int c = 0; c < CAT_COUNT; c++)
    {
@@ -1162,6 +1410,120 @@ inline FinalIntegratedStateVector AssembleFinalVector(const CategorySelectedVect
                               compact_mode);
 
    return out_vec;
+}
+
+// ============================================================================
+// Raw-bank consumer API
+// ============================================================================
+
+inline bool BuildSelectedState(const Settings &cfg,
+                               const RawSignalBank_t &bank,
+                               const int dir_t,
+                               CategorySelectedVector &out_sel,
+                               CategoryPassVector &out_pass,
+                               SignalStackGate_t &out_stack_gate,
+                               LocationPass_t &out_location_pass,
+                               BaseContextVector &base_ctx,
+                               StructureVector &struct_ctx,
+                               CoverageContextVector &coverage_ctx,
+                               AuxContextVector &aux_ctx,
+                               const bool emit_logs = false,
+                               const string log_tag = "CategorySelector")
+{
+   out_sel.Reset();
+   out_pass.Reset();
+   out_stack_gate.Reset();
+   out_location_pass.Reset();
+   base_ctx.Reset();
+   struct_ctx.Reset();
+   coverage_ctx.Reset();
+   aux_ctx.Reset();
+
+   if(!bank.valid)
+      return false;
+
+   double raw[];
+   double z[];
+   bool valid_mask[];
+
+   BuildBankSelectionViews(bank, raw, z, valid_mask);
+
+   out_sel = ComputeCategorySelection(raw, z, valid_mask, cfg, dir_t);
+
+   ApplyInstitutionalAntiEchoFromBank(cfg, bank, out_sel);
+
+   out_pass = ComputeCategoryPasses(out_sel,
+                                    z,
+                                    valid_mask,
+                                    cfg,
+                                    dir_t,
+                                    raw,
+                                    bank.plus_di,
+                                    bank.minus_di);
+
+   OverlayInstitutionalPassMetaFromBank(cfg, bank, out_sel, out_pass);
+   RefreshStackAndLocationGates(cfg, out_pass);
+
+   ComputeContextVectors(base_ctx,
+                         struct_ctx,
+                         coverage_ctx,
+                         aux_ctx,
+                         out_pass,
+                         z,
+                         raw);
+
+   FillSignalStackGateFromPass(out_pass, out_stack_gate);
+   FillLocationPassFromBank(out_pass, bank, out_location_pass);
+
+   if(emit_logs)
+      EmitSelectionDiagnosticLog(out_sel, out_pass, bank, log_tag);
+
+   return true;
+}
+
+inline bool BuildSelectedState(const Settings &cfg,
+                               const RawSignalBank_t &bank,
+                               const int dir_t,
+                               CategorySelectedVector &out_sel,
+                               CategoryPassVector &out_pass,
+                               SignalStackGate_t &out_stack_gate,
+                               LocationPass_t &out_location_pass,
+                               BaseContextVector &base_ctx,
+                               StructureVector &struct_ctx,
+                               CoverageContextVector &coverage_ctx,
+                               AuxContextVector &aux_ctx,
+                               FinalIntegratedStateVector &out_final,
+                               const bool emit_logs = false,
+                               const string log_tag = "CategorySelector")
+{
+   out_final.Reset();
+
+   if(!BuildSelectedState(cfg,
+                          bank,
+                          dir_t,
+                          out_sel,
+                          out_pass,
+                          out_stack_gate,
+                          out_location_pass,
+                          base_ctx,
+                          struct_ctx,
+                          coverage_ctx,
+                          aux_ctx,
+                          emit_logs,
+                          log_tag))
+   {
+      return false;
+   }
+
+   out_final = AssembleFinalVector(out_sel,
+                                   out_pass,
+                                   base_ctx,
+                                   struct_ctx,
+                                   coverage_ctx,
+                                   aux_ctx,
+                                   cfg);
+
+   return true;
 }
 
 } // namespace CategorySelector

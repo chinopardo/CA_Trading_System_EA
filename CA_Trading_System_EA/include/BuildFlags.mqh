@@ -137,6 +137,19 @@
 //    Router/Risk/strategies.
 
 // -------------------------------------------------------------------
+// 1A.1) Canonical strategy-pipeline migration flags
+// -------------------------------------------------------------------
+// Manual overrides for staged migration.
+//
+// Uncomment only when you intentionally want to force one route.
+//
+//#define BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE
+//#define BUILD_DISABLE_CANONICAL_HYPOTHESIS_PIPELINE
+//
+// Canonical pipeline feature flags are normally auto-derived from the
+// selected build profile in section 1C below.
+
+// -------------------------------------------------------------------
 // 1B) Strict production institutional bundle
 // -------------------------------------------------------------------
 // This is the default live-trading ownership profile unless TESTER or
@@ -225,6 +238,64 @@
    #endif
 #endif
 
+ // -------------------------------------------------------------------
+ // 1C) Canonical strategy pipeline defaults
+ // -------------------------------------------------------------------
+ // Canonical new pipeline:
+ //   raw bank
+ //   -> category selection
+ //   -> hypothesis bank
+ //   -> final integrated state
+ //   -> router / policies / risk / execution
+ //
+ // Legacy candidate router may remain compiled for migration / tester parity.
+
+#ifndef BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE
+ #ifndef BUILD_DISABLE_CANONICAL_HYPOTHESIS_PIPELINE
+    #ifdef BUILD_PROFILE_TESTER
+       #ifndef BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+          #define BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+       #endif
+       #ifndef BUILD_ENABLE_HYPOTHESIS_ROUTER
+          #define BUILD_ENABLE_HYPOTHESIS_ROUTER
+       #endif
+       #ifndef BUILD_ENABLE_FINAL_INTEGRATED_STATE
+          #define BUILD_ENABLE_FINAL_INTEGRATED_STATE
+       #endif
+       #ifndef BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE
+          #define BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE
+       #endif
+       #ifndef BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+          #define BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+       #endif
+    #else
+       #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL
+          #ifndef BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+             #define BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+          #endif
+          #ifndef BUILD_ENABLE_HYPOTHESIS_ROUTER
+             #define BUILD_ENABLE_HYPOTHESIS_ROUTER
+          #endif
+          #ifndef BUILD_ENABLE_FINAL_INTEGRATED_STATE
+             #define BUILD_ENABLE_FINAL_INTEGRATED_STATE
+          #endif
+          #ifndef BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE
+             #define BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE
+          #endif
+          #ifndef BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+             #define BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+          #endif
+       #endif
+
+       #ifdef BUILD_PROFILE_PRODUCTION_CLASSIC
+          #ifndef BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+             #define BUILD_KEEP_LEGACY_CANDIDATE_ROUTER
+          #endif
+       #endif
+    #endif
+ #endif
+#endif
+
 // -------------------------------------------------------------------
 // 2) Safety-first defaults (Production posture)
 // -------------------------------------------------------------------
@@ -301,6 +372,33 @@
    #ifdef STRATREG_HAS_BUILD_CANDIDATES
       #error "STRATREG_HAS_BUILD_CANDIDATES must not be enabled in PRODUCTION builds"
    #endif
+#endif
+
+#ifdef BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE
+ #ifdef BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+    #error "BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE conflicts with BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE"
+ #endif
+ #ifdef BUILD_ENABLE_HYPOTHESIS_ROUTER
+    #error "BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE conflicts with BUILD_ENABLE_HYPOTHESIS_ROUTER"
+ #endif
+ #ifdef BUILD_ENABLE_FINAL_INTEGRATED_STATE
+    #error "BUILD_FORCE_LEGACY_CANDIDATE_PIPELINE conflicts with BUILD_ENABLE_FINAL_INTEGRATED_STATE"
+ #endif
+#endif
+
+#ifdef BUILD_ENABLE_HYPOTHESIS_ROUTER
+ #ifndef BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE
+    #error "BUILD_ENABLE_HYPOTHESIS_ROUTER requires BUILD_ENABLE_CANONICAL_STRATEGY_PIPELINE"
+ #endif
+ #ifndef BUILD_ENABLE_FINAL_INTEGRATED_STATE
+    #error "BUILD_ENABLE_HYPOTHESIS_ROUTER requires BUILD_ENABLE_FINAL_INTEGRATED_STATE"
+ #endif
+#endif
+
+#ifdef BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE
+ #ifndef BUILD_ENABLE_FINAL_INTEGRATED_STATE
+    #error "BUILD_ENABLE_POSITIONMGMT_FROM_FINAL_STATE requires BUILD_ENABLE_FINAL_INTEGRATED_STATE"
+ #endif
 #endif
 
 // -------------------------------------------------------------------
