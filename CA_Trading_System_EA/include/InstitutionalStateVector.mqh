@@ -140,6 +140,16 @@ enum InstitutionalStateVectorSlot
 // BaseContextVector, StructureVector, CoverageContextVector,
 // AuxContextVector, or FinalIntegratedStateVector here.
 // -----------------------------------------------------------------------------
+enum CanonicalDegradeCauseCode
+{
+   ISV_DEGRADE_CAUSE_NONE              = 0,
+   ISV_DEGRADE_CAUSE_PARTIAL_COVERAGE  = 1,
+   ISV_DEGRADE_CAUSE_PROXY_ONLY        = 2,
+   ISV_DEGRADE_CAUSE_UNAVAILABLE       = 3,
+   ISV_DEGRADE_CAUSE_HARD_BLOCK        = 4,
+   ISV_DEGRADE_CAUSE_STALE             = 5,
+   ISV_DEGRADE_CAUSE_LOW_RELIABILITY   = 6
+};
 
 struct CanonicalDegradeState_t
 {
@@ -161,6 +171,19 @@ struct CanonicalDegradeState_t
    double observability_penalty01;
    double venue_coverage01;
 
+   int    direct_inst_available;
+   int    direct_inst_reliable;
+   int    proxy_only_mode;
+
+   int    snapshot_fresh;
+   int    signal_transport_fresh;
+
+   double reliability01;
+
+   int    degrade_cause;
+   double degrade_severity01;
+   int    degrade_acceptance_recommendation;
+
    void Reset()
    {
       dom_proxy_used = false;
@@ -180,6 +203,19 @@ struct CanonicalDegradeState_t
       observability01 = 0.0;
       observability_penalty01 = 1.0;
       venue_coverage01 = 0.0;
+
+      direct_inst_available = 0;
+      direct_inst_reliable = 0;
+      proxy_only_mode = 0;
+
+      snapshot_fresh = 0;
+      signal_transport_fresh = 0;
+
+      reliability01 = 0.0;
+
+      degrade_cause = ISV_DEGRADE_CAUSE_NONE;
+      degrade_severity01 = 0.0;
+      degrade_acceptance_recommendation = 0;
    }
 };
 
@@ -1131,6 +1167,145 @@ inline void CopySlotVector(const double &src[],
       dst[i] = src[i];
 }
 
+inline int ResolveDirectInstitutionalAvailability(const Result &src)
+{
+   if((int)MathRound(src.raw[ISV_INST_AVAILABLE]) <= 0)
+      return 0;
+
+   if(src.dom_proxy_used || src.flow_proxy_used)
+      return 0;
+
+   if(src.ofx.valid && src.ofx.usedProxy)
+      return 0;
+
+   return 1;
+}
+
+inline int ResolveSnapshotFreshFromResult(const Result &src)
+{
+   if(!src.snap.valid)
+      return 0;
+
+   if(src.snap.stateBarTime <= 0 || src.bar_time <= 0)
+      return 0;
+
+   return (src.snap.stateBarTime == src.bar_time ? 1 : 0);
+}
+
+inline int ResolveSignalTransportFreshFromResult(const Result &src)
+{
+   if(!src.ofx.valid)
+      return 0;
+
+   if(src.ofx.flowBarTime <= 0 || src.bar_time <= 0)
+      return 0;
+
+   return (src.ofx.flowBarTime == src.bar_time ? 1 : 0);
+}
+
+inline double ResolveInstitutionalReliability01(const Result &src)
+{
+   double out = 0.0;
+
+   out += 0.40 * Clamp01(src.observability01);
+   out += 0.25 * Clamp01(src.ms.state_quality01);
+   out += 0.20 * Clamp01(src.ms.flow_confidence01);
+   out += 0.15 * Clamp01(src.venue_coverage01);
+
+   if(ResolveDirectInstitutionalAvailability(src) == 0)
+      out *= 0.85;
+
+   return Clamp01(out);
+}
+
+inline int ResolveCanonicalDegradeCauseFromResult(const Result &src)
+{
+   const int hard_inst_block     = (int)MathRound(src.raw[ISV_HARD_INST_BLOCK]);
+   const int inst_unavailable    = (int)MathRound(src.raw[ISV_INST_UNAVAILABLE]);
+   const int inst_partial        = (int)MathRound(src.raw[ISV_INST_PARTIAL]);
+   const int proxy_inst_avail    = (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]);
+
+   if(hard_inst_block == 1)
+      return ISV_DEGRADE_CAUSE_HARD_BLOCK;
+
+   if(inst_unavailable == 1 && proxy_inst_avail == 0)
+      return ISV_DEGRADE_CAUSE_UNAVAILABLE;
+
+   if(ResolveSnapshotFreshFromResult(src) == 0 ||
+      ResolveSignalTransportFreshFromResult(src) == 0)
+   {
+      return ISV_DEGRADE_CAUSE_STALE;
+   }
+
+   if(ResolveDirectInstitutionalAvailability(src) == 0 &&
+      proxy_inst_avail == 1)
+   {
+      return ISV_DEGRADE_CAUSE_PROXY_ONLY;
+   }
+
+   if(inst_partial == 1)
+      return ISV_DEGRADE_CAUSE_PARTIAL_COVERAGE;
+
+   if(ResolveInstitutionalReliability01(src) < 0.50)
+      return ISV_DEGRADE_CAUSE_LOW_RELIABILITY;
+
+   return ISV_DEGRADE_CAUSE_NONE;
+}
+
+inline double ResolveCanonicalDegradeSeverity01FromResult(const Result &src)
+{
+   double sev = 0.0;
+
+   sev = MathMax(sev, 1.0 - Clamp01(src.raw[ISV_INST_COVERAGE]));
+   sev = MathMax(sev, Clamp01(src.observability_penalty01));
+
+   if(ResolveDirectInstitutionalAvailability(src) == 0 &&
+      (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]) == 1)
+   {
+      sev = MathMax(sev, 0.45);
+   }
+
+   const int cause = ResolveCanonicalDegradeCauseFromResult(src);
+
+   if(cause == ISV_DEGRADE_CAUSE_PARTIAL_COVERAGE)
+      sev = MathMax(sev, 0.55);
+   else if(cause == ISV_DEGRADE_CAUSE_PROXY_ONLY)
+      sev = MathMax(sev, 0.65);
+   else if(cause == ISV_DEGRADE_CAUSE_STALE)
+      sev = MathMax(sev, 0.70);
+   else if(cause == ISV_DEGRADE_CAUSE_LOW_RELIABILITY)
+      sev = MathMax(sev, 0.75);
+   else if(cause == ISV_DEGRADE_CAUSE_UNAVAILABLE)
+      sev = MathMax(sev, 0.90);
+   else if(cause == ISV_DEGRADE_CAUSE_HARD_BLOCK)
+      sev = 1.0;
+
+   return Clamp01(sev);
+}
+
+inline int ResolveCanonicalDegradeAcceptanceFromResult(const Result &src)
+{
+   const int cause = ResolveCanonicalDegradeCauseFromResult(src);
+
+   if(cause == ISV_DEGRADE_CAUSE_HARD_BLOCK ||
+      cause == ISV_DEGRADE_CAUSE_UNAVAILABLE)
+   {
+      return 3;
+   }
+
+   if(cause == ISV_DEGRADE_CAUSE_PROXY_ONLY)
+      return 1;
+
+   if(cause == ISV_DEGRADE_CAUSE_PARTIAL_COVERAGE ||
+      cause == ISV_DEGRADE_CAUSE_STALE ||
+      cause == ISV_DEGRADE_CAUSE_LOW_RELIABILITY)
+   {
+      return 2;
+   }
+
+   return 0;
+}
+
 inline void FillCanonicalDegradeState(const Result &src,
                                       CanonicalDegradeState_t &dst)
 {
@@ -1153,6 +1328,24 @@ inline void FillCanonicalDegradeState(const Result &src,
    dst.observability01 = src.observability01;
    dst.observability_penalty01 = src.observability_penalty01;
    dst.venue_coverage01 = src.venue_coverage01;
+
+   dst.direct_inst_available = ResolveDirectInstitutionalAvailability(src);
+   dst.snapshot_fresh = ResolveSnapshotFreshFromResult(src);
+   dst.signal_transport_fresh = ResolveSignalTransportFreshFromResult(src);
+   dst.reliability01 = ResolveInstitutionalReliability01(src);
+
+   dst.proxy_only_mode =
+      ((dst.direct_inst_available == 0) && (dst.proxy_inst_available == 1) ? 1 : 0);
+
+   dst.direct_inst_reliable =
+      ((dst.direct_inst_available == 1) &&
+       (dst.snapshot_fresh == 1) &&
+       (dst.signal_transport_fresh == 1) &&
+       (dst.reliability01 >= 0.60) ? 1 : 0);
+
+   dst.degrade_cause = ResolveCanonicalDegradeCauseFromResult(src);
+   dst.degrade_severity01 = ResolveCanonicalDegradeSeverity01FromResult(src);
+   dst.degrade_acceptance_recommendation = ResolveCanonicalDegradeAcceptanceFromResult(src);
 }
 
 inline void FillSignalStackGateFromResult(const Result &src,
@@ -1215,6 +1408,20 @@ inline void ProjectResultToRawSignalBank(const Result &src,
    dst.ms = src.ms;
    dst.snap = src.snap;
    dst.ofx = src.ofx;
+}
+
+inline void ProjectResultToContextVectors(const Result &src,
+                                          BaseContextVector &base_ctx,
+                                          StructureVector &struct_ctx,
+                                          CoverageContextVector &coverage_ctx,
+                                          AuxContextVector &aux_ctx,
+                                          FinalIntegratedStateVector &final_vector)
+{
+   base_ctx = src.base_ctx;
+   struct_ctx = src.struct_ctx;
+   coverage_ctx = src.coverage_ctx;
+   aux_ctx = src.aux_ctx;
+   final_vector = src.final_vector;
 }
 
 inline double GetRawSlot(const RawSignalBank_t &bank,
@@ -1288,6 +1495,62 @@ inline int GetDirection(const RawSignalBank_t &bank)
 inline CanonicalDegradeState_t GetDegradeState(const RawSignalBank_t &bank)
 {
    return bank.degrade;
+}
+
+inline double GetCVD(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_CVD, 0.0);
+}
+
+inline double GetDeltaCVD(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_DELTA_CVD, 0.0);
+}
+
+inline double GetFlowImb(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_FLOW_IMB, 0.0);
+}
+
+inline double GetVPIN(const RawSignalBank_t &bank)
+{
+   return Clamp01(GetRawSlot(bank, ISV_VPIN, 0.0));
+}
+
+inline double GetResiliency(const RawSignalBank_t &bank)
+{
+   return Clamp01(GetRawSlot(bank, ISV_RESIL_T, 0.0));
+}
+
+inline double GetSpreadShock(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_SPREAD_SHOCK, 0.0);
+}
+
+inline double GetDepthFade(const RawSignalBank_t &bank)
+{
+   return GetRawSlot(bank, ISV_DEPTH_FADE, 0.0);
+}
+
+inline bool GetMicrostructureStats(const RawSignalBank_t &bank,
+                                   MicrostructureStats &out)
+{
+   out = bank.ms;
+   return bank.valid;
+}
+
+inline bool GetInstitutionalSnapshot(const RawSignalBank_t &bank,
+                                     InstitutionalStateSnapshot &out)
+{
+   out = bank.snap;
+   return bank.valid;
+}
+
+inline bool GetOrderFlowDisplaySnapshot(const RawSignalBank_t &bank,
+                                        OrderFlowDisplaySnapshot &out)
+{
+   out = bank.ofx;
+   return bank.valid;
 }
 
 inline int ResolveObservabilityTier(const OrderFlowDisplaySnapshot &src)
@@ -1523,7 +1786,9 @@ inline void PublishCoverageAndDegradeStateToRawBank(const CategoryPassVector &pa
 // -----------------------------------------------------------------------------
 // Internal compatibility path only.
 // New strategy/router code must consume RawSignalBank_t through read-only accessors
-// and must not call back into ISV to recompute canonical category state.
+// or public context-vector wrappers from this file.
+// Strategies must NOT recompute canonical OFI, CVD, OBI, DOM skew, queue pressure,
+// toxicity, impact, resiliency, or degrade logic locally.
 // CategorySelector remains the owner of category selection / pass / context logic.
 // -----------------------------------------------------------------------------
 inline void ComputeCategorySelection(const Settings &cfg,
@@ -2976,6 +3241,63 @@ inline bool Build(const string sym,
    out.snap.trade_gate_pass = out.trade_gate;
    out.snap.state_quality01 = out.ms.state_quality01;
 
+   return true;
+}
+
+inline bool BuildContextVectors(const Result &src,
+                                BaseContextVector &base_ctx,
+                                StructureVector &struct_ctx,
+                                CoverageContextVector &coverage_ctx,
+                                AuxContextVector &aux_ctx,
+                                FinalIntegratedStateVector &final_vector)
+{
+   if(!src.valid)
+   {
+      base_ctx.Reset();
+      struct_ctx.Reset();
+      coverage_ctx.Reset();
+      aux_ctx.Reset();
+      final_vector.Reset();
+      return false;
+   }
+
+   ProjectResultToContextVectors(src,
+                                 base_ctx,
+                                 struct_ctx,
+                                 coverage_ctx,
+                                 aux_ctx,
+                                 final_vector);
+   return true;
+}
+
+inline bool BuildContextVectors(const string sym,
+                                const ENUM_TIMEFRAMES tf,
+                                const Settings &cfg,
+                                Runtime &rt,
+                                BaseContextVector &base_ctx,
+                                StructureVector &struct_ctx,
+                                CoverageContextVector &coverage_ctx,
+                                AuxContextVector &aux_ctx,
+                                FinalIntegratedStateVector &final_vector,
+                                const int closed_shift = 1)
+{
+   Result tmp;
+   if(!Build(sym, tf, cfg, rt, tmp, closed_shift))
+   {
+      base_ctx.Reset();
+      struct_ctx.Reset();
+      coverage_ctx.Reset();
+      aux_ctx.Reset();
+      final_vector.Reset();
+      return false;
+   }
+
+   ProjectResultToContextVectors(tmp,
+                                 base_ctx,
+                                 struct_ctx,
+                                 coverage_ctx,
+                                 aux_ctx,
+                                 final_vector);
    return true;
 }
 

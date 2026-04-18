@@ -214,6 +214,10 @@ bool BuildCanonicalSignalStackTransport(const string sym,
                                        const datetime required_bar_time,
                                        string &diag_out);
 
+bool EA_IsTrackedWatchlistSymbol(const string sym);
+void EA_EnsureCentralDOMSubscriptions();
+void EA_ReleaseCentralDOMSubscriptions();
+
 // ------------------------------------------------------------------
 // Provide ONE global, guarded helper used by strategies.
 // Strategy headers that also define this will be skipped by the guard.
@@ -1441,6 +1445,7 @@ static datetime g_decision_tel_timer_skip_bar[];
 static int      g_decision_tel_timer_skip_tf[];
 static datetime g_decision_tel_timer_skip_latch[];
 static bool     g_decision_tel_timer_skip_emitted[];
+static bool     g_dom_book_owned[];
 
 // ================== MarketScannerHub: event-driven routing trigger ==================
 #define MSH_DIRTY_MAX 64
@@ -6222,7 +6227,7 @@ void ResetCanonicalSignalStackTransport()
    g_cat_pass.Reset();
    g_sig_stack_gate.Reset();
    g_location_pass.Reset();
-   g_hyp_bank.Clear();
+   g_hyp_bank.Reset();
    g_final_integrated.Reset();
 
    g_transport_ready = false;
@@ -6302,7 +6307,7 @@ bool BuildCanonicalSignalStackTransport(const string sym,
    ISV::FillLocationPassFromResult(isv_result, g_location_pass);
 
    // 2) Strategy hypothesis bank
-   g_hyp_bank.Clear();
+   g_hyp_bank.Reset();
 
    if(!StratReg::BuildHypothesesFromRegistry(g_cfg,
                                              g_state,
@@ -6517,6 +6522,82 @@ void PreseedRuntimeSymbolPoolAtStartup(const Settings &cfg)
                            (router_sym == "" ? "-" : router_sym)));
 }
 
+bool EA_IsTrackedWatchlistSymbol(const string sym)
+{
+   if(sym == "")
+      return false;
+
+   for(int i = 0; i < g_symCount; i++)
+   {
+      if(g_symbols[i] == sym)
+         return true;
+   }
+
+   return false;
+}
+
+void EA_EnsureCentralDOMSubscriptions()
+{
+   const bool dom_enabled = (g_cfg.extra_dom_imbalance || InpExtra_DOMImbalance);
+   if(!dom_enabled)
+      return;
+
+   OBI::Settings obi;
+   obi.enabled = true;
+
+   for(int i = 0; i < g_symCount; i++)
+   {
+      if(i >= ArraySize(g_dom_book_owned))
+         break;
+
+      const string sym = g_symbols[i];
+      if(sym == "")
+         continue;
+
+      if(g_dom_book_owned[i])
+         continue;
+
+      if(!SymbolSelect(sym, true))
+      {
+         if(InpDebug)
+            LogX::Warn(StringFormat("[DOM] SymbolSelect failed sym=%s", sym));
+         continue;
+      }
+
+      long book_depth = 0;
+      if(!SymbolInfoInteger(sym, SYMBOL_TICKS_BOOKDEPTH, book_depth) || book_depth <= 0)
+      {
+         if(InpDebug)
+            LogX::Info(StringFormat("[DOM] skipped sym=%s reason=no_book_depth", sym));
+         continue;
+      }
+
+      OBI::EnsureSubscribed(sym, obi);
+      g_dom_book_owned[i] = true;
+
+      if(InpDebug)
+         LogX::Info(StringFormat("[DOM] subscribed sym=%s depth=%d", sym, (int)book_depth));
+   }
+}
+
+void EA_ReleaseCentralDOMSubscriptions()
+{
+   for(int i = 0; i < g_symCount; i++)
+   {
+      if(i >= ArraySize(g_dom_book_owned))
+         break;
+
+      if(!g_dom_book_owned[i])
+         continue;
+
+      const string sym = g_symbols[i];
+      if(sym != "")
+         MarketBookRelease(sym);
+
+      g_dom_book_owned[i] = false;
+   }
+}
+
 void DecisionTelemetry_ResetTimerNotNewBarThrottle(const string sym,
                                                    const ENUM_TIMEFRAMES tf,
                                                    const datetime bar_time,
@@ -6726,7 +6807,7 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
-   if(g_hyp_bank.Size() <= 0)
+   if(g_hyp_bank.count <= 0)
    {
       DecisionTelemetry_MarkNoCandidates("router", "hypothesis_bank_empty");
       MSH_DirtyClear();
@@ -6889,10 +6970,10 @@ int OnInit()
       LogX::Info("Indicators mode: ephemeral handles (create/copy/release per call).");
    #endif
    News::ConfigureFromEA(S);
-   OBI::Settings obi;
-   obi.enabled = S.extra_dom_imbalance;
-   OBI::EnsureSubscribed(_Symbol, obi);
    VSA::SetAllowTickVolume(InpVSA_AllowTickVolume);
+
+   // DOM subscription ownership is centralized later in OnInit(),
+   // after the watchlist is finalized and MarketScannerHub is initialized.
    
    {
      const StrategyMode sm = Config::CfgStrategyMode(S);
@@ -7005,14 +7086,16 @@ int OnInit()
    ArrayResize(g_decision_tel_timer_skip_tf, g_symCount);
    ArrayResize(g_decision_tel_timer_skip_latch, g_symCount);
    ArrayResize(g_decision_tel_timer_skip_emitted, g_symCount);
+   ArrayResize(g_dom_book_owned, g_symCount);
    
    for(int i=0; i<g_symCount; i++)
    {
-      g_lastBarTime[i]                    = 0;
+      g_lastBarTime[i]                     = 0;
       g_decision_tel_timer_skip_bar[i]    = 0;
       g_decision_tel_timer_skip_tf[i]     = 0;
       g_decision_tel_timer_skip_latch[i]  = 0;
       g_decision_tel_timer_skip_emitted[i] = false;
+      g_dom_book_owned[i]                 = false;
    }
 
    // History warm-up for entry + HTFs on all tracked symbols
@@ -7151,6 +7234,9 @@ int OnInit()
    if(!MSH::InitWithSymbols(S, hub_opt, g_symbols, g_symCount))
       return(INIT_FAILED);
 
+   // Centralized DOM ownership starts only after the watchlist and hub are finalized.
+   EA_EnsureCentralDOMSubscriptions();
+
    // 4. One-shot startup pre-seed of the runtime symbol-owned State pool.
    // This reduces first-timer catch-up by creating / hydrating each symbol slot once now.
    PreseedRuntimeSymbolPoolAtStartup(S);
@@ -7205,6 +7291,7 @@ int OnInit()
    //  Router::_SelfTest_Gate(S);
    //#endif
    
+   g_inited = true;
    Telemetry_LogInit("CA_Trading_System_EA initialized.");
 
    return(INIT_SUCCEEDED);
@@ -7215,6 +7302,9 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
+   if(!g_inited)
+      return;
+      
     ML::SetRuntimeOn(g_ml_on);
     if(g_ml_on)
     {
@@ -7318,9 +7408,39 @@ void OnTick()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
+void OnBookEvent(const string &symbol)
+{
+   if(!g_inited)
+      return;
+
+   if(!(g_cfg.extra_dom_imbalance || InpExtra_DOMImbalance))
+      return;
+
+   if(symbol == "")
+      return;
+
+   if(!EA_IsTrackedWatchlistSymbol(symbol))
+      return;
+
+   if(!RefreshMicrostructureSnapshot(symbol, true))
+      return;
+
+   PublishMicrostructureSnapshot(symbol);
+
+   const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+   MSH_DirtyTouch(symbol, (int)tf, TimeCurrent());
+}
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   g_inited = false;
    MSH::Deinit();
+   EA_ReleaseCentralDOMSubscriptions();
+   MSH_DirtyClear();
+   ResetCanonicalSignalStackTransport();
    Exec::Deinit();
    MarketData::Deinit();
    UI_Deinit();
@@ -7357,6 +7477,9 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+   if(!g_inited)
+      return;
+
    datetime now_srv = TimeUtils::NowServer();
    const string router_sym = CanonicalRouterSymbol();
    const bool timer_require_new_bar = (InpOnlyNewBar && InpMain_OnlyNewBar && !(g_is_tester && InpTester_ForceTimerEveryHeartbeat));

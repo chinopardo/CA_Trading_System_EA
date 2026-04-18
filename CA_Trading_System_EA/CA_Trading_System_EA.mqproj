@@ -75,11 +75,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Patterns.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\RegimeCorr.mqh",
       "compile":false,
       "relative_to_project":true
@@ -330,37 +325,12 @@
       "relative_to_project":true
     },
     {
-      "path":"Include\\Indicators.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\LiquidityCues.mqh",
       "compile":false,
       "relative_to_project":true
     },
     {
       "path":"include\\MarketData.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\PivotsLevels.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\StructureSDOB.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\Trendlines.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\VolumeProfile.mqh",
       "compile":false,
       "relative_to_project":true
     },
@@ -460,37 +430,42 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\Trade\\Trade.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\Trade\\OrderInfo.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\Trade\\HistoryOrderInfo.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\Trade\\PositionInfo.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
-      "path":"include\\Trade\\DealInfo.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\CategorySelector.mqh",
       "compile":false,
       "relative_to_project":true
     },
     {
       "path":"include\\StrategyHypothesisBank.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Patterns.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\PivotsLevels.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\StructureSDOB.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\Trendlines.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"Include\\Indicators.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\VolumeProfile.mqh",
       "compile":false,
       "relative_to_project":true
     }

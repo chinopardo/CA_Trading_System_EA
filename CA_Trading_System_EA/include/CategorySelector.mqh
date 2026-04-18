@@ -30,6 +30,50 @@ inline bool IsValidInputArraySizes(const double &raw[],
    return true;
 }
 
+inline bool IsCategoryEnabledByConfig(const Settings &cfg,
+                                     const int category)
+{
+   if(!cfg.sigsel_enable)
+      return true;
+
+   if(category == CAT_INSTITUTIONAL) return cfg.sigsel_enable_inst;
+   if(category == CAT_TREND)         return cfg.sigsel_enable_trend;
+   if(category == CAT_MOMENTUM)      return cfg.sigsel_enable_mom;
+   if(category == CAT_VOLUME)        return cfg.sigsel_enable_vol;
+   if(category == CAT_VOLATILITY)    return cfg.sigsel_enable_vola;
+
+   return true;
+}
+
+inline int CountEnabledStackCategories(const Settings &cfg)
+{
+   int enabled_count = 0;
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_INSTITUTIONAL)) enabled_count++;
+   if(IsCategoryEnabledByConfig(cfg, CAT_TREND))         enabled_count++;
+   if(IsCategoryEnabledByConfig(cfg, CAT_MOMENTUM))      enabled_count++;
+   if(IsCategoryEnabledByConfig(cfg, CAT_VOLUME))        enabled_count++;
+   if(IsCategoryEnabledByConfig(cfg, CAT_VOLATILITY))    enabled_count++;
+
+   return enabled_count;
+}
+
+inline int CapEffectiveMinCategoryVotesToEnabledCategories(const Settings &cfg,
+                                                           const int requested_votes)
+{
+   int enabled_count = CountEnabledStackCategories(cfg);
+   if(enabled_count < 1)
+      enabled_count = 1;
+
+   int out_votes = requested_votes;
+   if(out_votes < 1)
+      out_votes = 1;
+   if(out_votes > enabled_count)
+      out_votes = enabled_count;
+
+   return out_votes;
+}
+
 inline void BuildBankSelectionViews(const RawSignalBank_t &bank,
                                     double &raw[],
                                     double &z[],
@@ -102,6 +146,9 @@ inline int ResolveEffectiveMinCategoryVotesFromBank(const Settings &cfg,
       effective_votes = RelaxMinCategoryVotesByOne(base_votes, floor_votes);
    }
 
+   effective_votes =
+      CapEffectiveMinCategoryVotesToEnabledCategories(cfg, effective_votes);
+
    return effective_votes;
 }
 
@@ -161,11 +208,44 @@ inline void OverlayInstitutionalPassMetaFromBank(const Settings &cfg,
 
    passv.effective_min_category_votes =
       ResolveEffectiveMinCategoryVotesFromBank(cfg, bank);
+
+   ApplyCategoryEnableMaskToPassMeta(cfg, passv);
+}
+
+inline void ApplyCategoryEnableMaskToPassMeta(const Settings &cfg,
+                                              CategoryPassVector &passv)
+{
+   if(!IsCategoryEnabledByConfig(cfg, CAT_INSTITUTIONAL))
+   {
+      passv.inst_pass = 0;
+      passv.inst_sel_source = INST_SIGNAL_SOURCE_NONE;
+      passv.hard_inst_block = 0;
+   }
+
+   if(!IsCategoryEnabledByConfig(cfg, CAT_TREND))
+      passv.trend_pass = 0;
+
+   if(!IsCategoryEnabledByConfig(cfg, CAT_MOMENTUM))
+      passv.mom_pass = 0;
+
+   if(!IsCategoryEnabledByConfig(cfg, CAT_VOLUME))
+      passv.vol_pass = 0;
+
+   if(!IsCategoryEnabledByConfig(cfg, CAT_VOLATILITY))
+      passv.vola_pass = 0;
+
+   passv.effective_min_category_votes =
+      CapEffectiveMinCategoryVotesToEnabledCategories(cfg,
+                                                      passv.effective_min_category_votes);
 }
 
 inline void RefreshStackAndLocationGates(const Settings &cfg,
                                          CategoryPassVector &passv)
 {
+   passv.effective_min_category_votes =
+      CapEffectiveMinCategoryVotesToEnabledCategories(cfg,
+                                                      passv.effective_min_category_votes);
+
    passv.signal_stack_score =
       passv.inst_pass +
       passv.trend_pass +
@@ -233,7 +313,7 @@ inline string BuildSelectionDiagnosticSummary(const CategorySelectedVector &sel,
    return StringFormat(
       "sym=%s tf=%d inst[idx=%d z=%.4f src=%d cov=%.3f hard=%d] "
       "trend[idx=%d z=%.4f] mom[idx=%d z=%.4f] vol[idx=%d z=%.4f] vola[idx=%d z=%.4f] "
-      "passes[i=%d t=%d m=%d v=%d va=%d] stack=%d/%d loc=%d/%d",
+      "passes[i=%d t=%d m=%d v=%d va=%d] stack=%d req=%d gate=%d loc=%d pass=%d",
       bank.symbol,
       (int)bank.tf,
       sel.inst_index, sel.inst_z, passv.inst_sel_source, passv.inst_coverage, passv.hard_inst_block,
@@ -247,6 +327,7 @@ inline string BuildSelectionDiagnosticSummary(const CategorySelectedVector &sel,
       passv.vol_pass,
       passv.vola_pass,
       passv.signal_stack_score,
+      passv.effective_min_category_votes,
       passv.signal_stack_gate,
       passv.location_score,
       passv.location_pass
@@ -1134,14 +1215,21 @@ inline bool UseCompactFinalVectorMode(const Settings &cfg)
    return false;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Legacy compatibility API
 // ----------------------------------------------------------------------------
 // The array-based API remains in place for backward compatibility.
 // New orchestration should prefer the raw-bank consumer API added below.
-// Canonical market truth must come from RawSignalBank_t, not from local
-// recomputation inside strategies or the router.
-// ============================================================================
+//
+// This file is the only owner of:
+// - one-per-category selected signal choice
+// - institutional direct/proxy/none selection
+// - degrade-aware vote relaxation
+// - SignalStackGate_t / LocationPass_t build
+//
+// Strategies must not re-pick categories, re-run anti-echo, or invent local
+// substitute vote rules.
+// ----------------------------------------------------------------------------
 
 // ============================================================================
 // Public API
@@ -1167,13 +1255,23 @@ inline CategorySelectedVector ComputeCategorySelection(const double &raw[],
    if(cfg.sigsel_selection_mode == Config::SELECTION_FIXED)
    {
       for(int c = 0; c < CAT_COUNT; c++)
+      {
+         if(!IsCategoryEnabledByConfig(cfg, c))
+            continue;
+
          SelectFixedCategorySignal(cfg, c, raw, z, valid_mask, out_sel);
+      }
 
       return out_sel;
    }
 
    for(int c = 0; c < CAT_COUNT; c++)
+   {
+      if(!IsCategoryEnabledByConfig(cfg, c))
+         continue;
+
       SelectDynamicCategorySignal(cfg, c, raw, z, valid_mask, out_sel);
+   }
 
    return out_sel;
 }
@@ -1220,6 +1318,12 @@ inline CategoryPassVector ComputeCategoryPasses(const CategorySelectedVector &se
 
    for(int c = 0; c < CAT_COUNT; c++)
    {
+      if(!IsCategoryEnabledByConfig(cfg, c))
+      {
+         SetCategoryPassFlag(out_pass, c, 0);
+         continue;
+      }
+
       int active_flag = CategorySelectedActiveFlag(sel, c);
       int raw_index   = CategorySelectedRawIndex(sel, c);
       double raw_value = CategorySelectedRawValue(sel, c);
@@ -1268,8 +1372,17 @@ inline CategoryPassVector ComputeCategoryPasses(const CategorySelectedVector &se
       }
    }
 
-   if(out_pass.inst_sel_source == INST_SIGNAL_SOURCE_NONE)
+   ApplyCategoryEnableMaskToPassMeta(cfg, out_pass);
+
+   if(!IsCategoryEnabledByConfig(cfg, CAT_INSTITUTIONAL))
+   {
+      out_pass.inst_sel_source = INST_SIGNAL_SOURCE_NONE;
       out_pass.inst_pass = 0;
+   }
+   else if(out_pass.inst_sel_source == INST_SIGNAL_SOURCE_NONE)
+   {
+      out_pass.inst_pass = 0;
+   }
 
    out_pass.signal_stack_score =
       out_pass.inst_pass +

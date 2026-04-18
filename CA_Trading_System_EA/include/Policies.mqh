@@ -991,8 +991,6 @@ namespace Policies
   #define CA_POLMASK_LIQUIDITY          (((ulong)1) << 15)
   #define CA_POLMASK_MICRO_VPIN         (((ulong)1) << 16)
   #define CA_POLMASK_MICRO_RESILIENCY   (((ulong)1) << 17)
-  #define CA_POLMASK_MICRO_QUOTE_INSTABILITY (((ulong)1) << 25)
-  #define CA_POLMASK_MICRO_THIN_LIQUIDITY    (((ulong)1) << 26)
   #define CA_POLMASK_MICRO_TOXICITY          (((ulong)1) << 27)
   #define CA_POLMASK_MICRO_SPREAD_STRESS     (((ulong)1) << 28)
   #define CA_POLMASK_MICRO_TRUTH            (((ulong)1) << 29)
@@ -1172,6 +1170,24 @@ namespace Policies
     string route_reason;
     string veto_reason;
 
+    // Integrated strategy-conditioned transport
+    bool   integrated_state_loaded;
+    bool   signal_stack_gate_pass;
+    bool   location_gate_pass;
+
+    double inst_coverage01;
+    int    inst_sel_source;
+
+    int    hypothesis_inst_source;
+    int    hypothesis_degrade_acceptance;
+    int    hypothesis_entry_model;
+    int    hypothesis_exec_style;
+    int    hypothesis_stop_model;
+    int    hypothesis_tp_model;
+    int    hypothesis_urgency;
+
+    double hypothesis_rr_min;
+
     // Daily counters (for veto print precision)
     int    entries_today;
     int    losses_today;
@@ -1262,6 +1278,23 @@ namespace Policies
     r.route_reason                  = "";
     r.veto_reason                   = "none";
     r.liq_floor_source             = "default";
+
+    r.integrated_state_loaded          = false;
+    r.signal_stack_gate_pass           = true;
+    r.location_gate_pass               = true;
+
+    r.inst_coverage01                  = 1.0;
+    r.inst_sel_source                  = INST_SIGNAL_SOURCE_NONE;
+
+    r.hypothesis_inst_source           = INST_SIGNAL_SOURCE_NONE;
+    r.hypothesis_degrade_acceptance    = STRAT_DEGRADE_ALLOW_STRUCTURE_ONLY;
+    r.hypothesis_entry_model           = 0;
+    r.hypothesis_exec_style            = 0;
+    r.hypothesis_stop_model            = 0;
+    r.hypothesis_tp_model              = 0;
+    r.hypothesis_urgency               = 0;
+
+    r.hypothesis_rr_min                = 0.0;
   }
 
   inline void _PolicyVeto(PolicyResult &r, const int gate_reason, const ulong mask_bit)
@@ -4362,6 +4395,8 @@ inline void NotifyTradeResult(const double r_multiple)
      }
      else
      {
+        io_state.veto_code = GATE_OK;
+
         if(StringLen(io_state.veto_tag) <= 0)
            io_state.veto_tag = "none";
 
@@ -6692,6 +6727,74 @@ inline void NotifyTradeResult(const double r_multiple)
      return Clamp01(MathAbs(PolicyISV_RawSlot(bank, ISV::ISV_SWEEP_SCORE, 0.0)));
   }
 
+  inline double PolicyIntegratedMinCoverage01(const Settings &cfg)
+  {
+     double out = 0.65;
+
+     #ifdef CFG_HAS_SIGNAL_STACK
+       out = Clamp01(1.0 - Clamp01(cfg.sigsel_max_coverage_penalty01));
+     #endif
+
+     if(out < 0.35)
+        out = 0.35;
+
+     return out;
+  }
+
+  inline bool PolicyIntegratedProxyOnlyForbidden(const FinalStrategyIntegratedStateVector_t &st)
+  {
+     if(st.hypothesis.inst_source != INST_SIGNAL_SOURCE_PROXY)
+        return false;
+
+     if(st.hypothesis.degrade_acceptance == STRAT_DEGRADE_REJECT)
+        return true;
+
+     return false;
+  }
+
+  inline bool PolicyIntegratedCoverageTooPartial(const Settings &cfg,
+                                                 const FinalStrategyIntegratedStateVector_t &st)
+  {
+     const double coverage01 = Clamp01(st.raw_bank.degrade.inst_coverage);
+     return (coverage01 < PolicyIntegratedMinCoverage01(cfg));
+  }
+
+  inline bool PolicyIntegratedDegradeTooSevere(const FinalStrategyIntegratedStateVector_t &st)
+  {
+     return (Clamp01(st.raw_bank.degrade.degrade_severity01) > 0.75);
+  }
+
+  inline bool PolicyIntegratedSessionNotPermitted(const FinalStrategyIntegratedStateVector_t &st)
+  {
+     if(!st.session_pass)
+        return true;
+
+     if(st.posture.valid && st.posture.urgency >= 4 && !st.session_pass)
+        return true;
+
+     return false;
+  }
+
+  inline bool PolicyIntegratedExecutionTooPoor(const Settings &cfg,
+                                               const FinalStrategyIntegratedStateVector_t &st,
+                                               const PolicyResult &r)
+  {
+     const bool aggressive_style =
+        (st.hypothesis.exec_style == EXEC_STYLE_AGGRESSIVE ||
+         st.hypothesis.exec_style == EXEC_STYLE_MARKET_CONFIRM);
+
+     if(aggressive_style && r.reduced_only)
+        return true;
+
+     if(r.spread_stress01 > Clamp01(cfg.strat_exec_max_spread_shock01))
+        return true;
+
+     if(r.resiliency01 < Clamp01(cfg.strat_exec_min_resiliency01))
+        return true;
+
+     return false;
+  }
+
   inline void _PolicyMergeIntegratedState(const Settings &cfg,
                                           const FinalStrategyIntegratedStateVector_t &st,
                                           PolicyResult &out)
@@ -6702,6 +6805,11 @@ inline void NotifyTradeResult(const double r_multiple)
                                              st.pre_filter_pass &&
                                              st.execution_pass &&
                                              st.risk_pass);
+
+     out.integrated_state_loaded         = st.valid;
+     out.signal_stack_gate_pass          = st.signal_stack_gate_pass;
+     out.location_gate_pass              = st.location_pass;
+
      out.institutional_delay_recommended  = false;
      out.institutional_derisk_recommended = false;
 
@@ -6725,6 +6833,10 @@ inline void NotifyTradeResult(const double r_multiple)
      out.observability_min01           = CfgMicroObservabilityMin01(cfg);
      out.venue_coverage01              = Clamp01(st.raw_bank.degrade.venue_coverage01);
      out.venue_coverage_min01          = CfgMicroVenueCoverageMin01(cfg);
+
+     out.inst_coverage01                 = Clamp01(st.raw_bank.degrade.inst_coverage);
+     out.inst_sel_source                 = st.raw_bank.degrade.inst_sel_source;
+
      out.cross_venue_dislocation01     = 0.0;
      out.cross_venue_dislocation_max01 = CfgMicroXVenueDislocationMax01(cfg);
 
@@ -6737,6 +6849,16 @@ inline void NotifyTradeResult(const double r_multiple)
      out.truth_tier_aggressive_min01   = CfgMicroTruthTierAggressiveMin01(cfg);
      out.execution_posture_mode        = 0;
      out.reduced_only                  = (st.raw_bank.degrade.inst_unavailable == 1 && st.raw_bank.degrade.proxy_inst_available == 0);
+
+     out.hypothesis_inst_source          = st.hypothesis.inst_source;
+     out.hypothesis_degrade_acceptance   = st.hypothesis.degrade_acceptance;
+     out.hypothesis_entry_model          = st.hypothesis.entry_model;
+     out.hypothesis_exec_style           = st.hypothesis.exec_style;
+     out.hypothesis_stop_model           = st.hypothesis.stop_model;
+     out.hypothesis_tp_model             = st.hypothesis.tp_model;
+     out.hypothesis_urgency              = (st.posture.valid ? st.posture.urgency : 0);
+     out.hypothesis_rr_min               = st.hypothesis.rr_min;
+
      out.invalidation_event01          = false;
      out.liquidity_trap_event01        = false;
 
@@ -7277,6 +7399,15 @@ inline void NotifyTradeResult(const double r_multiple)
     return _EvaluateFinalSendGateEx(cfg, _Symbol, ss, out, inst_view, true);
   }
 
+  // ---------------------------------------------------------------------------
+  // Canonical integrated-state policy lane.
+  // Consumes FinalStrategyIntegratedStateVector_t, not raw indicator soup.
+  //
+  // Responsibilities here:
+  // - preserve the existing full policy lane (session, news, exposure, DD, target)
+  // - merge integrated strategy-conditioned state into PolicyResult
+  // - apply degrade-aware vetoes using hypothesis posture / inst source / coverage
+  // ---------------------------------------------------------------------------
   inline bool _EvaluateFinalSendGateFromIntegratedStateEx(const Settings &cfg,
                                                           FinalStrategyIntegratedStateVector_t &io_state,
                                                           PolicyResult &out,
@@ -7331,6 +7462,46 @@ inline void NotifyTradeResult(const double r_multiple)
         if(!audit) return false;
      }
 
+     if(PolicyIntegratedSessionNotPermitted(io_state))
+     {
+        _PolicyVeto(out, GATE_SESSION, CA_POLMASK_SESSION);
+        out.veto_reason = "session_not_permitted_integrated";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(PolicyIntegratedProxyOnlyForbidden(io_state))
+     {
+        _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
+        out.veto_reason = "proxy_only_not_allowed_for_setup";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(PolicyIntegratedCoverageTooPartial(cfg, io_state))
+     {
+        _PolicyVeto(out, GATE_MICRO_VENUE, CA_POLMASK_MICRO_VENUE);
+        out.veto_reason = "coverage_too_partial";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(PolicyIntegratedDegradeTooSevere(io_state))
+     {
+        _PolicyVeto(out, GATE_MICRO_TRUTH, CA_POLMASK_MICRO_TRUTH);
+        out.veto_reason = "degrade_too_severe";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
+     if(PolicyIntegratedExecutionTooPoor(cfg, io_state, out))
+     {
+        _PolicyVeto(out, GATE_MICRO_RESILIENCY, CA_POLMASK_MICRO_RESILIENCY);
+        out.veto_reason = "execution_tape_too_poor";
+        PolicyApplyResultToIntegratedState(out, io_state);
+        if(!audit) return false;
+     }
+
      if(out.execution_score < (double)POLICIES_INST_DELAY_EXECUTION_SCORE01)
      {
         _PolicyVeto(out, GATE_INSTITUTIONAL, CA_POLMASK_INSTITUTIONAL);
@@ -7350,6 +7521,10 @@ inline void NotifyTradeResult(const double r_multiple)
      if(out.risk_score < (double)POLICIES_INST_DERISK_RISK_SCORE01)
         out.institutional_derisk_recommended = true;
 
+     // At this point:
+     // - full symbol/session/news/exposure policy lane passed
+     // - integrated strategy-conditioned degrade checks passed
+     // - policy may still mark derisk recommendations through merged diagnostics
      out.allowed = true;
      out.primary_reason = GATE_OK;
      out.veto_mask = 0;

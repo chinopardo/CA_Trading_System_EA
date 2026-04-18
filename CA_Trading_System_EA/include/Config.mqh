@@ -2393,6 +2393,75 @@ namespace Config
      double strat_main_rr_min;
      bool   strat_main_allow_proxy_degrade;
 
+     // Missing refactor knobs: category enablement, degrade acceptance,
+     // staged-strategy thresholds, grouped weights, and warmup readiness.
+     bool   sigsel_enable_inst;
+     bool   sigsel_enable_trend;
+     bool   sigsel_enable_mom;
+     bool   sigsel_enable_vol;
+     bool   sigsel_enable_vola;
+     double sigsel_max_coverage_penalty01;
+
+     double thMainQuality;
+
+     // 0=direct_only, 1=proxy_allowed, 2=soft_neutral, 3=hard_block
+     int    strat_degrade_acceptance_default;
+     int    strat_main_degrade_acceptance;
+     int    strat_sb_degrade_acceptance;
+     int    strat_po3_degrade_acceptance;
+     int    strat_cont_degrade_acceptance;
+     int    strat_wyck_degrade_acceptance;
+
+     double strat_main_arm_threshold;
+     double strat_sb_arm_threshold;
+     double strat_po3_arm_threshold;
+     double strat_cont_arm_threshold;
+     double strat_wyck_arm_threshold;
+
+     int    strat_main_regime_mask;
+     int    strat_sb_regime_mask;
+     int    strat_po3_regime_mask;
+     int    strat_cont_regime_mask;
+     int    strat_wyck_regime_mask;
+
+     int    strat_main_required_location_mask;
+     int    strat_sb_required_location_mask;
+     int    strat_po3_required_location_mask;
+     int    strat_cont_required_location_mask;
+     int    strat_wyck_required_location_mask;
+
+     bool   strat_require_micro_default;
+     bool   strat_require_volume_default;
+     bool   strat_require_trigger_default;
+
+     bool   strat_main_require_micro;
+     bool   strat_main_require_volume;
+     bool   strat_main_require_trigger;
+
+     double strat_w_location;
+     double strat_w_liquidity;
+     double strat_w_microstructure;
+     double strat_w_volume;
+     double strat_w_pattern;
+     double strat_w_execution;
+
+     double strat_exec_max_spread_atr;
+     double strat_exec_max_slippage_points;
+     double strat_exec_min_resiliency01;
+     double strat_exec_max_depth_fade01;
+     double strat_exec_max_spread_shock01;
+
+     bool   warmup_preload_symbol_pool;
+     int    warmup_symbol_pool_limit;
+     bool   warmup_preseed_scanner_caches;
+     int    warmup_scanner_warm_start_bars;
+     int    warmup_state_freshness_sec;
+     int    warmup_scanner_freshness_sec;
+     int    warmup_min_ready_symbols;
+     double warmup_min_ready_fraction01;
+     bool   warmup_require_dom_ready;
+     double warmup_dom_ready_fraction01;
+
      // Router / gates / require toggles
       bool   enable_hard_gate;
       double router_min_score;
@@ -2646,6 +2715,36 @@ namespace Config
   inline bool CfgMainStrategyAllowProxyDegrade(const Settings &cfg)
   {
      return (cfg.strat_main_allow_proxy_degrade ? true : false);
+  }
+
+  inline double CfgMainQualityThreshold(const Settings &cfg)
+  {
+     return MathMin(MathMax(cfg.thMainQuality, 0.0), 1.0);
+  }
+
+  inline int CfgMainStrategyDegradeAcceptance(const Settings &cfg)
+  {
+     return MathMin(MathMax(cfg.strat_main_degrade_acceptance, 0), 3);
+  }
+
+  inline double CfgMainStrategyArmThreshold(const Settings &cfg)
+  {
+     return MathMin(MathMax(cfg.strat_main_arm_threshold, 0.0), 1.0);
+  }
+
+  inline int CfgWarmupStateFreshnessSec(const Settings &cfg)
+  {
+     return MathMax(1, cfg.warmup_state_freshness_sec);
+  }
+
+  inline int CfgWarmupScannerFreshnessSec(const Settings &cfg)
+  {
+     return MathMax(1, cfg.warmup_scanner_freshness_sec);
+  }
+
+  inline bool CfgWarmupRequireDOMReady(const Settings &cfg)
+  {
+     return (cfg.warmup_require_dom_ready ? true : false);
   }
 
    void ConfigCore::Normalize(Settings &cfg)
@@ -4472,6 +4571,72 @@ namespace Config
      cfg.strat_main_rr_min                             = x.strat_main_rr_min;
      cfg.strat_main_allow_proxy_degrade                = x.strat_main_allow_proxy_degrade;
 
+     cfg.sigsel_enable_inst                  = x.sigsel_enable_inst;
+     cfg.sigsel_enable_trend                 = x.sigsel_enable_trend;
+     cfg.sigsel_enable_mom                   = x.sigsel_enable_mom;
+     cfg.sigsel_enable_vol                   = x.sigsel_enable_vol;
+     cfg.sigsel_enable_vola                  = x.sigsel_enable_vola;
+     cfg.sigsel_max_coverage_penalty01       = x.sigsel_max_coverage_penalty01;
+
+     cfg.thMainQuality                       = x.thMainQuality;
+
+     cfg.strat_degrade_acceptance_default    = x.strat_degrade_acceptance_default;
+     cfg.strat_main_degrade_acceptance       = x.strat_main_degrade_acceptance;
+     cfg.strat_sb_degrade_acceptance         = x.strat_sb_degrade_acceptance;
+     cfg.strat_po3_degrade_acceptance        = x.strat_po3_degrade_acceptance;
+     cfg.strat_cont_degrade_acceptance       = x.strat_cont_degrade_acceptance;
+     cfg.strat_wyck_degrade_acceptance       = x.strat_wyck_degrade_acceptance;
+
+     cfg.strat_main_arm_threshold            = x.strat_main_arm_threshold;
+     cfg.strat_sb_arm_threshold              = x.strat_sb_arm_threshold;
+     cfg.strat_po3_arm_threshold             = x.strat_po3_arm_threshold;
+     cfg.strat_cont_arm_threshold            = x.strat_cont_arm_threshold;
+     cfg.strat_wyck_arm_threshold            = x.strat_wyck_arm_threshold;
+
+     cfg.strat_main_regime_mask              = x.strat_main_regime_mask;
+     cfg.strat_sb_regime_mask                = x.strat_sb_regime_mask;
+     cfg.strat_po3_regime_mask               = x.strat_po3_regime_mask;
+     cfg.strat_cont_regime_mask              = x.strat_cont_regime_mask;
+     cfg.strat_wyck_regime_mask              = x.strat_wyck_regime_mask;
+
+     cfg.strat_main_required_location_mask   = x.strat_main_required_location_mask;
+     cfg.strat_sb_required_location_mask     = x.strat_sb_required_location_mask;
+     cfg.strat_po3_required_location_mask    = x.strat_po3_required_location_mask;
+     cfg.strat_cont_required_location_mask   = x.strat_cont_required_location_mask;
+     cfg.strat_wyck_required_location_mask   = x.strat_wyck_required_location_mask;
+
+     cfg.strat_require_micro_default         = x.strat_require_micro_default;
+     cfg.strat_require_volume_default        = x.strat_require_volume_default;
+     cfg.strat_require_trigger_default       = x.strat_require_trigger_default;
+
+     cfg.strat_main_require_micro            = x.strat_main_require_micro;
+     cfg.strat_main_require_volume           = x.strat_main_require_volume;
+     cfg.strat_main_require_trigger          = x.strat_main_require_trigger;
+
+     cfg.strat_w_location                    = x.strat_w_location;
+     cfg.strat_w_liquidity                   = x.strat_w_liquidity;
+     cfg.strat_w_microstructure              = x.strat_w_microstructure;
+     cfg.strat_w_volume                      = x.strat_w_volume;
+     cfg.strat_w_pattern                     = x.strat_w_pattern;
+     cfg.strat_w_execution                   = x.strat_w_execution;
+
+     cfg.strat_exec_max_spread_atr           = x.strat_exec_max_spread_atr;
+     cfg.strat_exec_max_slippage_points      = x.strat_exec_max_slippage_points;
+     cfg.strat_exec_min_resiliency01         = x.strat_exec_min_resiliency01;
+     cfg.strat_exec_max_depth_fade01         = x.strat_exec_max_depth_fade01;
+     cfg.strat_exec_max_spread_shock01       = x.strat_exec_max_spread_shock01;
+
+     cfg.warmup_preload_symbol_pool          = x.warmup_preload_symbol_pool;
+     cfg.warmup_symbol_pool_limit            = x.warmup_symbol_pool_limit;
+     cfg.warmup_preseed_scanner_caches       = x.warmup_preseed_scanner_caches;
+     cfg.warmup_scanner_warm_start_bars      = x.warmup_scanner_warm_start_bars;
+     cfg.warmup_state_freshness_sec          = x.warmup_state_freshness_sec;
+     cfg.warmup_scanner_freshness_sec        = x.warmup_scanner_freshness_sec;
+     cfg.warmup_min_ready_symbols            = x.warmup_min_ready_symbols;
+     cfg.warmup_min_ready_fraction01         = x.warmup_min_ready_fraction01;
+     cfg.warmup_require_dom_ready            = x.warmup_require_dom_ready;
+     cfg.warmup_dom_ready_fraction01         = x.warmup_dom_ready_fraction01;
+
      // Router + gates + requirements
      #ifdef CFG_HAS_ENABLE_HARD_GATE
        cfg.enable_hard_gate = x.enable_hard_gate;
@@ -5257,6 +5422,72 @@ namespace Config
      x.strat_main_execution_style                    = 0;
      x.strat_main_rr_min                             = 1.50;
      x.strat_main_allow_proxy_degrade                = true;
+
+     x.sigsel_enable_inst                  = true;
+     x.sigsel_enable_trend                 = true;
+     x.sigsel_enable_mom                   = true;
+     x.sigsel_enable_vol                   = true;
+     x.sigsel_enable_vola                  = true;
+     x.sigsel_max_coverage_penalty01       = 0.35;
+
+     x.thMainQuality                       = 0.55;
+
+     x.strat_degrade_acceptance_default    = 1;
+     x.strat_main_degrade_acceptance       = 1;
+     x.strat_sb_degrade_acceptance         = 1;
+     x.strat_po3_degrade_acceptance        = 1;
+     x.strat_cont_degrade_acceptance       = 1;
+     x.strat_wyck_degrade_acceptance       = 1;
+
+     x.strat_main_arm_threshold            = 0.55;
+     x.strat_sb_arm_threshold              = 0.60;
+     x.strat_po3_arm_threshold             = 0.55;
+     x.strat_cont_arm_threshold            = 0.55;
+     x.strat_wyck_arm_threshold            = 0.60;
+
+     x.strat_main_regime_mask              = 0;
+     x.strat_sb_regime_mask                = 0;
+     x.strat_po3_regime_mask               = 0;
+     x.strat_cont_regime_mask              = 0;
+     x.strat_wyck_regime_mask              = 0;
+
+     x.strat_main_required_location_mask   = 0;
+     x.strat_sb_required_location_mask     = 0;
+     x.strat_po3_required_location_mask    = 0;
+     x.strat_cont_required_location_mask   = 0;
+     x.strat_wyck_required_location_mask   = 0;
+
+     x.strat_require_micro_default         = true;
+     x.strat_require_volume_default        = true;
+     x.strat_require_trigger_default       = false;
+
+     x.strat_main_require_micro            = true;
+     x.strat_main_require_volume           = true;
+     x.strat_main_require_trigger          = false;
+
+     x.strat_w_location                    = 0.24;
+     x.strat_w_liquidity                   = 0.18;
+     x.strat_w_microstructure              = 0.22;
+     x.strat_w_volume                      = 0.14;
+     x.strat_w_pattern                     = 0.08;
+     x.strat_w_execution                   = 0.14;
+
+     x.strat_exec_max_spread_atr           = 0.25;
+     x.strat_exec_max_slippage_points      = 500.0;
+     x.strat_exec_min_resiliency01         = 0.25;
+     x.strat_exec_max_depth_fade01         = 0.80;
+     x.strat_exec_max_spread_shock01       = 0.80;
+
+     x.warmup_preload_symbol_pool          = true;
+     x.warmup_symbol_pool_limit            = 0;
+     x.warmup_preseed_scanner_caches       = true;
+     x.warmup_scanner_warm_start_bars      = 600;
+     x.warmup_state_freshness_sec          = 90;
+     x.warmup_scanner_freshness_sec        = 180;
+     x.warmup_min_ready_symbols            = 1;
+     x.warmup_min_ready_fraction01         = 0.50;
+     x.warmup_require_dom_ready            = false;
+     x.warmup_dom_ready_fraction01         = 0.50;
 
      x.router_min_score = 0.0;
      x.router_fb_min    = 0.0;
@@ -11665,6 +11896,149 @@ namespace Config
     cfg.strat_main_allow_proxy_degrade =
        (cfg.strat_main_allow_proxy_degrade ? true : false);
 
+    cfg.sigsel_enable_inst  = (cfg.sigsel_enable_inst ? true : false);
+    cfg.sigsel_enable_trend = (cfg.sigsel_enable_trend ? true : false);
+    cfg.sigsel_enable_mom   = (cfg.sigsel_enable_mom ? true : false);
+    cfg.sigsel_enable_vol   = (cfg.sigsel_enable_vol ? true : false);
+    cfg.sigsel_enable_vola  = (cfg.sigsel_enable_vola ? true : false);
+
+    if(!cfg.sigsel_enable_inst &&
+       !cfg.sigsel_enable_trend &&
+       !cfg.sigsel_enable_mom &&
+       !cfg.sigsel_enable_vol &&
+       !cfg.sigsel_enable_vola)
+    {
+       cfg.sigsel_enable_inst  = true;
+       cfg.sigsel_enable_trend = true;
+       cfg.sigsel_enable_mom   = true;
+       cfg.sigsel_enable_vol   = true;
+       cfg.sigsel_enable_vola  = true;
+    }
+
+    if(cfg.sigsel_max_coverage_penalty01 < 0.0)
+       cfg.sigsel_max_coverage_penalty01 = 0.0;
+    if(cfg.sigsel_max_coverage_penalty01 > 1.0)
+       cfg.sigsel_max_coverage_penalty01 = 1.0;
+
+    if(cfg.thMainQuality < 0.0)
+       cfg.thMainQuality = 0.55;
+    if(cfg.thMainQuality > 1.0)
+       cfg.thMainQuality = 1.0;
+
+    if(cfg.strat_degrade_acceptance_default < 0) cfg.strat_degrade_acceptance_default = 1;
+    if(cfg.strat_degrade_acceptance_default > 3) cfg.strat_degrade_acceptance_default = 3;
+
+    if(cfg.strat_main_degrade_acceptance < 0) cfg.strat_main_degrade_acceptance = cfg.strat_degrade_acceptance_default;
+    if(cfg.strat_main_degrade_acceptance > 3) cfg.strat_main_degrade_acceptance = 3;
+
+    if(cfg.strat_sb_degrade_acceptance < 0) cfg.strat_sb_degrade_acceptance = cfg.strat_degrade_acceptance_default;
+    if(cfg.strat_sb_degrade_acceptance > 3) cfg.strat_sb_degrade_acceptance = 3;
+
+    if(cfg.strat_po3_degrade_acceptance < 0) cfg.strat_po3_degrade_acceptance = cfg.strat_degrade_acceptance_default;
+    if(cfg.strat_po3_degrade_acceptance > 3) cfg.strat_po3_degrade_acceptance = 3;
+
+    if(cfg.strat_cont_degrade_acceptance < 0) cfg.strat_cont_degrade_acceptance = cfg.strat_degrade_acceptance_default;
+    if(cfg.strat_cont_degrade_acceptance > 3) cfg.strat_cont_degrade_acceptance = 3;
+
+    if(cfg.strat_wyck_degrade_acceptance < 0) cfg.strat_wyck_degrade_acceptance = cfg.strat_degrade_acceptance_default;
+    if(cfg.strat_wyck_degrade_acceptance > 3) cfg.strat_wyck_degrade_acceptance = 3;
+
+    if(cfg.strat_main_arm_threshold < 0.0) cfg.strat_main_arm_threshold = 0.55;
+    if(cfg.strat_main_arm_threshold > 1.0) cfg.strat_main_arm_threshold = 1.0;
+
+    if(cfg.strat_sb_arm_threshold < 0.0) cfg.strat_sb_arm_threshold = 0.60;
+    if(cfg.strat_sb_arm_threshold > 1.0) cfg.strat_sb_arm_threshold = 1.0;
+
+    if(cfg.strat_po3_arm_threshold < 0.0) cfg.strat_po3_arm_threshold = 0.55;
+    if(cfg.strat_po3_arm_threshold > 1.0) cfg.strat_po3_arm_threshold = 1.0;
+
+    if(cfg.strat_cont_arm_threshold < 0.0) cfg.strat_cont_arm_threshold = 0.55;
+    if(cfg.strat_cont_arm_threshold > 1.0) cfg.strat_cont_arm_threshold = 1.0;
+
+    if(cfg.strat_wyck_arm_threshold < 0.0) cfg.strat_wyck_arm_threshold = 0.60;
+    if(cfg.strat_wyck_arm_threshold > 1.0) cfg.strat_wyck_arm_threshold = 1.0;
+
+    if(cfg.strat_main_regime_mask < 0) cfg.strat_main_regime_mask = 0;
+    if(cfg.strat_sb_regime_mask < 0)   cfg.strat_sb_regime_mask = 0;
+    if(cfg.strat_po3_regime_mask < 0)  cfg.strat_po3_regime_mask = 0;
+    if(cfg.strat_cont_regime_mask < 0) cfg.strat_cont_regime_mask = 0;
+    if(cfg.strat_wyck_regime_mask < 0) cfg.strat_wyck_regime_mask = 0;
+
+    if(cfg.strat_main_required_location_mask < 0) cfg.strat_main_required_location_mask = 0;
+    if(cfg.strat_sb_required_location_mask < 0)   cfg.strat_sb_required_location_mask = 0;
+    if(cfg.strat_po3_required_location_mask < 0)  cfg.strat_po3_required_location_mask = 0;
+    if(cfg.strat_cont_required_location_mask < 0) cfg.strat_cont_required_location_mask = 0;
+    if(cfg.strat_wyck_required_location_mask < 0) cfg.strat_wyck_required_location_mask = 0;
+
+    cfg.strat_require_micro_default   = (cfg.strat_require_micro_default ? true : false);
+    cfg.strat_require_volume_default  = (cfg.strat_require_volume_default ? true : false);
+    cfg.strat_require_trigger_default = (cfg.strat_require_trigger_default ? true : false);
+
+    cfg.strat_main_require_micro   = (cfg.strat_main_require_micro ? true : false);
+    cfg.strat_main_require_volume  = (cfg.strat_main_require_volume ? true : false);
+    cfg.strat_main_require_trigger = (cfg.strat_main_require_trigger ? true : false);
+
+    if(cfg.strat_w_location < 0.0)       cfg.strat_w_location = 0.0;
+    if(cfg.strat_w_liquidity < 0.0)      cfg.strat_w_liquidity = 0.0;
+    if(cfg.strat_w_microstructure < 0.0) cfg.strat_w_microstructure = 0.0;
+    if(cfg.strat_w_volume < 0.0)         cfg.strat_w_volume = 0.0;
+    if(cfg.strat_w_pattern < 0.0)        cfg.strat_w_pattern = 0.0;
+    if(cfg.strat_w_execution < 0.0)      cfg.strat_w_execution = 0.0;
+
+    double strat_w_sum =
+       cfg.strat_w_location +
+       cfg.strat_w_liquidity +
+       cfg.strat_w_microstructure +
+       cfg.strat_w_volume +
+       cfg.strat_w_pattern +
+       cfg.strat_w_execution;
+
+    if(strat_w_sum <= 0.0)
+    {
+       cfg.strat_w_location       = 0.24;
+       cfg.strat_w_liquidity      = 0.18;
+       cfg.strat_w_microstructure = 0.22;
+       cfg.strat_w_volume         = 0.14;
+       cfg.strat_w_pattern        = 0.08;
+       cfg.strat_w_execution      = 0.14;
+       strat_w_sum                = 1.0;
+    }
+
+    cfg.strat_w_location       /= strat_w_sum;
+    cfg.strat_w_liquidity      /= strat_w_sum;
+    cfg.strat_w_microstructure /= strat_w_sum;
+    cfg.strat_w_volume         /= strat_w_sum;
+    cfg.strat_w_pattern        /= strat_w_sum;
+    cfg.strat_w_execution      /= strat_w_sum;
+
+    if(cfg.strat_exec_max_spread_atr <= 0.0) cfg.strat_exec_max_spread_atr = 0.25;
+    if(cfg.strat_exec_max_slippage_points < 0.0) cfg.strat_exec_max_slippage_points = 0.0;
+
+    if(cfg.strat_exec_min_resiliency01 < 0.0) cfg.strat_exec_min_resiliency01 = 0.0;
+    if(cfg.strat_exec_min_resiliency01 > 1.0) cfg.strat_exec_min_resiliency01 = 1.0;
+
+    if(cfg.strat_exec_max_depth_fade01 < 0.0) cfg.strat_exec_max_depth_fade01 = 0.0;
+    if(cfg.strat_exec_max_depth_fade01 > 1.0) cfg.strat_exec_max_depth_fade01 = 1.0;
+
+    if(cfg.strat_exec_max_spread_shock01 < 0.0) cfg.strat_exec_max_spread_shock01 = 0.0;
+    if(cfg.strat_exec_max_spread_shock01 > 1.0) cfg.strat_exec_max_spread_shock01 = 1.0;
+
+    cfg.warmup_preload_symbol_pool    = (cfg.warmup_preload_symbol_pool ? true : false);
+    cfg.warmup_preseed_scanner_caches = (cfg.warmup_preseed_scanner_caches ? true : false);
+    cfg.warmup_require_dom_ready      = (cfg.warmup_require_dom_ready ? true : false);
+
+    if(cfg.warmup_symbol_pool_limit < 0)        cfg.warmup_symbol_pool_limit = 0;
+    if(cfg.warmup_scanner_warm_start_bars < 0)  cfg.warmup_scanner_warm_start_bars = 0;
+    if(cfg.warmup_state_freshness_sec <= 0)     cfg.warmup_state_freshness_sec = 90;
+    if(cfg.warmup_scanner_freshness_sec <= 0)   cfg.warmup_scanner_freshness_sec = 180;
+    if(cfg.warmup_min_ready_symbols < 0)        cfg.warmup_min_ready_symbols = 0;
+
+    if(cfg.warmup_min_ready_fraction01 < 0.0) cfg.warmup_min_ready_fraction01 = 0.0;
+    if(cfg.warmup_min_ready_fraction01 > 1.0) cfg.warmup_min_ready_fraction01 = 1.0;
+
+    if(cfg.warmup_dom_ready_fraction01 < 0.0) cfg.warmup_dom_ready_fraction01 = 0.0;
+    if(cfg.warmup_dom_ready_fraction01 > 1.0) cfg.warmup_dom_ready_fraction01 = 1.0;
+
     // Keep router fallback threshold and legacy alias in sync
     _SyncRouterFallbackAlias(cfg);
     // Strategy toggles & ICT-specific thresholds
@@ -12273,6 +12647,96 @@ namespace Config
 
     if(cfg.strat_main_rr_min < 0.25 || cfg.strat_main_rr_min > 10.0)
        warns += "strat_main_rr_min should be in [0.25,10.0]; Normalize() will clamp it.\n";
+
+    if(!cfg.sigsel_enable_inst &&
+       !cfg.sigsel_enable_trend &&
+       !cfg.sigsel_enable_mom &&
+       !cfg.sigsel_enable_vol &&
+       !cfg.sigsel_enable_vola)
+    {
+       warns += "all per-category signal-stack enables are OFF; Normalize() will re-enable all categories.\n";
+    }
+
+    if(cfg.sigsel_max_coverage_penalty01 < 0.0 || cfg.sigsel_max_coverage_penalty01 > 1.0)
+       warns += "sigsel_max_coverage_penalty01 should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.thMainQuality < 0.0 || cfg.thMainQuality > 1.0)
+       warns += "thMainQuality should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.strat_degrade_acceptance_default < 0 || cfg.strat_degrade_acceptance_default > 3)
+       warns += "strat_degrade_acceptance_default out of range; Normalize() will clamp to 0..3.\n";
+
+    if(cfg.strat_main_degrade_acceptance < 0 || cfg.strat_main_degrade_acceptance > 3)
+       warns += "strat_main_degrade_acceptance out of range; Normalize() will clamp to 0..3.\n";
+
+    if(cfg.strat_main_arm_threshold < 0.0 || cfg.strat_main_arm_threshold > 1.0)
+       warns += "strat_main_arm_threshold should be in [0,1]; Normalize() will clamp it.\n";
+    if(cfg.strat_sb_arm_threshold < 0.0 || cfg.strat_sb_arm_threshold > 1.0)
+       warns += "strat_sb_arm_threshold should be in [0,1]; Normalize() will clamp it.\n";
+    if(cfg.strat_po3_arm_threshold < 0.0 || cfg.strat_po3_arm_threshold > 1.0)
+       warns += "strat_po3_arm_threshold should be in [0,1]; Normalize() will clamp it.\n";
+    if(cfg.strat_cont_arm_threshold < 0.0 || cfg.strat_cont_arm_threshold > 1.0)
+       warns += "strat_cont_arm_threshold should be in [0,1]; Normalize() will clamp it.\n";
+    if(cfg.strat_wyck_arm_threshold < 0.0 || cfg.strat_wyck_arm_threshold > 1.0)
+       warns += "strat_wyck_arm_threshold should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.strat_main_regime_mask < 0 ||
+       cfg.strat_sb_regime_mask < 0 ||
+       cfg.strat_po3_regime_mask < 0 ||
+       cfg.strat_cont_regime_mask < 0 ||
+       cfg.strat_wyck_regime_mask < 0)
+    {
+       warns += "one or more strategy regime masks are negative; Normalize() will clamp them to 0.\n";
+    }
+
+    if(cfg.strat_main_required_location_mask < 0 ||
+       cfg.strat_sb_required_location_mask < 0 ||
+       cfg.strat_po3_required_location_mask < 0 ||
+       cfg.strat_cont_required_location_mask < 0 ||
+       cfg.strat_wyck_required_location_mask < 0)
+    {
+       warns += "one or more strategy required location masks are negative; Normalize() will clamp them to 0.\n";
+    }
+
+    if(cfg.strat_w_location < 0.0 ||
+       cfg.strat_w_liquidity < 0.0 ||
+       cfg.strat_w_microstructure < 0.0 ||
+       cfg.strat_w_volume < 0.0 ||
+       cfg.strat_w_pattern < 0.0 ||
+       cfg.strat_w_execution < 0.0)
+    {
+       warns += "one or more grouped strategy weights are negative; Normalize() will clamp and renormalize them.\n";
+    }
+
+    if(cfg.strat_exec_max_spread_atr <= 0.0)
+       warns += "strat_exec_max_spread_atr <= 0; Normalize() will restore a safe default.\n";
+
+    if(cfg.strat_exec_min_resiliency01 < 0.0 || cfg.strat_exec_min_resiliency01 > 1.0)
+       warns += "strat_exec_min_resiliency01 should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.strat_exec_max_depth_fade01 < 0.0 || cfg.strat_exec_max_depth_fade01 > 1.0)
+       warns += "strat_exec_max_depth_fade01 should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.strat_exec_max_spread_shock01 < 0.0 || cfg.strat_exec_max_spread_shock01 > 1.0)
+       warns += "strat_exec_max_spread_shock01 should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.warmup_symbol_pool_limit < 0)
+       warns += "warmup_symbol_pool_limit < 0; Normalize() will clamp it to 0.\n";
+
+    if(cfg.warmup_scanner_warm_start_bars < 0)
+       warns += "warmup_scanner_warm_start_bars < 0; Normalize() will clamp it to 0.\n";
+
+    if(cfg.warmup_state_freshness_sec <= 0)
+       warns += "warmup_state_freshness_sec <= 0; Normalize() will restore a safe default.\n";
+
+    if(cfg.warmup_scanner_freshness_sec <= 0)
+       warns += "warmup_scanner_freshness_sec <= 0; Normalize() will restore a safe default.\n";
+
+    if(cfg.warmup_min_ready_fraction01 < 0.0 || cfg.warmup_min_ready_fraction01 > 1.0)
+       warns += "warmup_min_ready_fraction01 should be in [0,1]; Normalize() will clamp it.\n";
+
+    if(cfg.warmup_dom_ready_fraction01 < 0.0 || cfg.warmup_dom_ready_fraction01 > 1.0)
+       warns += "warmup_dom_ready_fraction01 should be in [0,1]; Normalize() will clamp it.\n";
 
     #ifdef CFG_HAS_MONTHLY_TARGET
       const double mt = CfgMonthlyTargetPct(cfg);
@@ -14290,7 +14754,72 @@ namespace Config
     s+=",ssMomW="+c.sigsel_mom_weights_csv;
     s+=",ssVolW="+c.sigsel_vol_weights_csv;
     s+=",ssVolaW="+c.sigsel_vola_weights_csv;
-    
+
+    s+=",ssOnInst="+BoolStr(c.sigsel_enable_inst);
+    s+=",ssOnTrend="+BoolStr(c.sigsel_enable_trend);
+    s+=",ssOnMom="+BoolStr(c.sigsel_enable_mom);
+    s+=",ssOnVol="+BoolStr(c.sigsel_enable_vol);
+    s+=",ssOnVola="+BoolStr(c.sigsel_enable_vola);
+    s+=",ssCovPen="+DoubleToString(c.sigsel_max_coverage_penalty01,4);
+
+    s+=",mainQ="+DoubleToString(c.thMainQuality,4);
+
+    s+=",sdAccDef="+IntegerToString(c.strat_degrade_acceptance_default);
+    s+=",sdAccMain="+IntegerToString(c.strat_main_degrade_acceptance);
+    s+=",sdAccSB="+IntegerToString(c.strat_sb_degrade_acceptance);
+    s+=",sdAccPO3="+IntegerToString(c.strat_po3_degrade_acceptance);
+    s+=",sdAccCont="+IntegerToString(c.strat_cont_degrade_acceptance);
+    s+=",sdAccWyk="+IntegerToString(c.strat_wyck_degrade_acceptance);
+
+    s+=",armMain="+DoubleToString(c.strat_main_arm_threshold,4);
+    s+=",armSB="+DoubleToString(c.strat_sb_arm_threshold,4);
+    s+=",armPO3="+DoubleToString(c.strat_po3_arm_threshold,4);
+    s+=",armCont="+DoubleToString(c.strat_cont_arm_threshold,4);
+    s+=",armWyk="+DoubleToString(c.strat_wyck_arm_threshold,4);
+
+    s+=",rgMain="+IntegerToString(c.strat_main_regime_mask);
+    s+=",rgSB="+IntegerToString(c.strat_sb_regime_mask);
+    s+=",rgPO3="+IntegerToString(c.strat_po3_regime_mask);
+    s+=",rgCont="+IntegerToString(c.strat_cont_regime_mask);
+    s+=",rgWyk="+IntegerToString(c.strat_wyck_regime_mask);
+
+    s+=",locMain="+IntegerToString(c.strat_main_required_location_mask);
+    s+=",locSB="+IntegerToString(c.strat_sb_required_location_mask);
+    s+=",locPO3="+IntegerToString(c.strat_po3_required_location_mask);
+    s+=",locCont="+IntegerToString(c.strat_cont_required_location_mask);
+    s+=",locWyk="+IntegerToString(c.strat_wyck_required_location_mask);
+
+    s+=",rqMicDef="+BoolStr(c.strat_require_micro_default);
+    s+=",rqVolDef="+BoolStr(c.strat_require_volume_default);
+    s+=",rqTrgDef="+BoolStr(c.strat_require_trigger_default);
+    s+=",rqMicMain="+BoolStr(c.strat_main_require_micro);
+    s+=",rqVolMain="+BoolStr(c.strat_main_require_volume);
+    s+=",rqTrgMain="+BoolStr(c.strat_main_require_trigger);
+
+    s+=",wLoc="+DoubleToString(c.strat_w_location,4);
+    s+=",wLiq="+DoubleToString(c.strat_w_liquidity,4);
+    s+=",wMic="+DoubleToString(c.strat_w_microstructure,4);
+    s+=",wVol="+DoubleToString(c.strat_w_volume,4);
+    s+=",wPat="+DoubleToString(c.strat_w_pattern,4);
+    s+=",wExec="+DoubleToString(c.strat_w_execution,4);
+
+    s+=",exSprATR="+DoubleToString(c.strat_exec_max_spread_atr,4);
+    s+=",exSlipPts="+DoubleToString(c.strat_exec_max_slippage_points,1);
+    s+=",exResMin="+DoubleToString(c.strat_exec_min_resiliency01,4);
+    s+=",exDfMax="+DoubleToString(c.strat_exec_max_depth_fade01,4);
+    s+=",exSSMax="+DoubleToString(c.strat_exec_max_spread_shock01,4);
+
+    s+=",wuPool="+BoolStr(c.warmup_preload_symbol_pool);
+    s+=",wuPoolLim="+IntegerToString(c.warmup_symbol_pool_limit);
+    s+=",wuScan="+BoolStr(c.warmup_preseed_scanner_caches);
+    s+=",wuScanBars="+IntegerToString(c.warmup_scanner_warm_start_bars);
+    s+=",wuStateFresh="+IntegerToString(c.warmup_state_freshness_sec);
+    s+=",wuScanFresh="+IntegerToString(c.warmup_scanner_freshness_sec);
+    s+=",wuMinReadyN="+IntegerToString(c.warmup_min_ready_symbols);
+    s+=",wuMinReadyF="+DoubleToString(c.warmup_min_ready_fraction01,4);
+    s+=",wuDom="+BoolStr(c.warmup_require_dom_ready);
+    s+=",wuDomF="+DoubleToString(c.warmup_dom_ready_fraction01,4);
+
     #ifdef CFG_HAS_SB_REQUIRE_OTE
       s+=",sbReqOTE="+BoolStr(c.sb_require_ote);
     #endif
@@ -17093,6 +17622,71 @@ namespace Config
       else if(k=="ssMomW")     cfg.sigsel_mom_weights_csv = v;
       else if(k=="ssVolW")     cfg.sigsel_vol_weights_csv = v;
       else if(k=="ssVolaW")    cfg.sigsel_vola_weights_csv = v;
+
+      else if(k=="ssOnInst")  cfg.sigsel_enable_inst = ToBool(v);
+      else if(k=="ssOnTrend") cfg.sigsel_enable_trend = ToBool(v);
+      else if(k=="ssOnMom")   cfg.sigsel_enable_mom = ToBool(v);
+      else if(k=="ssOnVol")   cfg.sigsel_enable_vol = ToBool(v);
+      else if(k=="ssOnVola")  cfg.sigsel_enable_vola = ToBool(v);
+      else if(k=="ssCovPen")  cfg.sigsel_max_coverage_penalty01 = ToDouble(v);
+
+      else if(k=="mainQ")     cfg.thMainQuality = ToDouble(v);
+
+      else if(k=="sdAccDef")  cfg.strat_degrade_acceptance_default = ToInt(v);
+      else if(k=="sdAccMain") cfg.strat_main_degrade_acceptance = ToInt(v);
+      else if(k=="sdAccSB")   cfg.strat_sb_degrade_acceptance = ToInt(v);
+      else if(k=="sdAccPO3")  cfg.strat_po3_degrade_acceptance = ToInt(v);
+      else if(k=="sdAccCont") cfg.strat_cont_degrade_acceptance = ToInt(v);
+      else if(k=="sdAccWyk")  cfg.strat_wyck_degrade_acceptance = ToInt(v);
+
+      else if(k=="armMain")   cfg.strat_main_arm_threshold = ToDouble(v);
+      else if(k=="armSB")     cfg.strat_sb_arm_threshold = ToDouble(v);
+      else if(k=="armPO3")    cfg.strat_po3_arm_threshold = ToDouble(v);
+      else if(k=="armCont")   cfg.strat_cont_arm_threshold = ToDouble(v);
+      else if(k=="armWyk")    cfg.strat_wyck_arm_threshold = ToDouble(v);
+
+      else if(k=="rgMain")    cfg.strat_main_regime_mask = ToInt(v);
+      else if(k=="rgSB")      cfg.strat_sb_regime_mask = ToInt(v);
+      else if(k=="rgPO3")     cfg.strat_po3_regime_mask = ToInt(v);
+      else if(k=="rgCont")    cfg.strat_cont_regime_mask = ToInt(v);
+      else if(k=="rgWyk")     cfg.strat_wyck_regime_mask = ToInt(v);
+
+      else if(k=="locMain")   cfg.strat_main_required_location_mask = ToInt(v);
+      else if(k=="locSB")     cfg.strat_sb_required_location_mask = ToInt(v);
+      else if(k=="locPO3")    cfg.strat_po3_required_location_mask = ToInt(v);
+      else if(k=="locCont")   cfg.strat_cont_required_location_mask = ToInt(v);
+      else if(k=="locWyk")    cfg.strat_wyck_required_location_mask = ToInt(v);
+
+      else if(k=="rqMicDef")  cfg.strat_require_micro_default = ToBool(v);
+      else if(k=="rqVolDef")  cfg.strat_require_volume_default = ToBool(v);
+      else if(k=="rqTrgDef")  cfg.strat_require_trigger_default = ToBool(v);
+      else if(k=="rqMicMain") cfg.strat_main_require_micro = ToBool(v);
+      else if(k=="rqVolMain") cfg.strat_main_require_volume = ToBool(v);
+      else if(k=="rqTrgMain") cfg.strat_main_require_trigger = ToBool(v);
+
+      else if(k=="wLoc")      cfg.strat_w_location = ToDouble(v);
+      else if(k=="wLiq")      cfg.strat_w_liquidity = ToDouble(v);
+      else if(k=="wMic")      cfg.strat_w_microstructure = ToDouble(v);
+      else if(k=="wVol")      cfg.strat_w_volume = ToDouble(v);
+      else if(k=="wPat")      cfg.strat_w_pattern = ToDouble(v);
+      else if(k=="wExec")     cfg.strat_w_execution = ToDouble(v);
+
+      else if(k=="exSprATR")  cfg.strat_exec_max_spread_atr = ToDouble(v);
+      else if(k=="exSlipPts") cfg.strat_exec_max_slippage_points = ToDouble(v);
+      else if(k=="exResMin")  cfg.strat_exec_min_resiliency01 = ToDouble(v);
+      else if(k=="exDfMax")   cfg.strat_exec_max_depth_fade01 = ToDouble(v);
+      else if(k=="exSSMax")   cfg.strat_exec_max_spread_shock01 = ToDouble(v);
+
+      else if(k=="wuPool")       cfg.warmup_preload_symbol_pool = ToBool(v);
+      else if(k=="wuPoolLim")    cfg.warmup_symbol_pool_limit = ToInt(v);
+      else if(k=="wuScan")       cfg.warmup_preseed_scanner_caches = ToBool(v);
+      else if(k=="wuScanBars")   cfg.warmup_scanner_warm_start_bars = ToInt(v);
+      else if(k=="wuStateFresh") cfg.warmup_state_freshness_sec = ToInt(v);
+      else if(k=="wuScanFresh")  cfg.warmup_scanner_freshness_sec = ToInt(v);
+      else if(k=="wuMinReadyN")  cfg.warmup_min_ready_symbols = ToInt(v);
+      else if(k=="wuMinReadyF")  cfg.warmup_min_ready_fraction01 = ToDouble(v);
+      else if(k=="wuDom")        cfg.warmup_require_dom_ready = ToBool(v);
+      else if(k=="wuDomF")       cfg.warmup_dom_ready_fraction01 = ToDouble(v);
 
       #ifdef CFG_HAS_SB_REQUIRE_OTE
         else if(k=="sbReqOTE") cfg.sb_require_ote = ToBool(v);
@@ -20190,6 +20784,75 @@ struct Settings
    int    strat_main_execution_style;
    double strat_main_rr_min;
    bool   strat_main_allow_proxy_degrade;
+
+   // Missing refactor knobs: category enablement, degrade acceptance,
+   // staged-strategy thresholds, grouped weights, and warmup readiness.
+   bool   sigsel_enable_inst;
+   bool   sigsel_enable_trend;
+   bool   sigsel_enable_mom;
+   bool   sigsel_enable_vol;
+   bool   sigsel_enable_vola;
+   double sigsel_max_coverage_penalty01;
+
+   double thMainQuality;
+
+   // 0=direct_only, 1=proxy_allowed, 2=soft_neutral, 3=hard_block
+   int    strat_degrade_acceptance_default;
+   int    strat_main_degrade_acceptance;
+   int    strat_sb_degrade_acceptance;
+   int    strat_po3_degrade_acceptance;
+   int    strat_cont_degrade_acceptance;
+   int    strat_wyck_degrade_acceptance;
+
+   double strat_main_arm_threshold;
+   double strat_sb_arm_threshold;
+   double strat_po3_arm_threshold;
+   double strat_cont_arm_threshold;
+   double strat_wyck_arm_threshold;
+
+   int    strat_main_regime_mask;
+   int    strat_sb_regime_mask;
+   int    strat_po3_regime_mask;
+   int    strat_cont_regime_mask;
+   int    strat_wyck_regime_mask;
+
+   int    strat_main_required_location_mask;
+   int    strat_sb_required_location_mask;
+   int    strat_po3_required_location_mask;
+   int    strat_cont_required_location_mask;
+   int    strat_wyck_required_location_mask;
+
+   bool   strat_require_micro_default;
+   bool   strat_require_volume_default;
+   bool   strat_require_trigger_default;
+
+   bool   strat_main_require_micro;
+   bool   strat_main_require_volume;
+   bool   strat_main_require_trigger;
+
+   double strat_w_location;
+   double strat_w_liquidity;
+   double strat_w_microstructure;
+   double strat_w_volume;
+   double strat_w_pattern;
+   double strat_w_execution;
+
+   double strat_exec_max_spread_atr;
+   double strat_exec_max_slippage_points;
+   double strat_exec_min_resiliency01;
+   double strat_exec_max_depth_fade01;
+   double strat_exec_max_spread_shock01;
+
+   bool   warmup_preload_symbol_pool;
+   int    warmup_symbol_pool_limit;
+   bool   warmup_preseed_scanner_caches;
+   int    warmup_scanner_warm_start_bars;
+   int    warmup_state_freshness_sec;
+   int    warmup_scanner_freshness_sec;
+   int    warmup_min_ready_symbols;
+   double warmup_min_ready_fraction01;
+   bool   warmup_require_dom_ready;
+   double warmup_dom_ready_fraction01;
 
    #ifdef CFG_HAS_TRADE_CD_SEC
      int    trade_cd_sec;    // global per-trade cooldown seconds (Policies::CfgTradeCooldownSec)
