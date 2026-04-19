@@ -626,23 +626,69 @@ struct ZWindow
    void Reset(const int window)
    {
       cap = window;
-      if(cap < 5) cap = 5;
-      ArrayResize(values, cap);
-      ArrayInitialize(values, 0.0);
-      head = 0;
+      if(cap < 5)
+         cap = 5;
+   
+      head  = 0;
       count = 0;
+   
+      const int resized = ArrayResize(values, cap);
+      if(resized <= 0)
+      {
+         ArrayFree(values);
+         cap = 0;
+         return;
+      }
+   
+      cap = resized;
+      ArrayInitialize(values, 0.0);
    }
+
+   bool Ready() const
+   {
+      if(cap <= 0)
+         return false;
+   
+      const int n = ArraySize(values);
+      if(n != cap)
+         return false;
+   
+      if(head < 0 || head >= cap)
+         return false;
+   
+      if(count < 0 || count > cap)
+         return false;
+   
+      return true;
+}
 
    void Push(const double v)
    {
       if(cap <= 0)
          return;
-
+   
+      if(ArraySize(values) != cap)
+      {
+         const int want = (cap < 5 ? 5 : cap);
+         Reset(want);
+         if(cap <= 0 || ArraySize(values) != cap)
+            return;
+      }
+   
+      if(head < 0 || head >= cap)
+         head = 0;
+   
+      if(count < 0)
+         count = 0;
+      if(count > cap)
+         count = cap;
+   
       values[head] = v;
       head++;
+   
       if(head >= cap)
          head = 0;
-
+   
       if(count < cap)
          count++;
    }
@@ -706,7 +752,6 @@ struct Runtime
 
    void Reset(const int z_window)
    {
-      initialized = true;
       last_bar_time = 0;
 
       for(int i = 0; i < ISV_SLOT_COUNT; i++)
@@ -717,7 +762,25 @@ struct Runtime
       }
 
       flow_bridge.Reset();
+      initialized = true;
    }
+
+   bool Ready(const int expected_window = 0) const
+   {
+      if(!initialized)
+         return false;
+   
+      for(int i = 0; i < ISV_SLOT_COUNT; i++)
+      {
+         if(!slots[i].Ready())
+            return false;
+   
+         if(expected_window > 0 && slots[i].cap != expected_window)
+            return false;
+      }
+   
+      return true;
+}
 };
 
 struct BuildConfig
@@ -2212,8 +2275,11 @@ inline bool Build(const string sym,
    BuildConfig bcfg;
    LoadBuildConfigFromSettings(cfg, bcfg);
 
-   if(!rt.initialized)
+   if(!rt.Ready(bcfg.z_window))
       rt.Reset(bcfg.z_window);
+   
+   if(!rt.Ready(bcfg.z_window))
+      return false;
 
    int shift = closed_shift;
    if(shift < 1)
