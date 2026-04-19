@@ -300,11 +300,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\strategies\\StrategyDirectExecGuards.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\BuildFlags.mqh",
       "compile":false,
       "relative_to_project":true
@@ -415,11 +410,6 @@
       "relative_to_project":true
     },
     {
-      "path":"include\\InstitutionalStateVector.mqh",
-      "compile":false,
-      "relative_to_project":true
-    },
-    {
       "path":"include\\Router.mqh",
       "compile":false,
       "relative_to_project":true
@@ -466,6 +456,16 @@
     },
     {
       "path":"include\\VolumeProfile.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\InstitutionalStateVector.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\strategies\\StrategyDirectExecGuards.mqh",
       "compile":false,
       "relative_to_project":true
     }

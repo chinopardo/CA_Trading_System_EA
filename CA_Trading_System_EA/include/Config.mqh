@@ -3069,6 +3069,32 @@ namespace Config
       return true;
    }
 
+   inline bool CfgTesterLoosePresetActive(const Settings &cfg)
+   {
+      if(!CfgIsTesterRuntime())
+         return false;
+   
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+         if(!cfg.tester_settings_enable)
+            return false;
+      #endif
+   
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+         const int p = cfg.tester_settings_preset;
+   
+         if(p == TESTER_PRESET_RELAXED)
+            return true;
+         if(p == TESTER_PRESET_DEBUG)
+            return true;
+         if(p == TESTER_PRESET_SMOKE)
+            return true;
+   
+         return false;
+      #else
+         return false;
+      #endif
+   }
+
    inline bool CfgInstitutionalStrictTransportExpected()
    {
    #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL

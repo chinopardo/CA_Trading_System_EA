@@ -952,21 +952,24 @@ namespace Policies
     return false;
   }
 
-  inline bool PolicyDisableMicrostructureGatesActive(const Settings &cfg)
-  {
-    if(s_disable_microstructure_gates)
-      return true;
-
-    #ifdef CFG_HAS_DISABLE_MICROSTRUCTURE_GATES
-      if(cfg.disable_microstructure_gates)
-        return true;
-    #endif
-
-    if(PolicyTesterLooseModeActive(cfg))
-      return true;
-
-    return false;
-  }
+   inline bool PolicyDisableMicrostructureGatesActive(const Settings &cfg)
+   {
+     if(s_disable_microstructure_gates)
+       return true;
+   
+     #ifdef CFG_HAS_DISABLE_MICROSTRUCTURE_GATES
+       if(cfg.disable_microstructure_gates)
+         return true;
+     #endif
+   
+     if(PolicyTesterLooseModeActive(cfg))
+       return true;
+   
+     if(PolicyTesterRelaxActive())
+       return true;
+   
+     return false;
+   }
 
   // ----------------------------------------------------------------------------
   // Structured policy decision result (single source of truth)
@@ -1335,22 +1338,19 @@ namespace Policies
   // ----------------------------------------------------------------------------
   // Compile-safe Settings getters
   // ----------------------------------------------------------------------------
-  inline bool PolicyTesterRelaxActive()
-  {
-    if(s_tester_loose_gate_mode)
-      return true;
-
-    if(POLICY_TESTER_RELAX == 0)
-      return false;
-
-    if(MQLInfoInteger(MQL_TESTER) != 0)
-      return true;
-
-    if(MQLInfoInteger(MQL_OPTIMIZATION) != 0)
-      return true;
-
-    return false;
-  }
+   inline bool PolicyTesterRelaxActive()
+   {
+     if(s_tester_loose_gate_mode)
+       return true;
+   
+     if(POLICY_TESTER_RELAX == 0)
+       return false;
+   
+     if(PolicyTesterRuntime())
+       return true;
+   
+     return false;
+   }
 
   inline bool PolicyTesterRuntime()
   {
@@ -1818,16 +1818,19 @@ namespace Policies
   }
 
   // --- Volatility breaker & spread adapt knobs -------------------------------
-  inline double CfgVolBreakerLimit(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_VOL_BREAKER_LIMIT
-      // <=0 => disabled
-      if(cfg.vol_breaker_limit <= 0.0) return 0.0;
-      return Clamp(cfg.vol_breaker_limit, 1.10, 10.0);
-    #else
-      return 2.50;
-    #endif
-  }
+   inline double CfgVolBreakerLimit(const Settings &cfg)
+   {
+     if(PolicyTesterRelaxActive())
+       return 0.0;
+   
+     #ifdef CFG_HAS_VOL_BREAKER_LIMIT
+       // <=0 => disabled
+       if(cfg.vol_breaker_limit <= 0.0) return 0.0;
+       return Clamp(cfg.vol_breaker_limit, 1.10, 10.0);
+     #else
+       return 2.50;
+     #endif
+   }
   inline double CfgModSpreadMult(const Settings &cfg)
   {
     #ifdef CFG_HAS_MOD_SPREAD_MULT
@@ -1888,14 +1891,17 @@ namespace Policies
     return 0.0;
   }
 
-  inline bool CfgLiqInvalidHardFail(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
-      return (bool)cfg.liq_hard_fail_on_invalid_metrics;
-    #else
-      return false;
-    #endif
-  }
+   inline bool CfgLiqInvalidHardFail(const Settings &cfg)
+   {
+     if(PolicyTesterRelaxActive())
+       return false;
+   
+     #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+       return (bool)cfg.liq_hard_fail_on_invalid_metrics;
+     #else
+       return false;
+     #endif
+   }
 
   inline bool CfgLiqFloorAdapted(const Settings &cfg)
   {
@@ -1913,21 +1919,24 @@ namespace Policies
     return (MathAbs(tester_floor - CfgLiqMinRatio(cfg)) > 0.000001);
   }
 
-  inline double CfgLiqMinRatioEffective(const Settings &cfg)
-  {
-    const bool in_tester =
-       (MQLInfoInteger(MQL_TESTER) != 0) ||
-       (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
-
-    if(in_tester)
-    {
-      const double tester_floor = CfgLiqMinRatioTester(cfg);
-      if(tester_floor > 0.0)
-        return tester_floor;
-    }
-
-    return CfgLiqMinRatio(cfg);
-  }
+   inline double CfgLiqMinRatioEffective(const Settings &cfg)
+   {
+     if(PolicyTesterRelaxActive())
+       return 0.0;
+   
+     const bool in_tester =
+        (MQLInfoInteger(MQL_TESTER) != 0) ||
+        (MQLInfoInteger(MQL_OPTIMIZATION) != 0);
+   
+     if(in_tester)
+     {
+       const double tester_floor = CfgLiqMinRatioTester(cfg);
+       if(tester_floor > 0.0)
+         return tester_floor;
+     }
+   
+     return CfgLiqMinRatio(cfg);
+   }
 
   inline bool CfgRegimeGateOn(const Settings &cfg)
   {
@@ -1940,22 +1949,28 @@ namespace Policies
       return false;
     #endif
   }
-  inline double CfgRegimeTQMin(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_REGIME_TQ_MIN
-      return Clamp01(cfg.regime_tq_min);
-    #else
-      return 0.10;
-    #endif
-  }
-  inline double CfgRegimeSGMin(const Settings &cfg)
-  {
-    #ifdef CFG_HAS_REGIME_SG_MIN
-      return Clamp01(cfg.regime_sg_min);
-    #else
-      return 0.10;
-    #endif
-  }
+   inline double CfgRegimeTQMin(const Settings &cfg)
+   {
+     if(PolicyTesterRelaxActive())
+       return 0.0;
+   
+     #ifdef CFG_HAS_REGIME_TQ_MIN
+       return Clamp01(cfg.regime_tq_min);
+     #else
+       return 0.10;
+     #endif
+   }
+   inline double CfgRegimeSGMin(const Settings &cfg)
+   {
+     if(PolicyTesterRelaxActive())
+       return 0.0;
+   
+     #ifdef CFG_HAS_REGIME_SG_MIN
+       return Clamp01(cfg.regime_sg_min);
+     #else
+       return 0.10;
+     #endif
+   }
 
   inline bool CfgMicroVPINGateOn(const Settings &cfg)
   {

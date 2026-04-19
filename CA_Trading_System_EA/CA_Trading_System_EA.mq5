@@ -6,7 +6,7 @@
 //|   Regression KPIs export + Golden-run compare                    |
 //|   Carry bias integration (strict or mild) + ML blender           |
 //|   Confluence blend weights per archetype (Trend/MR/Others)       |
-//|   NEW: price/time gates + streak-based lot scaling               |
+//|   Price/time gates + streak-based lot scaling                    |
 //+------------------------------------------------------------------+
 #property strict
 #property version   "1.00"   // Cleaned lifecycle; price/time gates; streak lot scaling; bug fixes
@@ -24,6 +24,7 @@
 // DEPRECATED tester-only harness for legacy ProcessSymbol() diagnostics.
 // Diagnostic builds only. Leave commented out for all normal builds.
 // #define CA_ENABLE_LEGACY_TESTER_PROCESSSYMBOL
+
 // ------------------- Engine & Infra includes ----------------------
 #include <Trade/Trade.mqh>
 #include "include/Config.mqh"
@@ -269,6 +270,7 @@ inline double ConflBaseRulesScoreSafe(const Direction dir,
 #include "include/strategies/StrategiesCarry.mqh"
 
 // ------------------- Strategy registry (after strategies) ---------
+#include "include/strategies/StrategyDirectExecGuards.mqh"
 #include "include/strategies/StrategyRegistry.mqh"
 
 // Human-readable strategy mode name (local, compile-safe)
@@ -1340,6 +1342,7 @@ input string          InpTestCase      = "none";  // see TesterCases::ScenarioLi
 input string          InpTesterPreset  = "";
 input bool            InpLooseMode                  = false; // Runtime override: relaxed gating mode
 input bool            InpDisableMicrostructureGates = false; // Runtime override: bypass microstructure gate
+input bool            InpAllowDirectExec            = true;  // Tester: allow StrategyDirectExec startup bypass
 
 bool SR_Input_TesterMainOnlyAllowSelectedNonCoreOrderables()
 {
@@ -6903,6 +6906,11 @@ int OnInit()
    if(InpFileLog)
       LogX::InitAll();
    FinalizeRuntimeSettings();
+
+   StrategyDirectExec::SetTesterBypass(g_is_tester && InpAllowDirectExec);
+
+   LogX::Info(StringFormat("[OnInit] direct_exec_tester_bypass=%s",
+                           ((g_is_tester && InpAllowDirectExec) ? "true" : "false")));
 
    if(gTesterLooseGateMode)
    {

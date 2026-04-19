@@ -660,7 +660,7 @@ struct ZWindow
          return false;
    
       return true;
-}
+   }
 
    void Push(const double v)
    {
@@ -780,7 +780,7 @@ struct Runtime
       }
    
       return true;
-}
+   }
 };
 
 struct BuildConfig

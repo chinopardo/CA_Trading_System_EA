@@ -395,19 +395,19 @@ namespace TesterSettings
          return;
 
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
-         cfg.router_min_score = 0.0;
+         cfg.router_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
-         cfg.router_fallback_min_score = 0.0;
+         cfg.router_fallback_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_ROUTER_FB_MIN
-         cfg.router_fb_min = 0.0;
+         cfg.router_fb_min = -1.0;
       #endif
 
       #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
-         cfg.router_tester_min_score_override = 0.0;
+         cfg.router_tester_min_score_override = -1.0;
       #endif
 
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
@@ -417,39 +417,39 @@ namespace TesterSettings
       #endif
 
       #ifdef CFG_HAS_EXTRA_MIN_SCORE
-         cfg.extra_min_score = 0.0;
+         cfg.extra_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_EXTRA_MIN_GATE_SCORE
-         cfg.extra_min_gate_score = 0.0;
+         cfg.extra_min_gate_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_STRATEGY_MIN_SCORE_DEFAULT
-         cfg.strategy_min_score_default = 0.0;
+         cfg.strategy_min_score_default = -1.0;
       #endif
 
       #ifdef CFG_HAS_CHECKLIST_MIN_SCORE
-         cfg.checklist_min_score = 0.0;
+         cfg.checklist_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_DEBUG_CHECKLIST_MIN_SCORE
-         cfg.debug_checklist_min_score = 0.0;
+         cfg.debug_checklist_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_PROFILE_MIN_SCORE
-         cfg.profile_min_score = 0.0;
+         cfg.profile_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_MAIN_MIN_SCORE
-         cfg.main_min_score = 0.0;
+         cfg.main_min_score = -1.0;
       #endif
 
       #ifdef CFG_HAS_MAIN_TESTER_ALPHA_MIN
-         cfg.main_tester_alpha_min = 0.0;
+         cfg.main_tester_alpha_min = -1.0;
       #endif
 
       #ifdef CFG_HAS_MAIN_TESTER_EXEC_MIN
-         cfg.main_tester_exec_min = 0.0;
+         cfg.main_tester_exec_min = -1.0;
       #endif
 
       #ifdef CFG_HAS_MAIN_TESTER_RISK_MAX
@@ -465,13 +465,13 @@ namespace TesterSettings
       #endif
 
       if(cfg.qualityThresholdHigh > 0.0)
-         cfg.qualityThresholdHigh = MathMax(0.0, cfg.qualityThresholdHigh * 0.5);
+         cfg.qualityThresholdHigh = 0.0;
 
       if(cfg.qualityThresholdContinuation > 0.0)
-         cfg.qualityThresholdContinuation = MathMax(0.0, cfg.qualityThresholdContinuation * 0.5);
+         cfg.qualityThresholdContinuation = 0.0;
 
       if(cfg.qualityThresholdReversal > 0.0)
-         cfg.qualityThresholdReversal = MathMax(0.0, cfg.qualityThresholdReversal * 0.5);
+         cfg.qualityThresholdReversal = 0.0;
 
       r.score_relaxation = true;
    }
@@ -529,8 +529,16 @@ namespace TesterSettings
          cfg.enable_regime_gate = false;
       #endif
 
+      #ifdef CFG_HAS_REGIME_GATE_ON
+         cfg.regime_gate_on = false;
+      #endif
+
       #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
          cfg.enable_liquidity_gate = false;
+      #endif
+
+      #ifdef CFG_HAS_LIQ_INVALID_HARDFAIL
+         cfg.liq_hard_fail_on_invalid_metrics = false;
       #endif
 
       #ifdef CFG_HAS_CORR_VETO
@@ -571,7 +579,7 @@ namespace TesterSettings
       #endif
 
       #ifdef CFG_HAS_MS_VPIN_THRESHOLD
-         cfg.ms_vpin_threshold = 0.95;
+         cfg.ms_vpin_threshold = 1.0;
       #endif
 
       #ifdef CFG_HAS_MS_RESIL_THRESHOLD
@@ -607,7 +615,7 @@ namespace TesterSettings
       #endif
 
       #ifdef CFG_HAS_MS_MAX_TOXICITY01
-         cfg.ms_max_toxicity01 = 0.95;
+         cfg.ms_max_toxicity01 = 1.0;
       #endif
 
       #ifdef CFG_HAS_MS_MAX_OBSERVABILITY_PENALTY01
