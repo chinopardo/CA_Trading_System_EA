@@ -1571,9 +1571,34 @@ namespace KV {
      TESTER_PRESET_OFF     = 0,
      TESTER_PRESET_RELAXED = 1,
      TESTER_PRESET_DEBUG   = 2,
-     TESTER_PRESET_SMOKE   = 3
+     TESTER_PRESET_SMOKE   = 3,
+     TESTER_PRESET_PARITY  = 4
   };
 #endif
+
+//
+// Runtime registry audit bridge.
+//
+// Config.mqh is included before StrategyRegistry.mqh in the EA translation unit.
+// Do NOT include StrategyRegistry.mqh here.
+// Just forward-declare the tiny runtime query surface that Config-owned audit
+// logic needs, and let StrategyRegistry.mqh provide the bodies later.
+//
+namespace StratReg
+{
+   int RegisteredCount();
+   int CountTradableRegisteredStrategies(const Settings &cfg);
+
+   int FillRegisteredIds(int &out_ids[], const bool only_enabled=true);
+
+   bool QueryMainOnlyExpectedIdState(const Settings &cfg,
+                                     const StrategyID sid,
+                                     bool &registered_now,
+                                     bool &enabled_capable,
+                                     bool &enabled_now,
+                                     bool &tradable_now,
+                                     string &slug_out);
+}
 
 namespace Config
 {
@@ -3760,6 +3785,156 @@ namespace Config
 
   #ifndef CFG_HAS_FILL_CANONICAL_MAIN_ONLY_IDS
      #define CFG_HAS_FILL_CANONICAL_MAIN_ONLY_IDS 1
+  #endif
+
+  inline string _MainOnlyAuditModeName(const StrategyMode sm)
+  {
+     switch(sm)
+     {
+        case STRAT_MAIN_ONLY: return "MAIN_ONLY";
+        case STRAT_PACK_ONLY: return "PACK_ONLY";
+        default:              return "COMBINED";
+     }
+  }
+
+  inline bool _MainOnlyAuditHasId(const int &ids[], const int value)
+  {
+     for(int i = 0; i < ArraySize(ids); i++)
+     {
+        if(ids[i] == value)
+           return true;
+     }
+     return false;
+  }
+
+  inline void _MainOnlyAuditAppendId(string &csv, const int value)
+  {
+     if(StringLen(csv) > 0)
+        csv += ",";
+
+     csv += IntegerToString(value);
+  }
+
+  inline string _MainOnlyAuditCsvOrNone(const string csv)
+  {
+     return (StringLen(csv) > 0 ? csv : "none");
+  }
+
+  inline string _MainOnlyAuditIdsCsv(const int &ids[])
+  {
+     string csv = "";
+
+     for(int i = 0; i < ArraySize(ids); i++)
+        _MainOnlyAuditAppendId(csv, ids[i]);
+
+     return _MainOnlyAuditCsvOrNone(csv);
+  }
+
+  inline bool BuildMainOnlyRuntimeRegistryAuditLine(const Settings &cfg,
+                                                    string &line_out,
+                                                    bool &structural_mismatch_out,
+                                                    bool &warn_only_out)
+  {
+     line_out = "";
+     structural_mismatch_out = false;
+     warn_only_out = false;
+
+     const StrategyMode sm = CfgStrategyMode(cfg);
+     if(sm != STRAT_MAIN_ONLY)
+        return false;
+
+     int canonical_ids[];
+     FillCanonicalMainOnlyIds(canonical_ids);
+
+     int enabled_ids[];
+     StratReg::FillRegisteredIds(enabled_ids, true);
+
+     const int registered_n = StratReg::RegisteredCount();
+     const int tradable_n   = StratReg::CountTradableRegisteredStrategies(cfg);
+     const int enabled_n    = ArraySize(enabled_ids);
+
+     int intersection_n = 0;
+
+     string missing_canonical_csv = "";
+     string unexpected_enabled_csv = "";
+     string disabled_canonical_csv = "";
+
+     for(int i = 0; i < ArraySize(canonical_ids); i++)
+     {
+        const StrategyID sid = (StrategyID)canonical_ids[i];
+
+        bool registered_now  = false;
+        bool enabled_capable = false;
+        bool enabled_now     = false;
+        bool tradable_now    = false;
+        string slug_out      = "";
+
+        const bool found =
+           StratReg::QueryMainOnlyExpectedIdState(cfg,
+                                                  sid,
+                                                  registered_now,
+                                                  enabled_capable,
+                                                  enabled_now,
+                                                  tradable_now,
+                                                  slug_out);
+
+        if(!found || !registered_now)
+        {
+           _MainOnlyAuditAppendId(missing_canonical_csv, (int)sid);
+           structural_mismatch_out = true;
+           continue;
+        }
+
+        if(enabled_now)
+           intersection_n++;
+        else
+           _MainOnlyAuditAppendId(disabled_canonical_csv, (int)sid);
+     }
+
+     for(int j = 0; j < ArraySize(enabled_ids); j++)
+     {
+        const int sid_i = enabled_ids[j];
+
+        if(!IsCanonicalMainOnlyStrategyId((StrategyID)sid_i))
+           _MainOnlyAuditAppendId(unexpected_enabled_csv, sid_i);
+     }
+
+     warn_only_out =
+        (!structural_mismatch_out) &&
+        (
+           StringLen(unexpected_enabled_csv) > 0 ||
+           StringLen(disabled_canonical_csv) > 0 ||
+           intersection_n <= 0
+        );
+
+     string action = "OK";
+     if(structural_mismatch_out)
+        action = "FAIL_CLOSED";
+     else if(warn_only_out)
+        action = "WARN_ONLY";
+
+     line_out = StringFormat(
+        "[StartupAudit][MAIN_ONLY_ALLOWLIST] mode=%s(%d) registered=%d enabled=%d tradable_in_mode=%d canonical_ids=%s enabled_ids=%s intersection=%d/%d missing_canonical=%s unexpected_enabled_disallowed=%s disabled_canonical=%s structural_mismatch=%s action=%s",
+        _MainOnlyAuditModeName(sm),
+        (int)sm,
+        registered_n,
+        enabled_n,
+        tradable_n,
+        _MainOnlyAuditIdsCsv(canonical_ids),
+        _MainOnlyAuditIdsCsv(enabled_ids),
+        intersection_n,
+        ArraySize(canonical_ids),
+        _MainOnlyAuditCsvOrNone(missing_canonical_csv),
+        _MainOnlyAuditCsvOrNone(unexpected_enabled_csv),
+        _MainOnlyAuditCsvOrNone(disabled_canonical_csv),
+        (structural_mismatch_out ? "true" : "false"),
+        action);
+
+     return true;
+  }
+
+  #ifndef CFG_HAS_MAIN_ONLY_RUNTIME_REGISTRY_AUDIT
+     #define CFG_HAS_MAIN_ONLY_RUNTIME_REGISTRY_AUDIT 1
   #endif
 
 #ifdef CFG_HAS_STRAT_MODE
@@ -11616,8 +11791,8 @@ namespace Config
    #ifdef CFG_HAS_TESTERSETTINGS_PRESET
      if(cfg.tester_settings_preset < TESTER_PRESET_OFF)
         cfg.tester_settings_preset = TESTER_PRESET_OFF;
-     if(cfg.tester_settings_preset > TESTER_PRESET_SMOKE)
-        cfg.tester_settings_preset = TESTER_PRESET_SMOKE;
+     if(cfg.tester_settings_preset > TESTER_PRESET_PARITY)
+        cfg.tester_settings_preset = TESTER_PRESET_PARITY;
    #endif
    #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
      cfg.tester_settings_log_audit = (cfg.tester_settings_log_audit ? true : false);

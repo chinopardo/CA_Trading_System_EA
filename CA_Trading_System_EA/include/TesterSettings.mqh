@@ -14,10 +14,11 @@ namespace TesterSettings
       #define TESTERSETTINGS_ENUM_DEFINED 1
       enum ENUM_TESTER_SETTINGS_PRESET
       {
-         TESTER_PRESET_OFF = 0,
+         TESTER_PRESET_OFF     = 0,
          TESTER_PRESET_RELAXED = 1,
-         TESTER_PRESET_DEBUG = 2,
-         TESTER_PRESET_SMOKE = 3
+         TESTER_PRESET_DEBUG   = 2,
+         TESTER_PRESET_SMOKE   = 3,
+         TESTER_PRESET_PARITY  = 4
       };
    #endif
 
@@ -89,6 +90,7 @@ namespace TesterSettings
       if(preset == TESTER_PRESET_RELAXED) return "RELAXED";
       if(preset == TESTER_PRESET_DEBUG)   return "DEBUG";
       if(preset == TESTER_PRESET_SMOKE)   return "SMOKE";
+      if(preset == TESTER_PRESET_PARITY)  return "PARITY";
       return "OFF";
    }
 
@@ -99,6 +101,217 @@ namespace TesterSettings
       #else
          return TESTER_PRESET_OFF;
       #endif
+   }
+
+   inline bool PresetIsParity(const int preset)
+   {
+      return (preset == TESTER_PRESET_PARITY);
+   }
+
+   inline void AppendAuditToken(string &csv, const string token)
+   {
+      if(StringLen(token) <= 0)
+         return;
+
+      if(StringLen(csv) > 0)
+         csv += ",";
+
+      csv += token;
+   }
+
+   inline bool IsParityPresetName(const string preset_name)
+   {
+      if(preset_name == "PARITY") return true;
+      if(preset_name == "parity") return true;
+      if(preset_name == "MAIN_ONLY_PARITY") return true;
+      if(preset_name == "main_only_parity") return true;
+      if(preset_name == "CONSISTENCY_PARITY") return true;
+      if(preset_name == "consistency_parity") return true;
+      return false;
+   }
+
+   inline void PrimeParityPresetInputs(Settings &cfg)
+   {
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE
+         cfg.tester_settings_enable = true;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_APPLY_ONLY_IN_TESTER
+         cfg.tester_settings_apply_only_in_tester = true;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_PRESET
+         cfg.tester_settings_preset = TESTER_PRESET_PARITY;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_LOG_AUDIT
+         cfg.tester_settings_log_audit = true;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+         cfg.tester_settings_enable_verbose_diagnostics = true;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ZERO_ALL_MIN_SCORES
+         cfg.tester_settings_zero_all_min_scores = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_NEWS
+         cfg.tester_settings_disable_news = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_KILLZONES
+         cfg.tester_settings_disable_killzones = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_SESSION_FILTER
+         cfg.tester_settings_disable_session_filter = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_DISABLE_CORRELATION
+         cfg.tester_settings_disable_correlation = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_MICRO_THRESHOLDS
+         cfg.tester_settings_reduce_micro_thresholds = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ALLOW_UNAVAILABLE_INSTITUTIONAL
+         cfg.tester_settings_allow_unavailable_institutional = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_DEGRADED_FALLBACK
+         cfg.tester_settings_enable_degraded_fallback = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_BLOCK_IF_UNAVAILABLE
+         cfg.tester_settings_block_if_unavailable = true;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_REDUCE_COOLDOWNS
+         cfg.tester_settings_reduce_cooldowns = false;
+      #endif
+
+      #ifdef CFG_HAS_TESTERSETTINGS_LOOSE_TESTER
+         cfg.tester_settings_loose_tester = false;
+      #endif
+   }
+
+   inline bool ApplyPresetNameAlias(Settings &cfg, const string preset_name)
+   {
+      if(!IsParityPresetName(preset_name))
+         return false;
+
+      PrimeParityPresetInputs(cfg);
+      return true;
+   }
+
+   inline bool AnyNewsSessionBypassRequested(const Settings &cfg)
+   {
+      return (DisableNewsRequested(cfg) ||
+              DisableKillzonesRequested(cfg) ||
+              DisableSessionFilterRequested(cfg) ||
+              DisableCorrelationRequested(cfg));
+   }
+
+   inline bool AnyMicroRelaxationRequested(const Settings &cfg)
+   {
+      return (ReduceMicroThresholdsRequested(cfg) ||
+              AllowUnavailableInstitutionalRequested(cfg) ||
+              EnableDegradedFallbackRequested(cfg) ||
+              BlockIfUnavailableRequested(cfg));
+   }
+
+   inline string BuildParitySafeKnobs(const Settings &cfg)
+   {
+      string s = "";
+
+      AppendAuditToken(s, "canonical_route_unchanged");
+      AppendAuditToken(s, "strat_mode_unchanged");
+
+      if(cfg.debug)
+         AppendAuditToken(s, "debug");
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+         if(cfg.tester_settings_enable_verbose_diagnostics)
+            AppendAuditToken(s, "verbose_diagnostics");
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_DEBUG
+         if(cfg.router_debug_log)
+            AppendAuditToken(s, "router_debug");
+      #endif
+
+      #ifdef CFG_HAS_ICT_SCORE_DEBUG_LOG
+         if(cfg.ict_score_debug_log)
+            AppendAuditToken(s, "ict_score_debug");
+      #endif
+
+      #ifdef CFG_HAS_CANDIDATE_TRACE_DEBUG
+         if(cfg.candidate_trace_debug)
+            AppendAuditToken(s, "candidate_trace");
+      #endif
+
+      #ifdef CFG_HAS_LOG_VETO_DETAILS
+         if(cfg.log_veto_details)
+            AppendAuditToken(s, "veto_detail_logging");
+      #endif
+
+      if(cfg.debug)
+         AppendAuditToken(s, "hypothesis_reject_logging_via_debug");
+
+      if(StringLen(s) <= 0)
+         s = "none";
+
+      return s;
+   }
+
+   inline string BuildParityBreakingKnobs(const Settings &cfg)
+   {
+      string s = "";
+
+      if(g_last_report.score_relaxation)
+         AppendAuditToken(s, "score_relaxation");
+
+      if(g_last_report.news_session_bypass)
+         AppendAuditToken(s, "news_session_bypass");
+
+      if(g_last_report.micro_relaxation)
+         AppendAuditToken(s, "micro_relaxation");
+
+      if(g_last_report.loose_tester)
+         AppendAuditToken(s, "loose_tester");
+
+      if(g_last_report.ergonomics_relaxed)
+         AppendAuditToken(s, "ergonomics_relaxation");
+
+      if(Config::CfgStrategyMode(cfg) != STRAT_MAIN_ONLY)
+         AppendAuditToken(s, "mode_not_main_only");
+
+      #ifdef CFG_HAS_ALLOW_TESTER_DEGRADED_INST_FALLBACK
+         if(cfg.allow_tester_degraded_inst_fallback)
+            AppendAuditToken(s, "tester_degraded_fallback");
+      #endif
+
+      #ifdef CFG_HAS_ROUTER_TESTER_MIN_SCORE_OVERRIDE
+         if(cfg.router_tester_min_score_override > 0.0)
+            AppendAuditToken(s, "router_tester_min_override");
+      #endif
+
+      #ifdef CFG_HAS_TESTER_DISABLE_NEWS_CORR
+         if(cfg.tester_disable_news_and_correlation)
+            AppendAuditToken(s, "tester_disable_news_correlation");
+      #endif
+
+      #ifdef CFG_HAS_MAIN_TESTER_LOOSE_GATE
+         if(cfg.main_tester_loose_gate)
+            AppendAuditToken(s, "main_tester_loose_gate");
+      #endif
+
+      if(StringLen(s) <= 0)
+         s = "none";
+
+      return s;
    }
 
    inline bool MasterEnabled(const Settings &cfg)
@@ -259,8 +472,9 @@ namespace TesterSettings
 
    inline bool PresetWantsDiagnostics(const int preset)
    {
-      return (preset == TESTER_PRESET_DEBUG ||
-              preset == TESTER_PRESET_SMOKE);
+      return (preset == TESTER_PRESET_DEBUG  ||
+              preset == TESTER_PRESET_SMOKE  ||
+              preset == TESTER_PRESET_PARITY);
    }
 
    inline bool PresetWantsErgonomics(const int preset)
@@ -331,6 +545,11 @@ namespace TesterSettings
       if(!IsTesterContext())
          return;
 
+      const int preset = ActivePreset(cfg);
+
+      if(PresetIsParity(preset))
+         return;
+
       if(!LooseTesterRequested(cfg))
          return;
 
@@ -391,7 +610,11 @@ namespace TesterSettings
    inline void ApplyScoreRelaxation(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!IsTesterContext() && !PresetWantsScoreRelaxation(preset))
+
+      if(PresetIsParity(preset))
+         return;
+
+      if(!PresetWantsScoreRelaxation(preset) && !ZeroAllMinScoresRequested(cfg))
          return;
 
       #ifdef CFG_HAS_ROUTER_MIN_SCORE
@@ -483,7 +706,11 @@ namespace TesterSettings
    inline void ApplyNewsAndSessionBypass(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!IsTesterContext() && !PresetWantsNewsSessionBypass(preset))
+
+      if(PresetIsParity(preset))
+         return;
+
+      if(!PresetWantsNewsSessionBypass(preset) && !AnyNewsSessionBypassRequested(cfg))
          return;
 
       cfg.news_on = false;
@@ -567,7 +794,11 @@ namespace TesterSettings
    inline void ApplyMicroRelaxation(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!IsTesterContext() && !PresetWantsMicroRelaxation(preset))
+
+      if(PresetIsParity(preset))
+         return;
+
+      if(!PresetWantsMicroRelaxation(preset) && !AnyMicroRelaxationRequested(cfg))
          return;
 
       #ifdef CFG_HAS_MS_OFI_ABS_MIN
@@ -660,10 +891,15 @@ namespace TesterSettings
    inline void ApplyDiagnostics(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!IsTesterContext() && !PresetWantsDiagnostics(preset) && !EnableVerboseDiagnosticsRequested(cfg))
+
+      if(!PresetWantsDiagnostics(preset) && !EnableVerboseDiagnosticsRequested(cfg))
          return;
 
       cfg.debug = true;
+
+      #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
+         cfg.tester_settings_enable_verbose_diagnostics = true;
+      #endif
 
       #ifdef CFG_HAS_ROUTER_DEBUG
          cfg.router_debug_log = true;
@@ -691,7 +927,11 @@ namespace TesterSettings
    inline void ApplyErgonomics(Settings &cfg, ApplyReport &r)
    {
       const int preset = ActivePreset(cfg);
-      if(!IsTesterContext() && !PresetWantsErgonomics(preset))
+
+      if(PresetIsParity(preset))
+         return;
+
+      if(!PresetWantsErgonomics(preset) && !ReduceCooldownsRequested(cfg))
          return;
 
       #ifdef CFG_HAS_TESTER_THROTTLE_SEC
@@ -930,6 +1170,24 @@ namespace TesterSettings
       return s;
    }
 
+   inline void EmitParityAudit(const Settings &cfg)
+   {
+      if(g_last_report.preset != TESTER_PRESET_PARITY)
+         return;
+
+      const bool main_only = (Config::CfgStrategyMode(cfg) == STRAT_MAIN_ONLY);
+      const string safe_knobs = BuildParitySafeKnobs(cfg);
+      const string breaking_knobs = BuildParityBreakingKnobs(cfg);
+
+      PrintFormat("[TesterSettings][PARITY] preset=%s tester=%s main_only=%s route_path=canonical_run_cached_router_pass parity_safe=%s parity_breaking=%s validation_ok=%s",
+                  ActivePresetName(g_last_report.preset),
+                  BoolStr(IsTesterContext()),
+                  BoolStr(main_only),
+                  safe_knobs,
+                  breaking_knobs,
+                  BoolStr(g_last_report.validation_ok));
+   }
+
    inline void EmitAudit(const Settings &cfg)
    {
       if(!LogAuditEnabled(cfg))
@@ -958,6 +1216,7 @@ namespace TesterSettings
                      g_last_report.validation_error);
       }
 
+      EmitParityAudit(cfg);
       g_audit_emitted = true;
    }
 
@@ -1005,12 +1264,17 @@ namespace TesterSettings
          }
       }
 
+      const int preset = ActivePreset(cfg);
+
       ApplyScoreRelaxation(cfg, g_last_report);
 
-      if(IsTesterContext())
+      if(IsTesterContext() && !PresetIsParity(preset))
       {
-         DisableMicrostructureGates(cfg, g_last_report);
-         DisableKillzone(cfg, g_last_report);
+         if(PresetWantsMicroRelaxation(preset) || AnyMicroRelaxationRequested(cfg))
+            DisableMicrostructureGates(cfg, g_last_report);
+
+         if(PresetWantsNewsSessionBypass(preset) || DisableKillzonesRequested(cfg))
+            DisableKillzone(cfg, g_last_report);
       }
 
       ApplyNewsAndSessionBypass(cfg, g_last_report);

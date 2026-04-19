@@ -151,7 +151,7 @@ bool DecisionTelemetry_ShouldEmitTimerNotNewBar(const string sym,
                                                 const datetime bar_time,
                                                 const datetime latch_time);
 
-void EmitDeterministicStartupStrategyAudit(const Settings &cfg);
+bool EmitDeterministicStartupStrategyAudit(const Settings &cfg);
 
 bool RunMainOnlyConsistencyAudit(const Settings &cfg);
 bool g_main_only_audit_empty_roster = false;
@@ -357,9 +357,27 @@ inline void MaybeLogRouterConfluencePoolStatusOncePerBar(const Settings &cfg, co
   LogRouterConfluencePoolStatus(cfg, where_tag);
 }
 
-void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
+bool EmitDeterministicStartupStrategyAudit(const Settings &cfg)
 {
    LogX::Info(StratReg::BuildStartupAuditSummary(cfg));
+
+   string main_only_audit_line = "";
+   bool main_only_structural_mismatch = false;
+   bool main_only_warn_only = false;
+
+   if(Config::BuildMainOnlyRuntimeRegistryAuditLine(cfg,
+                                                    main_only_audit_line,
+                                                    main_only_structural_mismatch,
+                                                    main_only_warn_only))
+   {
+      LogX::Info(main_only_audit_line);
+
+      if(main_only_structural_mismatch)
+      {
+         LogX::Error("[StartupAudit] MAIN_ONLY structural mismatch detected: canonical allowlist ID missing from runtime registry. Failing initialization.");
+         return false;
+      }
+   }
 
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
    const bool in_tester = IsTesterRuntime();
@@ -409,6 +427,8 @@ void EmitDeterministicStartupStrategyAudit(const Settings &cfg)
             tradable_n));
       }
    }
+
+   return true;
 }
 
 bool AuditArrayHasInt(const int &arr[], const int value)
@@ -5085,6 +5105,7 @@ void FinalizeRuntimeSettings()
    if(g_is_tester)
    {
       TesterPresets::ApplyPresetByName(S, InpTesterPreset);
+      TesterSettings::ApplyPresetNameAlias(S, InpTesterPreset);
       TesterCases::ApplyTestCase(S, InpTestCase);
       ApplyLiquidityPolicyInputs(S);
       Config::Normalize(S);
@@ -6238,6 +6259,294 @@ void ResetCanonicalSignalStackTransport()
    g_transport_sym = "";
 }
 
+string EA_CanonicalMainOnlyIdsCsv()
+{
+   if(Config::CfgStrategyMode(g_cfg) != STRAT_MAIN_ONLY)
+      return "";
+
+   int ids[];
+   Config::FillCanonicalMainOnlyIds(ids);
+
+   string csv = "";
+   for(int i = 0; i < ArraySize(ids); i++)
+   {
+      if(StringLen(csv) > 0)
+         csv += ",";
+
+      csv += IntegerToString(ids[i]);
+   }
+
+   return csv;
+}
+
+void EA_ParseHypothesisTopFromDiag(const string diag,
+                                   string &stage_out,
+                                   string &reason_out)
+{
+   stage_out = "";
+   reason_out = "";
+
+   const int p = StringFind(diag, "|top=");
+   if(p < 0)
+      return;
+
+   string tail = StringSubstr(diag, p + 5);
+
+   const int pipe = StringFind(tail, "|");
+   if(pipe >= 0)
+      tail = StringSubstr(tail, 0, pipe);
+
+   const int colon = StringFind(tail, ":");
+   if(colon >= 0)
+   {
+      stage_out  = StringSubstr(tail, 0, colon);
+      reason_out = StringSubstr(tail, colon + 1);
+   }
+   else
+   {
+      stage_out = tail;
+   }
+}
+
+void EA_PublishHypBankTelemetryContext(const int accepted,
+                                       const int rejected,
+                                       const string transport_diag,
+                                       const string route_path)
+{
+   string top_stage = "";
+   string top_reason = "";
+
+   EA_ParseHypothesisTopFromDiag(transport_diag, top_stage, top_reason);
+
+   Telemetry::PublishRouterDecisionContext(accepted,
+                                           rejected,
+                                           top_stage,
+                                           top_reason,
+                                           EA_CanonicalMainOnlyIdsCsv(),
+                                           route_path);
+}
+
+string EA_StrategyModeTokenCompact(const StrategyMode sm)
+{
+   switch(sm)
+   {
+      case STRAT_MAIN_ONLY: return "main_only";
+      case STRAT_PACK_ONLY: return "pack_only";
+      default:              return "combined";
+   }
+}
+
+string EA_StrategyIdCsvCompact(const int &ids[])
+{
+   string out = "";
+
+   for(int i = 0; i < ArraySize(ids); i++)
+   {
+      if(StringLen(out) > 0)
+         out += ",";
+
+      out += IntegerToString(ids[i]);
+   }
+
+   if(StringLen(out) <= 0)
+      out = "none";
+
+   return out;
+}
+
+string EA_BuildMainOnlyStrategyStateCsv(const Settings &cfg,
+                                        int &used_n,
+                                        int &enabled_n,
+                                        int &allowed_n,
+                                        string &top_rejection_out)
+{
+   used_n = 0;
+   enabled_n = 0;
+   allowed_n = 0;
+   top_rejection_out = "registry:build_return_false";
+
+   int expected_ids[];
+   Config::FillCanonicalMainOnlyIds(expected_ids);
+
+   string states = "";
+
+   for(int i = 0; i < ArraySize(expected_ids); i++)
+   {
+      const StrategyID sid = (StrategyID)expected_ids[i];
+
+      bool registered_now = false;
+      bool enabled_capable = false;
+      bool enabled_now = false;
+      bool tradable_now = false;
+      string slug = "";
+
+      StratReg::QueryMainOnlyExpectedIdState(cfg,
+                                             sid,
+                                             registered_now,
+                                             enabled_capable,
+                                             enabled_now,
+                                             tradable_now,
+                                             slug);
+
+      if(registered_now)
+         used_n++;
+
+      if(enabled_now)
+         enabled_n++;
+
+      if(tradable_now)
+         allowed_n++;
+
+      if(StringLen(states) > 0)
+         states += ";";
+
+      states += IntegerToString((int)sid);
+      states += ":u=" + IntegerToString(registered_now ? 1 : 0);
+      states += ",e=" + IntegerToString(enabled_now ? 1 : 0);
+      states += ",a=" + IntegerToString(tradable_now ? 1 : 0);
+
+      if(top_rejection_out == "registry:build_return_false")
+      {
+         if(enabled_capable && !registered_now)
+            top_rejection_out = "registry:missing";
+         else if(registered_now && !enabled_now)
+            top_rejection_out = "enable:disabled";
+         else if(enabled_now && !tradable_now)
+            top_rejection_out = "allow:mode_filter";
+      }
+   }
+
+   if(StringLen(states) <= 0)
+   {
+      states = "none";
+      top_rejection_out = "registry:no_expected_ids";
+   }
+
+   return states;
+}
+
+string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
+                                         const string sym,
+                                         const datetime required_bar_time,
+                                         const int accepted_n)
+{
+   const StrategyMode sm = Config::CfgStrategyMode(cfg);
+
+   int considered_ids[];
+   int used_n = 0;
+   int enabled_n = 0;
+   int allowed_n = 0;
+   string top_rejection = "registry:build_return_false";
+   string states = "";
+
+   if(sm == STRAT_MAIN_ONLY)
+   {
+      Config::FillCanonicalMainOnlyIds(considered_ids);
+
+      states = EA_BuildMainOnlyStrategyStateCsv(cfg,
+                                                used_n,
+                                                enabled_n,
+                                                allowed_n,
+                                                top_rejection);
+   }
+   else
+   {
+      StratReg::FillEligibleRegisteredIds(cfg, considered_ids, true);
+
+      const int eligible_n = ArraySize(considered_ids);
+      used_n = eligible_n;
+      enabled_n = eligible_n;
+      allowed_n = eligible_n;
+
+      if(eligible_n <= 0)
+         top_rejection = "registry:no_eligible_ids";
+   }
+
+   const int considered_n = ArraySize(considered_ids);
+   const int accepted_safe = MathMax(0, accepted_n);
+   const int rejected_n = MathMax(0, considered_n - accepted_safe);
+
+   string diag = "hypothesis_bank_build_failed";
+   diag += "|accepted=" + IntegerToString(accepted_safe);
+   diag += "|rejected=" + IntegerToString(rejected_n);
+   diag += "|considered=" + IntegerToString(considered_n);
+   diag += "|mode=" + EA_StrategyModeTokenCompact(sm);
+   diag += "|mode_id=" + IntegerToString((int)sm);
+   diag += "|sym=" + (sym == "" ? "-" : sym);
+   diag += "|bar=" + IntegerToString((int)required_bar_time);
+   diag += "|used=" + IntegerToString(used_n);
+   diag += "|enabled=" + IntegerToString(enabled_n);
+   diag += "|allowed=" + IntegerToString(allowed_n);
+   diag += "|top=" + top_rejection;
+   diag += "|ids=" + EA_StrategyIdCsvCompact(considered_ids);
+
+   if(StringLen(states) > 0)
+      diag += "|states=" + states;
+
+   return diag;
+}
+
+void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
+                                             const string router_sym,
+                                             const datetime required_bar_time,
+                                             const string origin_tag,
+                                             const string transport_diag)
+{
+   if(!IsTesterRuntime())
+      return;
+
+   if(StringFind(transport_diag, "hypothesis_bank_build_failed") != 0)
+      return;
+
+   static string s_last_key = "";
+   const string key = router_sym + "|" + IntegerToString((int)required_bar_time) + "|" + transport_diag;
+
+   if(key == s_last_key)
+      return;
+
+   s_last_key = key;
+
+   const StrategyMode sm = Config::CfgStrategyMode(cfg);
+
+   int canonical_ids[];
+   Config::FillCanonicalMainOnlyIds(canonical_ids);
+
+   int main_used_n = 0;
+   int main_enabled_n = 0;
+   int main_allowed_n = 0;
+   string main_top = "";
+
+   const string main_states =
+      EA_BuildMainOnlyStrategyStateCsv(cfg,
+                                       main_used_n,
+                                       main_enabled_n,
+                                       main_allowed_n,
+                                       main_top);
+
+   string msg = StringFormat(
+      "[RouterRootCause][%s] hypothesis_build_fail sym=%s mode=%s(%d) req_bar=%d diag=%s canonical_ids=%s main_any_used=%d main_any_enabled=%d main_any_allowed=%d main_used=%d/%d main_enabled=%d/%d main_allowed=%d/%d top=%s",
+      origin_tag,
+      router_sym,
+      EA_StrategyModeTokenCompact(sm),
+      (int)sm,
+      (int)required_bar_time,
+      transport_diag,
+      EA_StrategyIdCsvCompact(canonical_ids),
+      (main_used_n > 0 ? 1 : 0),
+      (main_enabled_n > 0 ? 1 : 0),
+      (main_allowed_n > 0 ? 1 : 0),
+      main_used_n,
+      ArraySize(canonical_ids),
+      main_enabled_n,
+      ArraySize(canonical_ids),
+      main_allowed_n,
+      ArraySize(canonical_ids),
+      main_top);
+
+   msg += " main_states=" + main_states;
+   LogX::Warn(msg);
+}
+
 bool BuildCanonicalSignalStackTransport(const string sym,
                                        const datetime required_bar_time,
                                        string &diag_out)
@@ -6312,16 +6621,22 @@ bool BuildCanonicalSignalStackTransport(const string sym,
    // 2) Strategy hypothesis bank
    g_hyp_bank.Reset();
 
-   if(!StratReg::BuildHypothesesFromRegistry(g_cfg,
-                                             g_state,
-                                             g_raw_bank,
-                                             g_cat_selected,
-                                             g_cat_pass,
-                                             g_sig_stack_gate,
-                                             g_location_pass,
-                                             g_hyp_bank))
+   const bool hyp_ok =
+      StratReg::BuildHypothesesFromRegistry(g_cfg,
+                                            g_state,
+                                            g_raw_bank,
+                                            g_cat_selected,
+                                            g_cat_pass,
+                                            g_sig_stack_gate,
+                                            g_location_pass,
+                                            g_hyp_bank);
+
+   if(!hyp_ok)
    {
-      diag_out = "hypothesis_bank_build_failed";
+      diag_out = EA_BuildHypothesisBankFailureDiag(g_cfg,
+                                                   use_sym,
+                                                   required_bar_time,
+                                                   g_hyp_bank.count);
       return false;
    }
 
@@ -6795,16 +7110,31 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
+   Telemetry::ClearRouterDecisionContext();
+   EA_PublishHypBankTelemetryContext(-1, -1, "", "hyp_bank");
+
    string transport_diag = "";
    if(!BuildCanonicalSignalStackTransport(router_sym, required_bar_time, transport_diag))
    {
-      DecisionTelemetry_MarkGateBlocked("router", "canonical_transport_not_ready");
+      const string transport_reason =
+         (transport_diag != "" ? transport_diag : "canonical_transport_not_ready");
 
-      if(InpDebug && transport_diag != "")
+      DecisionTelemetry_MarkGateBlocked("router", transport_reason);
+
+      if(IsTesterRuntime())
+      {
+         EA_LogHypothesisBankRootCauseBundleOnce(g_cfg,
+                                                 router_sym,
+                                                 required_bar_time,
+                                                 origin_tag,
+                                                 transport_reason);
+      }
+
+      if(InpDebug && transport_reason != "")
       {
          PrintFormat("[Router][%s] Skipping hypothesis route; detail=%s",
                      origin_tag,
-                     transport_diag);
+                     transport_reason);
       }
 
       return false;
@@ -6812,6 +7142,11 @@ bool RunCachedRouterPass(const string router_sym,
 
    if(g_hyp_bank.count <= 0)
    {
+      EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
+                                        g_hyp_bank.rejected_count,
+                                        "",
+                                        "hyp_bank");
+
       DecisionTelemetry_MarkNoCandidates("router", "hypothesis_bank_empty");
       MSH_DirtyClear();
       return false;
@@ -6830,6 +7165,29 @@ bool RunCachedRouterPass(const string router_sym,
                                    g_location_pass,
                                    g_hyp_bank,
                                    g_final_integrated);
+
+   EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
+                                     g_hyp_bank.rejected_count,
+                                     "",
+                                     "hyp_bank");
+
+   if(routed)
+   {
+      Direction routed_dir = DIR_BUY;
+      if(g_final_integrated.hypothesis.intended_direction == TDIR_SELL)
+         routed_dir = DIR_SELL;
+
+      string routed_name = "";
+      StratReg::GetStrategyNameById((StrategyID)g_final_integrated.hypothesis.strategy_id, routed_name);
+
+      Telemetry::EmitRouterDecisionKV((int)ChartID(),
+                                      (int)SEL_MAX,
+                                      AB_OFF,
+                                      (int)g_final_integrated.hypothesis.strategy_id,
+                                      routed_dir,
+                                      g_final_integrated.route_rank,
+                                      routed_name);
+   }
 
    if(routed && Telemetry::RouterDecisionSeq() != router_seq_before)
       DecisionTelemetry_RecordPassFromRouterSnapshot("router");
@@ -6858,6 +7216,13 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
 
    const bool has_drop_reason = (StringLen(g_decision_tel.last_drop_reason) > 0);
 
+   const int tel_hyp_bank_accepted = Telemetry::RouterDecisionHypBankAccepted();
+   const int tel_hyp_bank_rejected = Telemetry::RouterDecisionHypBankRejected();
+   const string tel_hyp_reject_top_stage = Telemetry::RouterDecisionHypRejectTopStage();
+   const string tel_hyp_reject_top_reason = Telemetry::RouterDecisionHypRejectTopReason();
+   const string tel_main_only_ids_active = Telemetry::RouterDecisionMainOnlyIdsActive();
+   const string tel_route_path = Telemetry::RouterDecisionRoutePath();
+
    string j = "{";
    j += "\"sym\":\"" + Telemetry::_Esc(_Symbol) + "\",";
    j += "\"tf\":" + IntegerToString(Period()) + ",";
@@ -6867,6 +7232,12 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
    j += "\"status\":\"" + Telemetry::_Esc(status) + "\",";
    j += "\"decision_source\":\"" + Telemetry::_Esc(source) + "\",";
    j += "\"decision_ts\":" + Telemetry::JsonDateTimeOrNull(g_decision_tel.has_decision_ts, g_decision_tel.decision_ts) + ",";
+   j += "\"hyp_bank_accepted\":" + Telemetry::JsonNumberOrNull(tel_hyp_bank_accepted >= 0, (double)tel_hyp_bank_accepted, 0) + ",";
+   j += "\"hyp_bank_rejected\":" + Telemetry::JsonNumberOrNull(tel_hyp_bank_rejected >= 0, (double)tel_hyp_bank_rejected, 0) + ",";
+   j += "\"hyp_reject_top_stage\":" + Telemetry::JsonStringOrNull(StringLen(tel_hyp_reject_top_stage) > 0, tel_hyp_reject_top_stage) + ",";
+   j += "\"hyp_reject_top_reason\":" + Telemetry::JsonStringOrNull(StringLen(tel_hyp_reject_top_reason) > 0, tel_hyp_reject_top_reason) + ",";
+   j += "\"main_only_ids_active\":" + Telemetry::JsonStringOrNull(StringLen(tel_main_only_ids_active) > 0, tel_main_only_ids_active) + ",";
+   j += "\"route_path\":" + Telemetry::JsonStringOrNull(StringLen(tel_route_path) > 0, tel_route_path) + ",";
    j += EA_RuntimeGateJsonFragment(S) + ",";
    j += "\"last_drop_reason\":" + Telemetry::JsonStringOrNull(has_drop_reason, g_decision_tel.last_drop_reason);
    j += "}";
@@ -6992,7 +7363,8 @@ int OnInit()
    // Router confluence-only pool status (inputs -> Settings mirror)
    LogRouterConfluencePoolStatus(S, "[OnInit]");
 
-   EmitDeterministicStartupStrategyAudit(S);
+   if(!EmitDeterministicStartupStrategyAudit(S))
+      return INIT_FAILED;
 
    // --- Init subsystems ---
    if(!MarketData::Init(S))
