@@ -34,6 +34,9 @@ namespace TesterSettings
       bool   diagnostics_enabled;
       bool   ergonomics_relaxed;
       bool   loose_tester;
+      bool   main_stage_softening;
+      bool   main_stage_regime_softening;
+      bool   main_stage_liquidity_softening;
       bool   validation_ok;
 
       int    preset;
@@ -61,6 +64,9 @@ namespace TesterSettings
       r.diagnostics_enabled  = false;
       r.ergonomics_relaxed   = false;
       r.loose_tester         = false;
+      r.main_stage_softening = false;
+      r.main_stage_regime_softening = false;
+      r.main_stage_liquidity_softening = false;
       r.validation_ok        = true;
       r.preset               = TESTER_PRESET_OFF;
       r.reason               = "";
@@ -195,6 +201,11 @@ namespace TesterSettings
       #ifdef CFG_HAS_TESTERSETTINGS_LOOSE_TESTER
          cfg.tester_settings_loose_tester = false;
       #endif
+
+      cfg.main_tester_loose_mode = false;
+      cfg.main_tester_allow_degraded_observability_softening = false;
+      cfg.main_tester_allow_regime_observability_softening = false;
+      cfg.main_tester_allow_liquidity_observability_softening = false;
    }
 
    inline bool ApplyPresetNameAlias(Settings &cfg, const string preset_name)
@@ -303,10 +314,17 @@ namespace TesterSettings
             AppendAuditToken(s, "tester_disable_news_correlation");
       #endif
 
-      #ifdef CFG_HAS_MAIN_TESTER_LOOSE_GATE
-         if(cfg.main_tester_loose_gate)
-            AppendAuditToken(s, "main_tester_loose_gate");
-      #endif
+      if(cfg.main_tester_loose_mode)
+         AppendAuditToken(s, "main_stage_loose_mode");
+
+      if(cfg.main_tester_allow_degraded_observability_softening)
+         AppendAuditToken(s, "main_stage_obs_softening");
+
+      if(cfg.main_tester_allow_regime_observability_softening)
+         AppendAuditToken(s, "main_stage_regime_softening");
+
+      if(cfg.main_tester_allow_liquidity_observability_softening)
+         AppendAuditToken(s, "main_stage_liquidity_softening");
 
       if(StringLen(s) <= 0)
          s = "none";
@@ -482,6 +500,13 @@ namespace TesterSettings
       return (preset == TESTER_PRESET_SMOKE);
    }
 
+   inline bool PresetWantsMainStageSoftening(const int preset)
+   {
+      return (preset == TESTER_PRESET_RELAXED ||
+              preset == TESTER_PRESET_DEBUG   ||
+              preset == TESTER_PRESET_SMOKE);
+   }
+
    inline int ResolveTesterMaxStrats(const Settings &cfg)
    {
       #ifdef CFG_HAS_TESTER_REGISTERED_STRATEGY_COUNT
@@ -581,11 +606,44 @@ namespace TesterSettings
          cfg.adr_max_pips = 0.0;
       #endif
 
-      #ifdef CFG_HAS_MAIN_TESTER_LOOSE_GATE
-         cfg.main_tester_loose_gate = true;
-      #endif
+      // Keep outer tester-bypass policy changes separate from inner staged
+      // observability softening. Real staged softening fields are applied via
+      // ApplyMainStageTesterSoftening().
 
       r.loose_tester = true;
+   }
+
+   inline void ClearMainStageTesterSoftening(Settings &cfg)
+   {
+      cfg.main_tester_loose_mode = false;
+      cfg.main_tester_allow_degraded_observability_softening = false;
+      cfg.main_tester_allow_regime_observability_softening = false;
+      cfg.main_tester_allow_liquidity_observability_softening = false;
+   }
+
+   inline void ApplyMainStageTesterSoftening(Settings &cfg, ApplyReport &r)
+   {
+      ClearMainStageTesterSoftening(cfg);
+
+      if(!IsTesterContext())
+         return;
+
+      const int preset = ActivePreset(cfg);
+
+      if(PresetIsParity(preset))
+         return;
+
+      if(!PresetWantsMainStageSoftening(preset) && !LooseTesterRequested(cfg))
+         return;
+
+      cfg.main_tester_loose_mode = true;
+      cfg.main_tester_allow_degraded_observability_softening = true;
+      cfg.main_tester_allow_regime_observability_softening = true;
+      cfg.main_tester_allow_liquidity_observability_softening = true;
+
+      r.main_stage_softening = true;
+      r.main_stage_regime_softening = true;
+      r.main_stage_liquidity_softening = true;
    }
 
    inline bool ShouldApply(const Settings &cfg)
@@ -679,13 +737,8 @@ namespace TesterSettings
          cfg.main_tester_risk_max = 1.0;
       #endif
 
-      #ifdef CFG_HAS_MAIN_TESTER_LOOSE_GATE
-         cfg.main_tester_loose_gate = true;
-      #endif
-
-      #ifdef CFG_HAS_MAIN_TESTER_SOFTEN_SELECTED_HARD_GATES
-         cfg.main_tester_soften_selected_hard_gates = true;
-      #endif
+      // Main staged tester observability softening is wired through
+      // ApplyMainStageTesterSoftening() using real Config fields.
 
       if(cfg.qualityThresholdHigh > 0.0)
          cfg.qualityThresholdHigh = 0.0;
@@ -1064,6 +1117,36 @@ namespace TesterSettings
          #endif
       }
 
+      if(PresetIsParity(preset))
+      {
+         if(cfg.main_tester_loose_mode)
+            err += "main_tester_loose_mode should be false in parity; ";
+
+         if(cfg.main_tester_allow_degraded_observability_softening)
+            err += "main_tester_allow_degraded_observability_softening should be false in parity; ";
+
+         if(cfg.main_tester_allow_regime_observability_softening)
+            err += "main_tester_allow_regime_observability_softening should be false in parity; ";
+
+         if(cfg.main_tester_allow_liquidity_observability_softening)
+            err += "main_tester_allow_liquidity_observability_softening should be false in parity; ";
+      }
+
+      if(IsTesterContext() && PresetWantsMainStageSoftening(preset))
+      {
+         if(!cfg.main_tester_loose_mode)
+            err += "main_tester_loose_mode not enabled for preset; ";
+
+         if(!cfg.main_tester_allow_degraded_observability_softening)
+            err += "main_tester_allow_degraded_observability_softening not enabled for preset; ";
+
+         if(!cfg.main_tester_allow_regime_observability_softening)
+            err += "main_tester_allow_regime_observability_softening not enabled for preset; ";
+
+         if(!cfg.main_tester_allow_liquidity_observability_softening)
+            err += "main_tester_allow_liquidity_observability_softening not enabled for preset; ";
+      }
+
       return (StringLen(err) == 0);
    }
 
@@ -1116,6 +1199,10 @@ namespace TesterSettings
 
       s += StringFormat(" corr=%s", (cfg.corr_softveto_enable ? "on" : "off"));
       s += StringFormat(" loose=%s", (g_last_report.loose_tester ? "on" : "off"));
+      s += StringFormat(" stageLoose=%s", BoolStr(cfg.main_tester_loose_mode));
+      s += StringFormat(" stageObs=%s", BoolStr(cfg.main_tester_allow_degraded_observability_softening));
+      s += StringFormat(" stageReg=%s", BoolStr(cfg.main_tester_allow_regime_observability_softening));
+      s += StringFormat(" stageLiq=%s", BoolStr(cfg.main_tester_allow_liquidity_observability_softening));
       s += "}";
 
       return s;
@@ -1266,6 +1353,7 @@ namespace TesterSettings
 
       const int preset = ActivePreset(cfg);
 
+      ClearMainStageTesterSoftening(cfg);
       ApplyScoreRelaxation(cfg, g_last_report);
 
       if(IsTesterContext() && !PresetIsParity(preset))
@@ -1278,6 +1366,7 @@ namespace TesterSettings
       }
 
       ApplyNewsAndSessionBypass(cfg, g_last_report);
+      ApplyMainStageTesterSoftening(cfg, g_last_report);
       ApplyLooseTesterBypass(cfg, g_last_report);
       ApplyDiagnostics(cfg, g_last_report);
       ApplyErgonomics(cfg, g_last_report);

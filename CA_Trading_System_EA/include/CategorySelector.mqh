@@ -152,6 +152,86 @@ inline int ResolveEffectiveMinCategoryVotesFromBank(const Settings &cfg,
    return effective_votes;
 }
 
+inline int CountEnabledAvailableStackCategories(const Settings &cfg,
+                                                const CategoryPassVector &passv)
+{
+   int available_count = 0;
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_INSTITUTIONAL))
+   {
+      const bool inst_available_for_stack =
+         (passv.hard_inst_block != 1 &&
+          (passv.inst_sel_source == INST_SIGNAL_SOURCE_DIRECT ||
+           passv.inst_sel_source == INST_SIGNAL_SOURCE_PROXY ||
+           (passv.inst_available == 1 && passv.inst_unavailable == 0)));
+
+      if(inst_available_for_stack)
+         available_count++;
+   }
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_TREND))
+      available_count++;
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_MOMENTUM))
+      available_count++;
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_VOLUME))
+      available_count++;
+
+   if(IsCategoryEnabledByConfig(cfg, CAT_VOLATILITY))
+      available_count++;
+
+   if(available_count < 1)
+      available_count = 1;
+
+   return available_count;
+}
+
+inline int CapEffectiveMinCategoryVotesToAvailableCategories(const Settings &cfg,
+                                                             const CategoryPassVector &passv,
+                                                             const int requested_votes)
+{
+   const int available_count =
+      CountEnabledAvailableStackCategories(cfg, passv);
+
+   int out_votes = requested_votes;
+
+   if(out_votes < 1)
+      out_votes = 1;
+
+   if(out_votes > available_count)
+      out_votes = available_count;
+
+   return out_votes;
+}
+
+inline string ResolvePassDegradeReason(const CategoryPassVector &passv)
+{
+   if(passv.hard_inst_block == 1)
+      return "hard_inst_block";
+
+   if(passv.inst_unavailable == 1 &&
+      passv.inst_sel_source == INST_SIGNAL_SOURCE_PROXY)
+   {
+      return "inst_unavailable_proxy_selected";
+   }
+
+   if(passv.inst_unavailable == 1 &&
+      passv.proxy_inst_available == 0 &&
+      passv.inst_sel_source == INST_SIGNAL_SOURCE_NONE)
+   {
+      return "inst_unavailable_no_proxy";
+   }
+
+   if(passv.inst_partial == 1)
+      return "inst_partial_cov_low";
+
+   if(passv.inst_unavailable == 1)
+      return "inst_unavailable_relaxed";
+
+   return "none";
+}
+
 inline void ClearInstitutionalSelection(CategorySelectedVector &sel)
 {
    sel.inst_index  = -1;
@@ -246,6 +326,11 @@ inline void RefreshStackAndLocationGates(const Settings &cfg,
       CapEffectiveMinCategoryVotesToEnabledCategories(cfg,
                                                       passv.effective_min_category_votes);
 
+   passv.effective_min_category_votes =
+      CapEffectiveMinCategoryVotesToAvailableCategories(cfg,
+                                                        passv,
+                                                        passv.effective_min_category_votes);
+
    passv.signal_stack_score =
       passv.inst_pass +
       passv.trend_pass +
@@ -256,10 +341,14 @@ inline void RefreshStackAndLocationGates(const Settings &cfg,
    if(cfg.sigsel_enable)
    {
       if(passv.hard_inst_block == 1)
+      {
          passv.signal_stack_gate = 0;
+      }
       else
+      {
          passv.signal_stack_gate =
             (passv.signal_stack_score >= passv.effective_min_category_votes ? 1 : 0);
+      }
    }
    else
    {
@@ -306,14 +395,22 @@ inline void FillLocationPassFromBank(const CategoryPassVector &passv,
    out_loc.liquidity_event_price = bank.ms.liquidity_event_price;
 }
 
-inline string BuildSelectionDiagnosticSummary(const CategorySelectedVector &sel,
+inline string BuildSelectionDiagnosticSummary(const Settings &cfg,
+                                              const CategorySelectedVector &sel,
                                               const CategoryPassVector &passv,
                                               const RawSignalBank_t &bank)
 {
+   const int available_stack_categories =
+      CountEnabledAvailableStackCategories(cfg, passv);
+
+   const string degrade_reason =
+      ResolvePassDegradeReason(passv);
+
    return StringFormat(
       "sym=%s tf=%d inst[idx=%d z=%.4f src=%d cov=%.3f hard=%d] "
       "trend[idx=%d z=%.4f] mom[idx=%d z=%.4f] vol[idx=%d z=%.4f] vola[idx=%d z=%.4f] "
-      "passes[i=%d t=%d m=%d v=%d va=%d] stack=%d req=%d gate=%d loc=%d pass=%d",
+      "passes[i=%d t=%d m=%d v=%d va=%d] stack=%d req=%d avail=%d gate=%d "
+      "loc=%d pass=%d degrade=%s",
       bank.symbol,
       (int)bank.tf,
       sel.inst_index, sel.inst_z, passv.inst_sel_source, passv.inst_coverage, passv.hard_inst_block,
@@ -328,20 +425,23 @@ inline string BuildSelectionDiagnosticSummary(const CategorySelectedVector &sel,
       passv.vola_pass,
       passv.signal_stack_score,
       passv.effective_min_category_votes,
+      available_stack_categories,
       passv.signal_stack_gate,
       passv.location_score,
-      passv.location_pass
+      passv.location_pass,
+      degrade_reason
    );
 }
 
-inline void EmitSelectionDiagnosticLog(const CategorySelectedVector &sel,
+inline void EmitSelectionDiagnosticLog(const Settings &cfg,
+                                       const CategorySelectedVector &sel,
                                        const CategoryPassVector &passv,
                                        const RawSignalBank_t &bank,
                                        const string log_tag)
 {
    PrintFormat("[%s] %s",
                log_tag,
-               BuildSelectionDiagnosticSummary(sel, passv, bank));
+               BuildSelectionDiagnosticSummary(cfg, sel, passv, bank));
 }
 
 inline void LoadThresholdViewFromSettings(const Settings &cfg,
@@ -1440,6 +1540,7 @@ inline CategoryPassVector ComputeCategoryPasses(const CategorySelectedVector &se
    else
       out_pass.location_pass = 1;
 
+   RefreshStackAndLocationGates(cfg, out_pass);
    return out_pass;
 }
 
@@ -1589,7 +1690,7 @@ inline bool BuildSelectedState(const Settings &cfg,
    FillLocationPassFromBank(out_pass, bank, out_location_pass);
 
    if(emit_logs)
-      EmitSelectionDiagnosticLog(out_sel, out_pass, bank, log_tag);
+      EmitSelectionDiagnosticLog(cfg, out_sel, out_pass, bank, log_tag);
 
    return true;
 }

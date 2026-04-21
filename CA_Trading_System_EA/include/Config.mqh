@@ -2560,6 +2560,12 @@ namespace Config
         bool   tester_settings_enable_verbose_diagnostics;
       #endif
 
+      // Explicit staged tester softening controls for Main / staged ICT path.
+      // These are separate from outer policy-gate disablement.
+      bool   main_tester_loose_mode;
+      bool   main_tester_allow_degraded_observability_softening;
+      bool   main_tester_allow_regime_observability_softening;
+      bool   main_tester_allow_liquidity_observability_softening;
       int    min_features_met;
 
      #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
@@ -3118,6 +3124,64 @@ namespace Config
       #else
          return false;
       #endif
+   }
+
+   inline bool CfgMainTesterLooseModeConfigured(const Settings &cfg)
+   {
+      return (cfg.main_tester_loose_mode ? true : false);
+   }
+
+   inline bool CfgMainTesterAllowDegradedObservabilitySofteningConfigured(const Settings &cfg)
+   {
+      return (cfg.main_tester_allow_degraded_observability_softening ? true : false);
+   }
+
+   inline bool CfgMainTesterAllowRegimeObservabilitySofteningConfigured(const Settings &cfg)
+   {
+      return (cfg.main_tester_allow_regime_observability_softening ? true : false);
+   }
+
+   inline bool CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(const Settings &cfg)
+   {
+      return (cfg.main_tester_allow_liquidity_observability_softening ? true : false);
+   }
+
+   inline bool CfgMainTesterLooseModeActive(const Settings &cfg)
+   {
+      if(!CfgIsTesterRuntime())
+         return false;
+
+      return CfgMainTesterLooseModeConfigured(cfg);
+   }
+
+   inline bool CfgMainTesterAllowDegradedObservabilitySoftening(const Settings &cfg)
+   {
+      if(!CfgMainTesterLooseModeActive(cfg))
+         return false;
+
+      return CfgMainTesterAllowDegradedObservabilitySofteningConfigured(cfg);
+   }
+
+   inline bool CfgMainTesterAllowRegimeObservabilitySoftening(const Settings &cfg)
+   {
+      if(!CfgMainTesterAllowDegradedObservabilitySoftening(cfg))
+         return false;
+
+      return CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg);
+   }
+
+   inline bool CfgMainTesterAllowLiquidityObservabilitySoftening(const Settings &cfg)
+   {
+      if(!CfgMainTesterAllowDegradedObservabilitySoftening(cfg))
+         return false;
+
+      return CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg);
+   }
+
+   inline bool CfgMainTesterAnyStageSofteningActive(const Settings &cfg)
+   {
+      return (CfgMainTesterAllowRegimeObservabilitySoftening(cfg) ||
+              CfgMainTesterAllowLiquidityObservabilitySoftening(cfg));
    }
 
    inline bool CfgInstitutionalStrictTransportExpected()
@@ -3952,9 +4016,29 @@ namespace Config
 
       const StrategyMode mode = CfgStrategyMode(cfg);
 
-      if(cfg.debug)
-         PrintFormat("[Config] IsStrategyAllowedInMode: mode=%d sid=%d",
-                     (int)mode, (int)id);
+      const bool verbose_mode_gate_log =
+         (cfg.debug && cfg.tester_settings_enable_verbose_diagnostics);
+
+      if(verbose_mode_gate_log && mode == STRAT_MAIN_ONLY)
+      {
+         static string s_last_key = "";
+
+         const datetime bar_time = iTime(_Symbol, PERIOD_CURRENT, 0);
+         const string key =
+            _Symbol + "|" +
+            IntegerToString((int)bar_time) + "|" +
+            IntegerToString((int)mode);
+
+         if(key != s_last_key)
+         {
+            s_last_key = key;
+
+            PrintFormat("[Config][MAIN_ONLY] IsStrategyAllowedInMode snapshot: sym=%s bar=%d mode=%d",
+                        _Symbol,
+                        (int)bar_time,
+                        (int)mode);
+         }
+      }
 
       if(mode == STRAT_MAIN_ONLY)
          return IsCanonicalMainOnlyStrategyId(id);
@@ -4913,6 +4997,18 @@ namespace Config
        cfg.tester_settings_enable_verbose_diagnostics = x.tester_settings_enable_verbose_diagnostics;
      #endif
 
+     cfg.main_tester_loose_mode =
+        x.main_tester_loose_mode;
+
+     cfg.main_tester_allow_degraded_observability_softening =
+        x.main_tester_allow_degraded_observability_softening;
+
+     cfg.main_tester_allow_regime_observability_softening =
+        x.main_tester_allow_regime_observability_softening;
+
+     cfg.main_tester_allow_liquidity_observability_softening =
+        x.main_tester_allow_liquidity_observability_softening;
+
      // Some codebases name it differently — set both if present
      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
        cfg.router_fallback_min_score = x.router_fb_min;
@@ -5760,6 +5856,13 @@ namespace Config
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
         x.tester_settings_enable_verbose_diagnostics = true;
       #endif
+
+      // Staged tester softening defaults: OFF by default.
+      // These are activated explicitly later via TesterSettings / direct config.
+      x.main_tester_loose_mode = false;
+      x.main_tester_allow_degraded_observability_softening = false;
+      x.main_tester_allow_regime_observability_softening = false;
+      x.main_tester_allow_liquidity_observability_softening = false;
 
       #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
         x.router_use_confl_pool = false;
@@ -8703,10 +8806,26 @@ namespace Config
      if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_liquidity_gate)
         warns += "tester degraded mode active; liquidity gate is disabled at config layer.\n";
    #endif
-   #ifdef CFG_HAS_POLICY_ENABLE_LIQUIDITY_GATE
-     if(CfgTesterDegradedModeActive(cfg) && !cfg.enable_liquidity_gate)
-        warns += "tester degraded mode active; liquidity gate is disabled at config layer.\n";
-   #endif
+
+   if(CfgMainTesterLooseModeConfigured(cfg) && !CfgIsTesterRuntime())
+      warns += "main_tester_loose_mode=true outside tester runtime; staged tester softening remains configured but inactive.\n";
+
+   if(!CfgMainTesterLooseModeConfigured(cfg) &&
+      (CfgMainTesterAllowDegradedObservabilitySofteningConfigured(cfg) ||
+       CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg) ||
+       CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg)))
+      warns += "main_tester_* observability softening flags are set while main_tester_loose_mode=false; staged softening remains inactive until loose mode is enabled.\n";
+
+   if(CfgMainTesterLooseModeConfigured(cfg) &&
+      !CfgMainTesterAllowDegradedObservabilitySofteningConfigured(cfg) &&
+      (CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg) ||
+       CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg)))
+      warns += "main_tester specific regime/liquidity softening flags are set while main_tester_allow_degraded_observability_softening=false; specific staged softening remains inactive until the global observability softener is enabled.\n";
+
+   if(CfgTesterDegradedModeActive(cfg) &&
+      (CfgMainTesterLooseModeConfigured(cfg) ||
+       CfgMainTesterAllowDegradedObservabilitySofteningConfigured(cfg)))
+      warns += "tester degraded mode policy-gate disablement and main_tester staged softening are separate levers; outer policy gates may be disabled while inner staged gates remain strict unless main_tester_* softening is explicitly enabled.\n";
 
      if(CfgInstitutionalStateProducerEnabled(cfg) &&
         !cfg.scan_obi_enable &&
@@ -11833,6 +11952,18 @@ namespace Config
    #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
      cfg.tester_settings_enable_verbose_diagnostics = (cfg.tester_settings_enable_verbose_diagnostics ? true : false);
    #endif
+
+   cfg.main_tester_loose_mode =
+      (cfg.main_tester_loose_mode ? true : false);
+
+   cfg.main_tester_allow_degraded_observability_softening =
+      (cfg.main_tester_allow_degraded_observability_softening ? true : false);
+
+   cfg.main_tester_allow_regime_observability_softening =
+      (cfg.main_tester_allow_regime_observability_softening ? true : false);
+
+   cfg.main_tester_allow_liquidity_observability_softening =
+      (cfg.main_tester_allow_liquidity_observability_softening ? true : false);
 
    if(CfgTesterDegradedModeActive(cfg))
    {
@@ -16246,6 +16377,11 @@ namespace Config
       s+=",tsVerb="+BoolStr(c.tester_settings_enable_verbose_diagnostics);
     #endif
 
+    s+=",mtLoose="+BoolStr(c.main_tester_loose_mode);
+    s+=",mtObs="+BoolStr(c.main_tester_allow_degraded_observability_softening);
+    s+=",mtRegObs="+BoolStr(c.main_tester_allow_regime_observability_softening);
+    s+=",mtLiqObs="+BoolStr(c.main_tester_allow_liquidity_observability_softening);
+
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       s+=",routerCap="+IntegerToString(c.router_max_strats);
     #endif
@@ -17974,6 +18110,15 @@ namespace Config
         else if(k=="tsVerb") cfg.tester_settings_enable_verbose_diagnostics = ToBool(v);
       #endif
 
+      else if(k=="mtLoose"  || k=="main_tester_loose_mode")
+         cfg.main_tester_loose_mode = ToBool(v);
+      else if(k=="mtObs"    || k=="main_tester_allow_degraded_observability_softening")
+         cfg.main_tester_allow_degraded_observability_softening = ToBool(v);
+      else if(k=="mtRegObs" || k=="main_tester_allow_regime_observability_softening")
+         cfg.main_tester_allow_regime_observability_softening = ToBool(v);
+      else if(k=="mtLiqObs" || k=="main_tester_allow_liquidity_observability_softening")
+         cfg.main_tester_allow_liquidity_observability_softening = ToBool(v);
+
       #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
         else if(k=="gArm") cfg.ict_arm_on_signal = ToBool(v);
       #endif
@@ -18948,6 +19093,15 @@ namespace Config
       #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
         else if(k=="tsVerb") cfg.tester_settings_enable_verbose_diagnostics = ToBool(v);
       #endif
+
+      else if(k=="mtLoose"  || k=="main_tester_loose_mode")
+         cfg.main_tester_loose_mode = ToBool(v);
+      else if(k=="mtObs"    || k=="main_tester_allow_degraded_observability_softening")
+         cfg.main_tester_allow_degraded_observability_softening = ToBool(v);
+      else if(k=="mtRegObs" || k=="main_tester_allow_regime_observability_softening")
+         cfg.main_tester_allow_regime_observability_softening = ToBool(v);
+      else if(k=="mtLiqObs" || k=="main_tester_allow_liquidity_observability_softening")
+         cfg.main_tester_allow_liquidity_observability_softening = ToBool(v);
 
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
         else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
@@ -21874,6 +22028,14 @@ struct Settings
   #ifdef CFG_HAS_TESTERSETTINGS_ENABLE_VERBOSE_DIAGNOSTICS
     bool            tester_settings_enable_verbose_diagnostics;
   #endif
+
+  // Explicit staged tester softening controls for Main / staged ICT path.
+  // These DO NOT disable outer policy gates. They only allow narrow softening
+  // of staged strategy observability gaps when later strategy code opts in.
+  bool            main_tester_loose_mode;
+  bool            main_tester_allow_degraded_observability_softening;
+  bool            main_tester_allow_regime_observability_softening;
+  bool            main_tester_allow_liquidity_observability_softening;
 
   #ifdef CFG_HAS_ROUTER_HINTS
      string router_profile_alias;           // profile alias used for fallback hinting ("trend", "mr", ...)

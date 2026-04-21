@@ -258,6 +258,9 @@ struct LocationPass_t
    int      poi_kind;
    datetime liquidity_event_time;
    double   liquidity_event_price;
+   string   liquidity_event_type;
+   int      sweep_dir;
+   string   liquidity_event_provenance;
 
    void Reset()
    {
@@ -274,6 +277,9 @@ struct LocationPass_t
       poi_kind = 0;
       liquidity_event_time = 0;
       liquidity_event_price = 0.0;
+      liquidity_event_type = "";
+      sweep_dir = 0;
+      liquidity_event_provenance = "";
    }
 };
 
@@ -614,6 +620,146 @@ inline int DetermineDirectionFromRawBank(const double &raw[],
       dir = 1;
 
    return dir;
+}
+
+inline int ResolveLiquiditySweepDirFromLabel(const string label)
+{
+   string s = label;
+   StringToLower(s);
+
+   if(StringFind(s, "sellside") >= 0)   return 1;
+   if(StringFind(s, "sell_side") >= 0)  return 1;
+   if(StringFind(s, "sell-side") >= 0)  return 1;
+   if(StringFind(s, "ssl") >= 0)        return 1;
+   if(StringFind(s, "spring") >= 0)     return 1;
+   if(StringFind(s, "bull") >= 0)       return 1;
+
+   if(StringFind(s, "buyside") >= 0)    return -1;
+   if(StringFind(s, "buy_side") >= 0)   return -1;
+   if(StringFind(s, "buy-side") >= 0)   return -1;
+   if(StringFind(s, "bsl") >= 0)        return -1;
+   if(StringFind(s, "utad") >= 0)       return -1;
+   if(StringFind(s, "upthrust") >= 0)   return -1;
+   if(StringFind(s, "bear") >= 0)       return -1;
+
+   return 0;
+}
+
+inline string ResolveLiquidityEventTypeFromCode(const int event_type_code)
+{
+   if(event_type_code == SWEEP_SELLSIDE)
+      return "sellside_sweep";
+
+   if(event_type_code == SWEEP_BUYSIDE)
+      return "buyside_sweep";
+
+   if(event_type_code == SWEEP_BOTH)
+      return "two_sided_sweep";
+
+   if(event_type_code == 0)
+      return "";
+
+   return "liquidity_event_" + IntegerToString(event_type_code);
+}
+
+inline int ResolveLiquiditySweepDirFromCode(const int event_type_code)
+{
+   if(event_type_code == SWEEP_SELLSIDE)
+      return 1;
+
+   if(event_type_code == SWEEP_BUYSIDE)
+      return -1;
+
+   return 0;
+}
+
+inline double LiquidityRejectionScore01(const double open0,
+                                        const double high0,
+                                        const double low0,
+                                        const double close0)
+{
+   const double range = MathMax(high0 - low0, 1e-12);
+   const double body = MathAbs(close0 - open0);
+   const double upper_wick = MathMax(0.0, high0 - MathMax(open0, close0));
+   const double lower_wick = MathMax(0.0, MathMin(open0, close0) - low0);
+   const double wick_dom = MathMax(upper_wick, lower_wick);
+
+   if(range <= 1e-12)
+      return 0.0;
+
+   return Clamp01(0.65 * SafeDiv(wick_dom, range, 0.0) +
+                  0.35 * SafeDiv(wick_dom, MathMax(body, 1e-12), 0.0));
+}
+
+inline int ResolveLiquiditySweepDirFromBar(const double open0,
+                                           const double high0,
+                                           const double low0,
+                                           const double close0,
+                                           const double price_change,
+                                           const double atr)
+{
+   const double range = MathMax(high0 - low0, 1e-12);
+   const double body = MathAbs(close0 - open0);
+   const double upper_wick = MathMax(0.0, high0 - MathMax(open0, close0));
+   const double lower_wick = MathMax(0.0, MathMin(open0, close0) - low0);
+   const double disp01 = Clamp01(MathAbs(price_change) / MathMax(MathMax(atr, range), 1e-12));
+
+   if(lower_wick >= upper_wick * 1.20 &&
+      lower_wick >= body * 0.75 &&
+      disp01 >= 0.15 &&
+      close0 >= open0)
+      return 1;
+
+   if(upper_wick >= lower_wick * 1.20 &&
+      upper_wick >= body * 0.75 &&
+      disp01 >= 0.15 &&
+      close0 <= open0)
+      return -1;
+
+   if(price_change > 0.0 && lower_wick > upper_wick * 1.10)
+      return 1;
+
+   if(price_change < 0.0 && upper_wick > lower_wick * 1.10)
+      return -1;
+
+   return 0;
+}
+
+inline string ResolvePromotedLiquidityEventType(const int sweep_dir)
+{
+   if(sweep_dir > 0)
+      return "promoted_sellside_sweep";
+
+   if(sweep_dir < 0)
+      return "promoted_buyside_sweep";
+
+   return "promoted_liquidity_event";
+}
+
+inline string ResolvePromotedLiquidityProvenance(const bool coherent_rejection,
+                                                 const bool coherent_displacement,
+                                                 const bool coherent_stress,
+                                                 const bool coherent_poi)
+{
+   if(coherent_rejection && coherent_displacement)
+      return "promoted_sweep_rejection_displacement";
+
+   if(coherent_rejection)
+      return "promoted_sweep_rejection";
+
+   if(coherent_displacement)
+      return "promoted_sweep_displacement";
+
+   if(coherent_stress && coherent_poi)
+      return "promoted_sweep_stress_poi";
+
+   if(coherent_stress)
+      return "promoted_sweep_stress";
+
+   if(coherent_poi)
+      return "promoted_sweep_poi";
+
+   return "promoted_sweep_score";
 }
 
 struct ZWindow
@@ -1160,6 +1306,9 @@ struct Result
    InstitutionalStateSnapshot  snap;
    OrderFlowDisplaySnapshot    ofx;
 
+   int      liquidity_event_dir;
+   string   liquidity_event_provenance;
+
    void Reset()
    {
       valid = false;
@@ -1220,8 +1369,134 @@ struct Result
       ms.Reset();
       snap.Reset();
       ofx.Reset();
+
+      liquidity_event_dir = 0;
+      liquidity_event_provenance = "";
    }
 };
+
+inline void PromoteCanonicalLiquidityEvent(const string sym,
+                                           const ENUM_TIMEFRAMES tf,
+                                           const datetime bar_time,
+                                           const double open0,
+                                           const double high0,
+                                           const double low0,
+                                           const double close0,
+                                           const double price_change,
+                                           const double atr,
+                                           const double sweep_score_raw,
+                                           const double spread_shock_raw,
+                                           const double depth_fade_raw,
+                                           const double slippage_proxy,
+                                           const LiqX::Snapshot &liq,
+                                           Result &out)
+{
+   out.liquidity_event_dir = 0;
+   out.liquidity_event_provenance = "";
+
+   if(out.ms.liquidity_event_score01 > 0.0 &&
+      StringLen(out.ms.liquidity_event_type) > 0)
+   {
+      if(out.ms.liquidity_event_time <= 0)
+         out.ms.liquidity_event_time = (liq.sweep_when > 0 ? liq.sweep_when : bar_time);
+
+      if(out.ms.liquidity_event_price <= 0.0)
+      {
+         if(liq.sweep_pool_price > 0.0)
+            out.ms.liquidity_event_price = liq.sweep_pool_price;
+         else
+            out.ms.liquidity_event_price = close0;
+      }
+
+      out.liquidity_event_dir =
+         ResolveLiquiditySweepDirFromLabel(out.ms.liquidity_event_type);
+
+      if(out.liquidity_event_dir == 0)
+         out.liquidity_event_dir =
+            ResolveLiquiditySweepDirFromBar(open0,
+                                            high0,
+                                            low0,
+                                            close0,
+                                            price_change,
+                                            atr);
+
+      if(out.liquidity_event_dir == 0)
+         out.liquidity_event_dir = out.direction_dir11;
+
+      out.liquidity_event_provenance = "liquiditycue_strong_label";
+      return;
+   }
+
+   const double rejection_score01 =
+      LiquidityRejectionScore01(open0, high0, low0, close0);
+
+   const double displacement01 =
+      Clamp01(MathAbs(price_change) / MathMax(MathMax(atr, high0 - low0), 1e-12));
+
+   const double stress_score01 =
+      Clamp01((MathMax(spread_shock_raw, 0.0) +
+               MathMax(depth_fade_raw, 0.0) +
+               MathAbs(slippage_proxy)) / 3.0);
+
+   const double poi_score01 =
+      Clamp01(out.ms.poi_score01);
+
+   const bool coherent_sweep        = (sweep_score_raw >= 0.25);
+   const bool coherent_rejection    = (rejection_score01 >= 0.25);
+   const bool coherent_displacement = (displacement01 >= 0.15);
+   const bool coherent_stress       = (stress_score01 >= 0.20);
+   const bool coherent_poi          = (poi_score01 >= 0.20);
+
+   if(!(coherent_sweep &&
+        (coherent_rejection || coherent_displacement || coherent_stress || coherent_poi)))
+      return;
+
+   int sweep_dir = ResolveLiquiditySweepDirFromBar(open0,
+                                                   high0,
+                                                   low0,
+                                                   close0,
+                                                   price_change,
+                                                   atr);
+
+   if(sweep_dir == 0 && liq.primary_event_score01 > 0.0)
+      sweep_dir = ResolveLiquiditySweepDirFromCode((int)liq.primary_event_label);
+
+   if(sweep_dir == 0)
+      sweep_dir = out.direction_dir11;
+
+   if(sweep_dir == 0)
+      sweep_dir = (price_change >= 0.0 ? 1 : -1);
+
+   const double promoted_score01 =
+      Clamp01(0.50 * sweep_score_raw +
+              0.20 * rejection_score01 +
+              0.15 * displacement01 +
+              0.10 * stress_score01 +
+              0.05 * poi_score01);
+
+   if(promoted_score01 < 0.25)
+      return;
+
+   out.ms.liquidity_event_score01 =
+      MathMax(Clamp01(out.ms.liquidity_event_score01), promoted_score01);
+
+   out.ms.liquidity_event_type = ResolvePromotedLiquidityEventType(sweep_dir);
+   out.ms.liquidity_event_time = (liq.sweep_when > 0 ? liq.sweep_when : bar_time);
+
+   if(liq.sweep_pool_price > 0.0)
+      out.ms.liquidity_event_price = liq.sweep_pool_price;
+   else if(sweep_dir > 0)
+      out.ms.liquidity_event_price = low0;
+   else
+      out.ms.liquidity_event_price = high0;
+
+   out.liquidity_event_dir = sweep_dir;
+   out.liquidity_event_provenance =
+      ResolvePromotedLiquidityProvenance(coherent_rejection,
+                                         coherent_displacement,
+                                         coherent_stress,
+                                         coherent_poi);
+}
 
 inline void CopySlotVector(const double &src[],
                            double &dst[])
@@ -1442,6 +1717,15 @@ inline void FillLocationPassFromResult(const Result &src,
    dst.poi_kind = src.ms.poi_kind;
    dst.liquidity_event_time = src.ms.liquidity_event_time;
    dst.liquidity_event_price = src.ms.liquidity_event_price;
+   dst.liquidity_event_type = src.ms.liquidity_event_type;
+   dst.sweep_dir = src.liquidity_event_dir;
+   dst.liquidity_event_provenance = src.liquidity_event_provenance;
+
+   if(dst.sweep_dir == 0 && StringLen(dst.liquidity_event_type) > 0)
+      dst.sweep_dir = ResolveLiquiditySweepDirFromLabel(dst.liquidity_event_type);
+
+   if(dst.sweep_dir == 0)
+      dst.sweep_dir = src.direction_dir11;
 }
 
 inline void ProjectResultToRawSignalBank(const Result &src,
@@ -2760,7 +3044,7 @@ inline bool Build(const string sym,
    if(liq.primary_event_score01 > 0.0)
    {
       out.ms.liquidity_event_score01 = Clamp01(liq.primary_event_score01);
-      out.ms.liquidity_event_type = liq.primary_event_label;
+      out.ms.liquidity_event_type = ResolveLiquidityEventTypeFromCode((int)liq.primary_event_label);
       out.ms.liquidity_event_time = liq.sweep_when;
       out.ms.liquidity_event_price = liq.sweep_pool_price;
    }
@@ -3010,6 +3294,22 @@ inline bool Build(const string sym,
 
    if(depth_fade_raw == 0.0)
       depth_fade_raw = (out.ms.depth_fade_z != 0.0 ? MathAbs(out.ms.depth_fade_z) : 0.0);
+
+   PromoteCanonicalLiquidityEvent(sym,
+                                  tf,
+                                  bar_time,
+                                  open0,
+                                  high0,
+                                  low0,
+                                  close0,
+                                  price_change,
+                                  atr,
+                                  sweep_score_raw,
+                                  spread_shock_raw,
+                                  depth_fade_raw,
+                                  slippage_proxy,
+                                  liq,
+                                  out);
 
    const double microprice_bias_raw =
       SafeDiv((micro - mid), spread, 0.0);

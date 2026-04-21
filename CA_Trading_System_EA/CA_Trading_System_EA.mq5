@@ -307,7 +307,7 @@ inline void LogRouterConfluencePoolStatus(const Settings &cfg, const string wher
   const bool wanted = (use_pool || (blend_w > 0.0));
   const StrategyMode sm = Config::CfgStrategyMode(cfg);
 
-  string msg = StringFormat("%s RouterPool: wanted=%d use=%d w=%.2f mode=%s(%d)",
+  string msg = StringFormat("%s RouterConfluencePool: wanted=%d use=%d w=%.2f mode=%s(%d) canonical_hyp_bank=separate",
                             where_tag,
                             (wanted ? 1 : 0),
                             (use_pool ? 1 : 0),
@@ -329,11 +329,11 @@ inline void LogRouterConfluencePoolStatus(const Settings &cfg, const string wher
   {
     #ifdef CFG_HAS_ENABLE_PACK_STRATS
       if(!cfg.enable_pack_strats)
-        LogX::Warn("RouterPool is ON in MAIN_ONLY but enable_pack_strats=false; confluence-only pool may be empty.");
+                LogX::Warn("RouterConfluencePool is ON in MAIN_ONLY but enable_pack_strats=false; confluence-only pack pool may be empty. canonical_hyp_bank is separate.");
     #endif
     #ifdef CFG_HAS_DISABLE_PACKS
       if(cfg.disable_packs)
-        LogX::Warn("RouterPool is ON in MAIN_ONLY but disable_packs=true; pack confluence pool is hard-disabled.");
+                LogX::Warn("RouterConfluencePool is ON in MAIN_ONLY but disable_packs=true; pack confluence pool is hard-disabled. canonical_hyp_bank is separate.");
     #endif
   }
 }
@@ -1503,6 +1503,26 @@ struct EAInstTransportStamp
 
 static EAInstTransportStamp g_inst_transport;
 
+struct EARouterDiagStamp
+{
+   string   last_scan_sym;
+   int      last_scan_tf;
+   datetime last_scan_event_time;
+   datetime last_hub_drain_time;
+   datetime last_hub_drain_bar_time;
+
+   void Reset()
+   {
+      last_scan_sym = "";
+      last_scan_tf = 0;
+      last_scan_event_time = 0;
+      last_hub_drain_time = 0;
+      last_hub_drain_bar_time = 0;
+   }
+};
+
+static EARouterDiagStamp g_router_diag_stamp;
+
 void MSH_DirtyClear()
 {
    g_msh_dirty_n = 0;
@@ -1562,6 +1582,18 @@ void MSH_RouteEvent(const Scan::ScanEvent &e)
    // Scan::ScanEvent fields (confirmed from MarketScannerHub.mqh RouteEventDefault):
    // e.sym, e.tf, e.ts, ...
    MSH_DirtyTouch(e.sym, (int)e.tf, e.ts);
+
+   g_router_diag_stamp.last_scan_sym = e.sym;
+   g_router_diag_stamp.last_scan_tf = (int)e.tf;
+   g_router_diag_stamp.last_scan_event_time = e.ts;
+   g_router_diag_stamp.last_hub_drain_time = TimeCurrent();
+   g_router_diag_stamp.last_hub_drain_bar_time = e.ts;
+
+   if(g_router_diag_stamp.last_scan_event_time <= 0)
+      g_router_diag_stamp.last_scan_event_time = g_router_diag_stamp.last_hub_drain_time;
+
+   if(g_router_diag_stamp.last_hub_drain_bar_time <= 0)
+      g_router_diag_stamp.last_hub_drain_bar_time = g_router_diag_stamp.last_hub_drain_time;
 
    // IMPORTANT:
    // MarketScannerHub / Scan remain the upstream scan owners.
@@ -2527,6 +2559,19 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
    return j;
 }
 
+void EA_DebugValidateJsonAssembly(const string tag, const string json)
+{
+   if(!InpDebug)
+      return;
+
+   if(StringFind(json, ",,") >= 0 || StringFind(json, ",}") >= 0)
+   {
+      PrintFormat("[TelemetryJSON][%s] malformed_json=%s",
+                  tag,
+                  json);
+   }
+}
+
 void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
 {
    bool degraded_policy_active = false;
@@ -2613,6 +2658,124 @@ void EA_LogRuntimeGateSummary(const string where, const Settings &cfg)
          (StateInstitutionalSignalStackGatePass(g_state) ? 1 : 0),
          (StateInstitutionalLocationPass(g_state) ? 1 : 0)));
    }
+}
+
+void EA_LogTransportSnapshotOncePerBar(const string where_tag,
+                                       const string router_sym,
+                                       const datetime required_bar_time,
+                                       const string detail)
+{
+   if(!InpDebug && !IsTesterRuntime())
+      return;
+
+   const string use_sym = (router_sym == "" ? CanonicalRouterSymbol() : router_sym);
+   if(use_sym == "")
+      return;
+
+   const int selected_count = StratBase::CountActiveSelectedCategories(g_cat_selected);
+   const int eff_min_votes  = StateInstitutionalEffectiveMinCategoryVotes(g_state);
+
+   bool tester_fb_active = false;
+   string tester_fb_status = "";
+   string tester_fb_detail = "";
+
+   GetTesterDegradedFallbackRuntimeState(use_sym,
+                                         tester_fb_active,
+                                         tester_fb_status,
+                                         tester_fb_detail);
+
+   const bool runtime_degraded = EA_RuntimeInstitutionalDegradeActive();
+   const double runtime_inst_coverage01 = StateInstitutionalCoverage01(g_state);
+   const int runtime_inst_sel_source = StateInstitutionalSignalSource(g_state);
+
+   string key = where_tag + "|" +
+                use_sym + "|" +
+                IntegerToString((int)required_bar_time) + "|" +
+                IntegerToString((g_raw_bank.valid ? 1 : 0)) + "|" +
+                IntegerToString(g_hyp_bank.count) + "|" +
+                IntegerToString(g_hyp_bank.rejected_count) + "|" +
+                IntegerToString(g_location_pass.pass) + "|" +
+                IntegerToString(selected_count) + "|" +
+                detail;
+
+   static string s_last_key = "";
+   if(key == s_last_key)
+      return;
+
+   s_last_key = key;
+
+   PrintFormat("[TransportDiag][%s][transport] sym=%s req=%s detail=%s transport{ready=%d bar=%s sym=%s} raw{valid=%d dir11=%d bar=%s} transport_inst{rawAvail=%d rawPartial=%d rawUnavail=%d rawProxyInst=%d rawHardBlock=%d rawSelSource=%s(%d) rawObs=%.2f stackPass=%d effVotes=%d stackCov=%.2f stackAvail=%d stackPartial=%d stackUnavail=%d stackProxyInst=%d stackHardBlock=%d stackSelSource=%s(%d)} sel{count=%d inst=%d trend=%d mom=%d vol=%d vola=%d trendZ=%.2f momZ=%.2f} loc{pass=%d poi=%.2f poiKind=%d liqEvt=%d liqEvtTime=%s sweep=%.2f liqGap=%.2f spreadZ=%.2f slipZ=%.2f depthZ=%.2f} hyp{accepted=%d rejected=%d}",
+               where_tag,
+               use_sym,
+               InstDiagTimeStr(required_bar_time),
+               LogX::San(detail),
+               (g_transport_ready ? 1 : 0),
+               InstDiagTimeStr(g_transport_bar_time),
+               g_transport_sym,
+               (g_raw_bank.valid ? 1 : 0),
+               g_raw_bank.direction_dir11,
+               InstDiagTimeStr(g_raw_bank.bar_time),
+               g_raw_bank.degrade.inst_available,
+               g_raw_bank.degrade.inst_partial,
+               g_raw_bank.degrade.inst_unavailable,
+               g_raw_bank.degrade.proxy_inst_available,
+               g_raw_bank.degrade.hard_inst_block,
+               EA_InstSignalSourceName(g_raw_bank.degrade.inst_sel_source),
+               g_raw_bank.degrade.inst_sel_source,
+               g_raw_bank.degrade.observability01,
+               g_sig_stack_gate.pass,
+               eff_min_votes,
+               g_sig_stack_gate.inst_coverage,
+               g_sig_stack_gate.inst_available,
+               g_sig_stack_gate.inst_partial,
+               g_sig_stack_gate.inst_unavailable,
+               g_sig_stack_gate.proxy_inst_available,
+               g_sig_stack_gate.hard_inst_block,
+               EA_InstSignalSourceName(g_sig_stack_gate.inst_sel_source),
+               g_sig_stack_gate.inst_sel_source,
+               selected_count,
+               g_cat_selected.inst_active,
+               g_cat_selected.trend_active,
+               g_cat_selected.mom_active,
+               g_cat_selected.vol_active,
+               g_cat_selected.vola_active,
+               g_cat_selected.trend_z,
+               g_cat_selected.mom_z,
+               g_location_pass.pass,
+               g_location_pass.poi_score01,
+               g_location_pass.poi_kind,
+               (g_location_pass.liquidity_event_time > 0 ? 1 : 0),
+               InstDiagTimeStr(g_location_pass.liquidity_event_time),
+               g_location_pass.sweep_score,
+               g_location_pass.liquidity_gap,
+               g_location_pass.spread_shock_z,
+               g_location_pass.slippage_z,
+               g_location_pass.depth_fade_z,
+               g_hyp_bank.count,
+               g_hyp_bank.rejected_count);
+
+   PrintFormat("[TransportDiag][%s][runtime] sym=%s req=%s tester{is=%d degradedMode=%d fallbackActive=%d fallbackStatus=%s fallbackDetail=%s} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyInst=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}}",
+               where_tag,
+               use_sym,
+               InstDiagTimeStr(required_bar_time),
+               (IsTesterRuntime() ? 1 : 0),
+               (Config::CfgTesterDegradedModeActive(g_cfg) ? 1 : 0),
+               (tester_fb_active ? 1 : 0),
+               tester_fb_status,
+               LogX::San(tester_fb_detail),
+               (runtime_degraded ? 1 : 0),
+               runtime_inst_coverage01,
+               (StateInstitutionalAvailable(g_state) ? 1 : 0),
+               (StateInstitutionalPartial(g_state) ? 1 : 0),
+               (StateInstitutionalUnavailable(g_state) ? 1 : 0),
+               (StateInstitutionalProxyInstitutionalAvailable(g_state) ? 1 : 0),
+               EA_InstSignalSourceName(runtime_inst_sel_source),
+               runtime_inst_sel_source,
+               (StateInstitutionalHardInstBlock(g_state) ? 1 : 0),
+               eff_min_votes,
+               (StateInstitutionalPreFilterPass(g_state) ? 1 : 0),
+               (StateInstitutionalSignalStackGatePass(g_state) ? 1 : 0),
+               (StateInstitutionalLocationPass(g_state) ? 1 : 0));
 }
 
 void EA_ApplyRouterModeAndBucket(RouterConfig &rc)
@@ -6279,33 +6442,110 @@ string EA_CanonicalMainOnlyIdsCsv()
    return csv;
 }
 
-void EA_ParseHypothesisTopFromDiag(const string diag,
-                                   string &stage_out,
-                                   string &reason_out)
+string EA_DiagTokenValue(const string diag, const string key)
 {
-   stage_out = "";
-   reason_out = "";
-
-   const int p = StringFind(diag, "|top=");
+   const string needle = "|" + key + "=";
+   const int p = StringFind(diag, needle);
    if(p < 0)
-      return;
+      return "";
 
-   string tail = StringSubstr(diag, p + 5);
+   string tail = StringSubstr(diag, p + StringLen(needle));
 
    const int pipe = StringFind(tail, "|");
    if(pipe >= 0)
       tail = StringSubstr(tail, 0, pipe);
 
-   const int colon = StringFind(tail, ":");
+   return tail;
+}
+
+string EA_HypothesisRejectStageBucket(const string top_stage)
+{
+   if(StringFind(top_stage, "should") >= 0)
+      return "should_run";
+
+   if(StringFind(top_stage, "evaluate") >= 0 ||
+      StringFind(top_stage, "liquidity") >= 0 ||
+      StringFind(top_stage, "regime") >= 0)
+      return "evaluate";
+
+   if(StringFind(top_stage, "admiss") >= 0 ||
+      StringFind(top_stage, "allow") >= 0 ||
+      StringFind(top_stage, "tradable") >= 0)
+      return "admissibility";
+
+   return "mixed";
+}
+
+string EA_HypothesisEmptyKind(const int considered_n,
+                              const int used_n,
+                              const int allowed_n,
+                              const int rejected_n,
+                              const string reject_stage_bucket)
+{
+   if(considered_n <= 0 || used_n <= 0)
+      return "unregistered";
+
+   if(allowed_n <= 0)
+      return "mode_disallowed";
+
+   if(rejected_n <= 0)
+      return "mixed_rejected";
+
+   if(reject_stage_bucket == "should_run")
+      return "all_shouldrun_failed";
+
+   if(reject_stage_bucket == "evaluate")
+      return "all_evaluate_failed";
+
+   if(reject_stage_bucket == "admissibility")
+      return "all_admissibility_failed";
+
+   return "mixed_rejected";
+}
+
+void EA_ParseHypothesisTopFromDiag(const string diag,
+                                   string &stage_out,
+                                   string &reason_out)
+{
+   stage_out = EA_DiagTokenValue(diag, "top_stage");
+   reason_out = EA_DiagTokenValue(diag, "top_reason");
+
+   if(StringLen(stage_out) > 0 || StringLen(reason_out) > 0)
+      return;
+
+   const string legacy_top = EA_DiagTokenValue(diag, "top");
+   if(StringLen(legacy_top) <= 0)
+      return;
+
+   const int colon = StringFind(legacy_top, ":");
    if(colon >= 0)
    {
-      stage_out  = StringSubstr(tail, 0, colon);
-      reason_out = StringSubstr(tail, colon + 1);
+      stage_out  = StringSubstr(legacy_top, 0, colon);
+      reason_out = StringSubstr(legacy_top, colon + 1);
    }
    else
    {
-      stage_out = tail;
+      stage_out = legacy_top;
    }
+}
+
+string EA_BuildHypothesisRejectTopDiag(const string prefix)
+{
+   string diag = prefix;
+
+   string top_stage = "";
+   string top_reason = "";
+   int top_count = 0;
+
+   StratReg::SR_GetHypothesisRejectTop(top_stage, top_reason, top_count);
+
+   if(StringLen(top_stage) > 0)
+      diag += "|top_stage=" + top_stage;
+
+   if(StringLen(top_reason) > 0)
+      diag += "|top_reason=" + top_reason;
+
+   return diag;
 }
 
 void EA_PublishHypBankTelemetryContext(const int accepted,
@@ -6316,7 +6556,11 @@ void EA_PublishHypBankTelemetryContext(const int accepted,
    string top_stage = "";
    string top_reason = "";
 
-   EA_ParseHypothesisTopFromDiag(transport_diag, top_stage, top_reason);
+   string diag_use = transport_diag;
+   if(StringLen(diag_use) <= 0 && rejected > 0)
+      diag_use = EA_BuildHypothesisRejectTopDiag("hypothesis_bank");
+
+   EA_ParseHypothesisTopFromDiag(diag_use, top_stage, top_reason);
 
    Telemetry::PublishRouterDecisionContext(accepted,
                                            rejected,
@@ -6428,7 +6672,8 @@ string EA_BuildMainOnlyStrategyStateCsv(const Settings &cfg,
 string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
                                          const string sym,
                                          const datetime required_bar_time,
-                                         const int accepted_n)
+                                         const int accepted_n,
+                                         const int rejected_n_actual)
 {
    const StrategyMode sm = Config::CfgStrategyMode(cfg);
 
@@ -6462,9 +6707,46 @@ string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
          top_rejection = "registry:no_eligible_ids";
    }
 
+   string reject_top_stage = "";
+   string reject_top_reason = "";
+   int reject_top_count = 0;
+
+   StratReg::SR_GetHypothesisRejectTop(reject_top_stage,
+                                       reject_top_reason,
+                                       reject_top_count);
+
+   if(StringLen(reject_top_stage) > 0 && StringLen(reject_top_reason) > 0)
+      top_rejection = reject_top_stage + ":" + reject_top_reason;
+
+   if(StringLen(reject_top_stage) <= 0 && StringLen(top_rejection) > 0)
+   {
+      const int colon = StringFind(top_rejection, ":");
+      if(colon >= 0)
+      {
+         reject_top_stage = StringSubstr(top_rejection, 0, colon);
+         reject_top_reason = StringSubstr(top_rejection, colon + 1);
+      }
+      else
+      {
+         reject_top_stage = top_rejection;
+      }
+   }
+
+   string reject_hist = StratReg::SR_FormatHypothesisRejectHistogram();
+   if(StringLen(reject_hist) <= 0)
+      reject_hist = "none";
+
+   StringReplace(reject_hist, " | ", ",");
+
    const int considered_n = ArraySize(considered_ids);
    const int accepted_safe = MathMax(0, accepted_n);
-   const int rejected_n = MathMax(0, considered_n - accepted_safe);
+   const int rejected_n = MathMax(0, rejected_n_actual);
+   const string reject_stage_bucket = EA_HypothesisRejectStageBucket(reject_top_stage);
+   const string empty_kind = EA_HypothesisEmptyKind(considered_n,
+                                                    used_n,
+                                                    allowed_n,
+                                                    rejected_n,
+                                                    reject_stage_bucket);
 
    string diag = "hypothesis_bank_build_failed";
    diag += "|accepted=" + IntegerToString(accepted_safe);
@@ -6477,13 +6759,96 @@ string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
    diag += "|used=" + IntegerToString(used_n);
    diag += "|enabled=" + IntegerToString(enabled_n);
    diag += "|allowed=" + IntegerToString(allowed_n);
+   diag += "|empty_kind=" + empty_kind;
+   diag += "|top_strategy_id=-1";
    diag += "|top=" + top_rejection;
+   diag += "|top_stage=" + (StringLen(reject_top_stage) > 0 ? reject_top_stage : "registry");
+   diag += "|top_reason=" + (StringLen(reject_top_reason) > 0 ? reject_top_reason : top_rejection);
+   diag += "|reject_stage_bucket=" + reject_stage_bucket;
+   diag += "|reject_hist=" + reject_hist;
    diag += "|ids=" + EA_StrategyIdCsvCompact(considered_ids);
 
    if(StringLen(states) > 0)
       diag += "|states=" + states;
 
    return diag;
+}
+
+string EA_BuildHypothesisEmptyBankDiag(const Settings &cfg,
+                                       const string sym,
+                                       const datetime required_bar_time,
+                                       const int accepted_n,
+                                       const int rejected_n_actual)
+{
+   string diag =
+      EA_BuildHypothesisBankFailureDiag(cfg,
+                                        sym,
+                                        required_bar_time,
+                                        accepted_n,
+                                        rejected_n_actual);
+
+   if(StringFind(diag, "hypothesis_bank_build_failed") == 0)
+      diag = "hypothesis_bank_empty" + StringSubstr(diag, StringLen("hypothesis_bank_build_failed"));
+
+   return diag;
+}
+
+void EA_LogRouterBarAnchorSnapshotOnce(const string where_tag,
+                                       const string router_sym,
+                                       const datetime required_bar_time)
+{
+   if(!InpDebug && !IsTesterRuntime())
+      return;
+
+   const string use_sym = (router_sym == "" ? CanonicalRouterSymbol() : router_sym);
+   if(use_sym == "")
+      return;
+
+   const ENUM_TIMEFRAMES tf = Warmup::TF_Entry(g_cfg);
+   if(tf <= PERIOD_CURRENT)
+      return;
+
+   const datetime timer_bar_time = iTime(use_sym, tf, 0);
+   const datetime timer_latch_time = g_router_lastBar_timer;
+   const datetime tick_latch_time = g_router_lastBar_tick;
+   const datetime raw_bar_time = g_raw_bank.bar_time;
+   const datetime transport_bar_time = g_transport_bar_time;
+
+   // LocationPass_t currently does not expose a dedicated bar_time in this file.
+   // For phase-1 diagnostics, use liquidity_event_time as the location-phase anchor.
+   const datetime loc_phase_time = g_location_pass.liquidity_event_time;
+
+   string key = where_tag + "|" +
+                use_sym + "|" +
+                IntegerToString((int)required_bar_time) + "|" +
+                IntegerToString((int)timer_bar_time) + "|" +
+                IntegerToString((int)raw_bar_time) + "|" +
+                IntegerToString((int)g_router_diag_stamp.last_scan_event_time) + "|" +
+                IntegerToString((int)g_router_diag_stamp.last_hub_drain_bar_time);
+
+   static string s_last_key = "";
+   if(key == s_last_key)
+      return;
+
+   s_last_key = key;
+
+   PrintFormat("[RouterBarDiag][%s] sym=%s tf=%s tick_latch=%s timer_bar=%s timer_latch=%s required=%s transport_bar=%s raw_bar=%s loc_phase=%s last_scan_evt=%s last_scan_sym=%s last_scan_tf=%d last_hub_drain=%s last_hub_drain_bar=%s dirty_n=%d",
+               where_tag,
+               use_sym,
+               _RouterTFStr(tf),
+               _RouterBarTimeStr(tick_latch_time),
+               _RouterBarTimeStr(timer_bar_time),
+               _RouterBarTimeStr(timer_latch_time),
+               _RouterBarTimeStr(required_bar_time),
+               _RouterBarTimeStr(transport_bar_time),
+               _RouterBarTimeStr(raw_bar_time),
+               _RouterBarTimeStr(loc_phase_time),
+               _RouterBarTimeStr(g_router_diag_stamp.last_scan_event_time),
+               g_router_diag_stamp.last_scan_sym,
+               g_router_diag_stamp.last_scan_tf,
+               _RouterBarTimeStr(g_router_diag_stamp.last_hub_drain_time),
+               _RouterBarTimeStr(g_router_diag_stamp.last_hub_drain_bar_time),
+               g_msh_dirty_n);
 }
 
 void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
@@ -6495,7 +6860,8 @@ void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
    if(!IsTesterRuntime())
       return;
 
-   if(StringFind(transport_diag, "hypothesis_bank_build_failed") != 0)
+   if(StringFind(transport_diag, "hypothesis_bank_build_failed") != 0 &&
+      StringFind(transport_diag, "hypothesis_bank_empty") != 0)
       return;
 
    static string s_last_key = "";
@@ -6636,7 +7002,8 @@ bool BuildCanonicalSignalStackTransport(const string sym,
       diag_out = EA_BuildHypothesisBankFailureDiag(g_cfg,
                                                    use_sym,
                                                    required_bar_time,
-                                                   g_hyp_bank.count);
+                                                   g_hyp_bank.count,
+                                                   g_hyp_bank.rejected_count);
       return false;
    }
 
@@ -7119,6 +7486,16 @@ bool RunCachedRouterPass(const string router_sym,
       const string transport_reason =
          (transport_diag != "" ? transport_diag : "canonical_transport_not_ready");
 
+      EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
+                                        g_hyp_bank.rejected_count,
+                                        transport_reason,
+                                        "hyp_bank");
+
+      EA_LogTransportSnapshotOncePerBar("transport_fail",
+                                        router_sym,
+                                        required_bar_time,
+                                        transport_reason);
+                                        
       DecisionTelemetry_MarkGateBlocked("router", transport_reason);
 
       if(IsTesterRuntime())
@@ -7140,12 +7517,42 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
+   EA_LogTransportSnapshotOncePerBar("post_transport_ok",
+                                     router_sym,
+                                     required_bar_time,
+                                     "transport_ok");
+
+   EA_LogRouterBarAnchorSnapshotOnce("pre_router",
+                                     router_sym,
+                                     required_bar_time);
+   
    if(g_hyp_bank.count <= 0)
    {
+      const string hyp_empty_diag =
+         EA_BuildHypothesisEmptyBankDiag(g_cfg,
+                                         router_sym,
+                                         required_bar_time,
+                                         g_hyp_bank.count,
+                                         g_hyp_bank.rejected_count);
+
       EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
                                         g_hyp_bank.rejected_count,
-                                        "",
+                                        hyp_empty_diag,
                                         "hyp_bank");
+
+      EA_LogTransportSnapshotOncePerBar("hyp_bank_empty",
+                                        router_sym,
+                                        required_bar_time,
+                                        hyp_empty_diag);
+
+      if(IsTesterRuntime())
+      {
+         EA_LogHypothesisBankRootCauseBundleOnce(g_cfg,
+                                                 router_sym,
+                                                 required_bar_time,
+                                                 origin_tag,
+                                                 hyp_empty_diag);
+      }
 
       DecisionTelemetry_MarkNoCandidates("router", "hypothesis_bank_empty");
       MSH_DirtyClear();
@@ -7187,6 +7594,77 @@ bool RunCachedRouterPass(const string router_sym,
                                       routed_dir,
                                       g_final_integrated.route_rank,
                                       routed_name);
+
+      string routed_dir_text = (routed_dir == DIR_SELL ? "SELL" : "BUY");
+
+      BaseContextVector base_ctx;
+      StructureVector struct_ctx;
+      CoverageContextVector coverage_ctx;
+      AuxContextVector aux_ctx;
+
+      base_ctx.Reset();
+      struct_ctx.Reset();
+      coverage_ctx.Reset();
+      aux_ctx.Reset();
+
+      State::SetStrategyPipelineTransport(g_raw_bank,
+                                          g_cat_selected,
+                                          g_cat_pass,
+                                          g_sig_stack_gate,
+                                          g_location_pass,
+                                          base_ctx,
+                                          struct_ctx,
+                                          coverage_ctx,
+                                          aux_ctx,
+                                          g_hyp_bank,
+                                          g_final_integrated,
+                                          TimeCurrent(),
+                                          required_bar_time);
+
+      Exec::Outcome ex = Exec::SendIntegratedStateSymEx(router_sym,
+                                                        g_final_integrated,
+                                                        g_cfg);
+
+      HintTradeDisabledOnce(ex);
+
+      if(ex.ok)
+      {
+         LogX::Info(StringFormat("[RouterExec] sym=%s sid=%d dir=%s route_rank=%.3f send=1 ticket=%I64d retcode=%u intent_source=integrated_state",
+                                 router_sym,
+                                 (int)g_final_integrated.hypothesis.strategy_id,
+                                 routed_dir_text,
+                                 g_final_integrated.route_rank,
+                                 (long)ex.ticket,
+                                 ex.retcode));
+      }
+      else
+      {
+         string exec_detail = "";
+         const int exec_class = ExecRejectClassify(ex, exec_detail);
+
+         LogX::Warn(StringFormat("[RouterExec] sym=%s sid=%d dir=%s route_rank=%.3f send=0 class=%d retcode=%u err=%d(%s) intent_source=integrated_state",
+                                 router_sym,
+                                 (int)g_final_integrated.hypothesis.strategy_id,
+                                 routed_dir_text,
+                                 g_final_integrated.route_rank,
+                                 exec_class,
+                                 ex.retcode,
+                                 ex.last_error,
+                                 LogX::San(exec_detail)));
+
+         TraceNoTrade(router_sym,
+                      TS_EXEC,
+                      TR_EXEC_REJECT,
+                      StringFormat("Exec::SendIntegratedStateSymEx rejected class=%d retcode=%u detail=%s",
+                                   exec_class,
+                                   ex.retcode,
+                                   exec_detail),
+                      (int)g_final_integrated.hypothesis.strategy_id,
+                      routed_dir,
+                      g_final_integrated.route_rank,
+                      0.0,
+                      (int)ex.retcode);
+      }
    }
 
    if(routed && Telemetry::RouterDecisionSeq() != router_seq_before)
@@ -7237,10 +7715,12 @@ void PushICTTelemetryToReviewUI(const ICT_Context &ictCtx)
    j += "\"hyp_reject_top_stage\":" + Telemetry::JsonStringOrNull(StringLen(tel_hyp_reject_top_stage) > 0, tel_hyp_reject_top_stage) + ",";
    j += "\"hyp_reject_top_reason\":" + Telemetry::JsonStringOrNull(StringLen(tel_hyp_reject_top_reason) > 0, tel_hyp_reject_top_reason) + ",";
    j += "\"main_only_ids_active\":" + Telemetry::JsonStringOrNull(StringLen(tel_main_only_ids_active) > 0, tel_main_only_ids_active) + ",";
-   j += "\"route_path\":" + Telemetry::JsonStringOrNull(StringLen(tel_route_path) > 0, tel_route_path) + ",";
-   j += EA_RuntimeGateJsonFragment(S) + ",";
-   j += "\"last_drop_reason\":" + Telemetry::JsonStringOrNull(has_drop_reason, g_decision_tel.last_drop_reason);
+   j += "\"route_path\":" + Telemetry::JsonStringOrNull(StringLen(tel_route_path) > 0, tel_route_path);
+   j += EA_RuntimeGateJsonFragment(S);
+   j += ",\"last_drop_reason\":" + Telemetry::JsonStringOrNull(has_drop_reason, g_decision_tel.last_drop_reason);
    j += "}";
+
+   EA_DebugValidateJsonAssembly("ict.ctx", j);
 
 #ifdef TELEMETRY_HAS_KV
    Telemetry::KV("ict.ctx", j);
