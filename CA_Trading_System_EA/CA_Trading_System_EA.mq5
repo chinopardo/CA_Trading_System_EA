@@ -2067,8 +2067,20 @@ bool WarmupGateOK()
 
    // Primary readiness: same gates you already use elsewhere
    const bool gate_ready = (InpDebug ? Warmup::GateReadyOnce(InpDebug) : true); // debug info only
-   const bool data_ready = Warmup::DataReadyForEntryRT(g_cfg, InpDebug);        // RT non-blocking series check
-   const bool ready      = data_ready;     
+
+   Warmup::ProductionWarmupReadiness rd;
+   rd.Reset();
+
+   const bool data_ready =
+      Warmup::FinalRoutePrereqsReadyEx(_Symbol,
+                                       g_cfg,
+                                       rd,
+                                       0,
+                                       0,
+                                       false,
+                                       1);
+
+   const bool ready = data_ready; 
    
    if(ready)
    {
@@ -2100,8 +2112,11 @@ bool WarmupGateOK()
       {
          last_warn = now;
          TraceNoTrade(_Symbol, TS_GATE, GATE_WARMUP,
-                      StringFormat("WarmupGateOK=false gate_ready=%d data_ready=%d ticks=%d",
-                                   (int)gate_ready, (int)data_ready, ticks));
+                      StringFormat("WarmupGateOK=false gate_ready=%d data_ready=%d ticks=%d %s",
+                                   (int)gate_ready,
+                                   (int)data_ready,
+                                   ticks,
+                                   rd.why));
       }
    }
    return false;
@@ -4453,6 +4468,58 @@ bool NewBarFor(const string sym, const ENUM_TIMEFRAMES tf)
 static datetime g_router_lastBar_timer = 0;
 static datetime g_router_lastBar_tick  = 0;
 
+static bool g_startup_transport_seeded   = false;
+static bool g_startup_transport_promoted = false;
+static bool g_startup_router_enabled     = false;
+
+string EA_StartupReqBarStr(const datetime ts)
+{
+   if(ts <= 0)
+      return "-";
+
+   return TimeToString(ts, TIME_DATE | TIME_MINUTES);
+}
+
+void EA_LogStartupRouteSummary(const Settings &cfg,
+                               const string sym,
+                               const string phase,
+                               const datetime req_bar_time,
+                               const bool transport_ready,
+                               const string detail)
+{
+   string promo_src = "none";
+   EAState st_route;
+
+   if(sym != "" && State::TryGetRuntimeStateBySymbol(cfg, sym, st_route, false))
+   {
+      promo_src =
+         StateInstitutionalPromotionSourceTag(
+            StateInstitutionalResolvePromotionSource(st_route, false, req_bar_time));
+   }
+
+   const int main_only =
+      ((int)Config::CfgStrategyMode(cfg) == (int)STRAT_MAIN_ONLY ? 1 : 0);
+
+   LogX::Info(StringFormat(
+      "[StartupRouteSummary] phase=%s main_only=%d sym=%s req=%s promo=%s seeded=%d promoted=%d router_enabled=%d transport_ready=%d detail=%s",
+      phase,
+      main_only,
+      sym,
+      EA_StartupReqBarStr(req_bar_time),
+      promo_src,
+      (g_startup_transport_seeded ? 1 : 0),
+      (g_startup_transport_promoted ? 1 : 0),
+      (g_startup_router_enabled ? 1 : 0),
+      (transport_ready ? 1 : 0),
+      detail));
+}
+
+static bool     g_startup_router_seed_ready        = false;
+static bool     g_startup_router_gate_logged       = false;
+static string   g_startup_router_seed_sym          = "";
+static string   g_startup_router_seed_diag         = "";
+static datetime g_startup_router_seed_req_bar_time = 0;
+
 bool IsNewBarRouterByLatch(const string sym,
                            const ENUM_TIMEFRAMES tf,
                            datetime &last_bar_latch)
@@ -5683,19 +5750,32 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
    const datetime flow_ts = StateInstitutionalFlowBundleTime(g_state);
    const bool direct_ok = StateInstitutionalDirectMicroAvailable(g_state);
    const bool proxy_ok  = StateInstitutionalProxyMicroAvailable(g_state);
+   const bool degraded_usable = StateInstitutionalDegradedTransportUsable(g_state);
+
+   const string matrix_core =
+      StringFormat("fresh_code=%d head=%s flow=%s direct=%d proxy=%d degraded=%d req=%s",
+                   fresh_code,
+                   InstDiagTimeStr(head_bar_time),
+                   InstDiagTimeStr(flow_ts),
+                   (direct_ok ? 1 : 0),
+                   (proxy_ok ? 1 : 0),
+                   (degraded_usable ? 1 : 0),
+                   InstDiagTimeStr(effective_required_bar_time));
+
+   string bar_align_detail = "bar_align=exact";
+   if(bar_misaligned_hard)
+      bar_align_detail = StringFormat("bar_align=fallback closed=%s",
+                                      InstDiagTimeStr(bar_misaligned_closed_bar_time));
 
    if(!state_fresh &&
       g_is_tester &&
       StateInstitutionalDegradedTransportUsable(g_state) &&
       flow_ts > 0)
    {
-      diag_out = StringFormat("degraded_tester_usable flow=%s direct=%d proxy=%d head=%s req=%s reason=%s",
-                              InstDiagTimeStr(flow_ts),
-                              (direct_ok ? 1 : 0),
-                              (proxy_ok ? 1 : 0),
-                              InstDiagTimeStr(head_bar_time),
-                              InstDiagTimeStr(effective_required_bar_time),
-                              fresh_why);
+       diag_out = StringFormat("degraded_tester_usable %s %s reason=%s",
+                               matrix_core,
+                               bar_align_detail,
+                               fresh_why);
       return true;
    }
 
@@ -5703,25 +5783,20 @@ bool EnsureCanonicalInstitutionalStateReady(const string sym,
 
    if(flow_ts <= 0)
    {
-      if(bar_misaligned_hard)
-         diag_out = StringFormat("%s flow=- direct=%d proxy=%d head=%s req=%s closed=%s reason=%s",
-                                 fail_tag,
-                                 (direct_ok ? 1 : 0),
-                                 (proxy_ok ? 1 : 0),
-                                 InstDiagTimeStr(head_bar_time),
-                                 InstDiagTimeStr(effective_required_bar_time),
-                                 InstDiagTimeStr(bar_misaligned_closed_bar_time),
-                                 fresh_why);
-      else
-         diag_out = StringFormat("%s flow=- direct=%d proxy=%d head=%s req=%s reason=%s",
-                                 fail_tag,
-                                 (direct_ok ? 1 : 0),
-                                 (proxy_ok ? 1 : 0),
-                                 InstDiagTimeStr(head_bar_time),
-                                 InstDiagTimeStr(effective_required_bar_time),
-                                 fresh_why);
+      diag_out = StringFormat("%s %s %s reason=%s",
+                              fail_tag,
+                              matrix_core,
+                              bar_align_detail,
+                              fresh_why);
       return false;
    }
+
+   diag_out = StringFormat("%s %s %s reason=%s",
+                           fail_tag,
+                           matrix_core,
+                           bar_align_detail,
+                           fresh_why);
+   return false;
 
    if(bar_misaligned_hard)
       diag_out = StringFormat("%s flow=%s direct=%d proxy=%d head=%s req=%s closed=%s reason=%s",
@@ -7024,10 +7099,33 @@ void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refre
    const datetime requested_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
    string inst_diag = "";
    const bool inst_ready = EnsureCanonicalInstitutionalStateReady(sym, requested_bar_time, inst_diag);
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+
+   if(use_sym == CanonicalRouterSymbol())
+   {
+      g_startup_router_seed_sym = use_sym;
+      g_startup_router_seed_req_bar_time = requested_bar_time;
+
+      if(inst_ready)
+      {
+         g_startup_router_seed_ready = true;
+         g_startup_router_seed_diag = "refresh_ready";
+      }
+      else if(inst_diag != "")
+      {
+         g_startup_router_seed_ready = false;
+         g_startup_router_seed_diag = inst_diag;
+      }
+
+      if(inst_ready)
+         g_startup_transport_promoted = true;
+      else if(g_startup_transport_seeded)
+         g_startup_transport_promoted = false;
+   }
 
    if(InpDebug && !inst_ready && inst_diag != "")
    {
-      const string log_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+      const string log_sym = use_sym;
       const datetime throttle_key = (requested_bar_time > 0 ? requested_bar_time : TimeCurrent());
 
       static string last_sym = "";
@@ -7064,9 +7162,27 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
    const string use_sym = (sym == "" ? _Symbol : sym);
    const ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)cfg.tf_entry;
 
+   const bool is_router_sym = (use_sym == CanonicalRouterSymbol());
+
+   if(is_router_sym)
+   {
+      g_startup_router_seed_sym = use_sym;
+      g_startup_router_seed_ready = false;
+      g_startup_router_seed_diag = "";
+      g_startup_router_seed_req_bar_time = 0;
+
+      g_startup_transport_seeded = false;
+      g_startup_transport_promoted = false;
+      g_startup_router_enabled = false;
+   }
+
    if(use_sym == "" || tf <= PERIOD_CURRENT)
    {
       diag_out = "invalid_symbol_or_tf";
+
+      if(is_router_sym)
+         g_startup_router_seed_diag = diag_out;
+
       return false;
    }
 
@@ -7075,6 +7191,10 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
    if(!State::TryGetRuntimeStateBySymbol(cfg, use_sym, st_sym, false))
    {
       diag_out = "runtime_slot_seed_failed";
+
+      if(is_router_sym)
+         g_startup_router_seed_diag = diag_out;
+
       return false;
    }
 
@@ -7085,8 +7205,15 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
    if(!MarketData::EnsureRuntimeStateInputsReady(use_sym, tf, bars_need))
    {
       diag_out = "runtime_slot_seeded_inputs_pending";
+
+      if(is_router_sym)
+         g_startup_router_seed_diag = diag_out;
+
       return false;
    }
+
+   if(is_router_sym)
+      g_startup_transport_seeded = true;
 
    // Step 3: prefer snapshot-driven canonical promotion when startup already has one.
    datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(use_sym);
@@ -7095,11 +7222,19 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
    if(required_bar_time <= 0)
       required_bar_time = iTime(use_sym, tf, 0);
 
+   if(is_router_sym)
+      g_startup_router_seed_req_bar_time = required_bar_time;
+
    bool promoted_from_snapshot =
       Scan::PromoteRuntimeSymbolStateFromSnapshot(cfg,
                                                   use_sym,
                                                   tf,
                                                   required_bar_time);
+
+   ENUM_STATE_INST_PROMOTION_SOURCE startup_src =
+       StateInstitutionalResolvePromotionSource(st_sym,
+                                                promoted_from_snapshot,
+                                                required_bar_time);
 
    // Step 4: if no current snapshot is available yet, fall back to local State promotion.
    if(!promoted_from_snapshot)
@@ -7115,14 +7250,21 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
 
       State::UpsertRuntimeSymbolState(use_sym, st_sym);
 
+      startup_src = StateInstitutionalResolvePromotionSource(st_sym,
+                                                             false,
+                                                             required_bar_time);
+
       if(promote_why != "")
-         diag_out = "promotion=" + promote_why;
+         diag_out = "src=" + StateInstitutionalPromotionSourceTag(startup_src) +
+                    " | promotion=" + promote_why;
       else
-         diag_out = "runtime_slot_seeded_local_promotion";
+         diag_out = "src=" + StateInstitutionalPromotionSourceTag(startup_src) +
+                    " | runtime_slot_seeded_local_promotion";
    }
    else
    {
-      diag_out = "snapshot_promoted";
+      diag_out = "src=" + StateInstitutionalPromotionSourceTag(STATE_INST_PROMO_SRC_SNAPSHOT_PROMOTION) +
+                 " | snapshot_promoted";
    }
 
    // Step 5: reload the symbol slot and confirm readiness.
@@ -7130,11 +7272,40 @@ bool PreseedRuntimeSymbolStateAtStartup(const string sym,
    if(State::TryGetRuntimeStateBySymbol(cfg, use_sym, st_chk, false) &&
       StateInstitutionalStrategyReady(st_chk, required_bar_time))
    {
+      if(is_router_sym)
+      {
+         g_startup_router_seed_ready = true;
+         g_startup_router_seed_diag = "startup_ready";
+      }
+
+      if(diag_out == "")
+         diag_out = "src=" + StateInstitutionalPromotionSourceTag(
+                       StateInstitutionalResolvePromotionSource(st_chk,
+                                                                promoted_from_snapshot,
+                                                                required_bar_time));
+
+      diag_out += " | " + StateInstitutionalClosedBarParityDiag(st_chk, required_bar_time);
+
+      if(is_router_sym)
+      {
+         g_startup_transport_promoted = true;
+         g_startup_router_enabled = false;
+      }
+
       return true;
    }
 
-   if(diag_out == "")
-      diag_out = "runtime_slot_seeded_not_ready";
+    if(diag_out == "")
+       diag_out = "runtime_slot_seeded_not_ready";
+
+    if(State::TryGetRuntimeStateBySymbol(cfg, use_sym, st_chk, false))
+       diag_out += " | " + StateInstitutionalClosedBarParityDiag(st_chk, required_bar_time);
+
+   if(is_router_sym)
+   {
+      g_startup_router_seed_ready = false;
+      g_startup_router_seed_diag = diag_out;
+   }
 
    return false;
 }
@@ -7169,6 +7340,34 @@ void PreseedRuntimeSymbolPoolAtStartup(const Settings &cfg)
                                  (ok0 ? 1 : 0),
                                  diag0));
       }
+
+       if(ok0)
+       {
+          const datetime startup_req_bar = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+          string startup_assert_diag = "";
+          const bool startup_assert_ok =
+             EnsureCanonicalInstitutionalStateReady(router_sym, startup_req_bar, startup_assert_diag);
+
+          g_startup_router_seed_sym = router_sym;
+          g_startup_router_seed_req_bar_time = startup_req_bar;
+          g_startup_router_seed_ready = startup_assert_ok;
+          g_startup_router_seed_diag = (startup_assert_ok ? "startup_assert_ready"
+                                                          : "startup_assert|" + startup_assert_diag);
+
+          if(InpDebug || !startup_assert_ok)
+          {
+             LogX::Info(StringFormat("[StartupRouteGate] phase=bootstrap sym=%s ready=%d detail=%s",
+                                     router_sym,
+                                     (startup_assert_ok ? 1 : 0),
+                                     g_startup_router_seed_diag));
+          }
+       }
+       else
+       {
+          g_startup_router_seed_sym = router_sym;
+          g_startup_router_seed_ready = false;
+          g_startup_router_seed_diag = diag0;
+       }
    }
 
    // Seed the remainder of the watchlist once.
@@ -8097,6 +8296,14 @@ int OnInit()
    // Centralized DOM ownership starts only after the watchlist and hub are finalized.
    EA_EnsureCentralDOMSubscriptions();
 
+   g_startup_transport_seeded = false;
+   g_startup_transport_promoted = false;
+   g_startup_router_enabled = false;
+   g_startup_router_gate_logged = false;
+   g_startup_router_seed_sym = "";
+   g_startup_router_seed_diag = "";
+   g_startup_router_seed_req_bar_time = 0;
+
    // 4. One-shot startup pre-seed of the runtime symbol-owned State pool.
    // This reduces first-timer catch-up by creating / hydrating each symbol slot once now.
    PreseedRuntimeSymbolPoolAtStartup(S);
@@ -8107,6 +8314,77 @@ int OnInit()
    {
       const string ms_sym0 = CanonicalRouterSymbol();
       RefreshRuntimeContextFromHub(ms_sym0, true);
+
+      Warmup::ProductionWarmupReadiness rd;
+      rd.Reset();
+
+      const datetime startup_req_bar = ResolveCanonicalInstitutionalRequiredBarTime(ms_sym0);
+      string startup_gate_diag = "";
+      const bool startup_gate_ok =
+         EnsureCanonicalInstitutionalStateReady(ms_sym0, startup_req_bar, startup_gate_diag);
+
+      const bool startup_transport_ready = startup_gate_ok;
+      const string startup_diag = startup_gate_diag;
+
+      const bool route_ready =
+         Warmup::FinalRoutePrereqsReadyEx(ms_sym0,
+                                          S,
+                                          rd,
+                                          0,
+                                          0,
+                                          false,
+                                          1);
+
+      g_startup_router_seed_sym = ms_sym0;
+      g_startup_router_seed_req_bar_time = startup_req_bar;
+      g_startup_router_seed_ready = startup_gate_ok;
+      g_startup_router_seed_diag = (startup_gate_ok ? "init_assert_ready"
+                                                    : "init_assert|" + startup_gate_diag);
+
+      if(startup_transport_ready)
+      {
+         g_startup_transport_promoted = true;
+         g_startup_router_enabled = true;
+         g_startup_router_seed_ready = true;
+         g_startup_router_seed_diag = "init_promoted_ready";
+      }
+      else
+      {
+         g_startup_transport_promoted = false;
+         g_startup_router_enabled = false;
+         g_startup_router_seed_ready = false;
+
+         if(startup_diag != "")
+            g_startup_router_seed_diag = startup_diag;
+         else
+            g_startup_router_seed_diag = "init_transport_not_ready";
+      }
+
+      EA_LogStartupRouteSummary(S,
+                                ms_sym0,
+                                "init",
+                                startup_req_bar,
+                                startup_transport_ready,
+                                g_startup_router_seed_diag);
+
+      if(InpDebug || !startup_gate_ok)
+      {
+         LogX::Info(StringFormat("[StartupRouteGate] phase=init sym=%s ready=%d detail=%s",
+                                 ms_sym0,
+                                 (startup_gate_ok ? 1 : 0),
+                                 g_startup_router_seed_diag));
+      }
+
+      if(InpDebug)
+      {
+         LogX::Info(StringFormat("[WarmupStartup] sym=%s ready=%d req=%s route_src=%s %s",
+                                 ms_sym0,
+                                 (route_ready ? 1 : 0),
+                                 Warmup::WarmupRouteReqBarString(rd.required_bar_time),
+                                 rd.route_transport_source,
+                                 rd.why));
+      }
+
       MSH_DirtyClear(); // avoid a redundant immediate first-timer route off init-only warm state
    }
 
@@ -8297,6 +8575,15 @@ void OnBookEvent(const string &symbol)
 void OnDeinit(const int reason)
   {
    g_inited = false;
+
+   g_startup_transport_seeded = false;
+   g_startup_transport_promoted = false;
+   g_startup_router_enabled = false;
+   g_startup_router_gate_logged = false;
+   g_startup_router_seed_sym = "";
+   g_startup_router_seed_diag = "";
+   g_startup_router_seed_req_bar_time = 0;
+
    MSH::Deinit();
    EA_ReleaseCentralDOMSubscriptions();
    MSH_DirtyClear();
@@ -8365,6 +8652,60 @@ void OnTimer()
    // institutional state never becomes "fresh" in the tester, causing the
    // microstructure gate to veto all trades.
    RefreshRuntimeContextFromHub(router_sym, true);
+
+   const datetime startup_req_bar = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+   string startup_diag = "";
+   const bool startup_transport_ready =
+      EnsureCanonicalInstitutionalStateReady(router_sym, startup_req_bar, startup_diag);
+
+   g_startup_router_seed_sym = router_sym;
+   g_startup_router_seed_req_bar_time = startup_req_bar;
+
+   if(startup_transport_ready)
+   {
+      g_startup_transport_promoted = true;
+      g_startup_router_seed_ready = true;
+
+      if(!g_startup_router_enabled)
+      {
+         g_startup_router_enabled = true;
+         g_startup_router_gate_logged = false;
+         g_startup_router_seed_diag = "timer_promoted_ready";
+
+         EA_LogStartupRouteSummary(S,
+                                   router_sym,
+                                   "timer_enable",
+                                   startup_req_bar,
+                                   true,
+                                   g_startup_router_seed_diag);
+      }
+   }
+   else
+   {
+      g_startup_transport_promoted = false;
+      g_startup_router_enabled = false;
+      g_startup_router_seed_ready = false;
+
+      if(startup_diag != "")
+         g_startup_router_seed_diag = startup_diag;
+      else if(g_startup_router_seed_diag == "")
+         g_startup_router_seed_diag = "startup_transport_not_ready";
+
+      if(!g_startup_router_gate_logged)
+      {
+         g_startup_router_gate_logged = true;
+
+         EA_LogStartupRouteSummary(S,
+                                   router_sym,
+                                   "timer_wait",
+                                   startup_req_bar,
+                                   false,
+                                   g_startup_router_seed_diag);
+      }
+
+      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+      return;
+   }
 
    if(g_msh_dirty_n > 0)
       g_msh_idle_heartbeat_streak = 0;
@@ -8503,6 +8844,44 @@ void OnTimer()
    }
 
    g_msh_last_forced_router_eval_ts = now_srv;
+
+   string startup_gate_diag = "";
+   const bool startup_gate_ok =
+      EnsureCanonicalInstitutionalStateReady(router_sym,
+                                             g_startup_router_seed_req_bar_time,
+                                             startup_gate_diag);
+
+   if(!g_startup_router_seed_ready || !startup_gate_ok)
+   {
+      if(startup_gate_diag == "")
+      {
+         if(g_startup_router_seed_diag != "")
+            startup_gate_diag = g_startup_router_seed_diag;
+         else
+            startup_gate_diag = "startup_preseed_not_ready";
+      }
+
+      g_startup_router_seed_ready = false;
+      g_startup_router_seed_diag = startup_gate_diag;
+
+      if(InpDebug)
+      {
+         if(!g_startup_router_gate_logged)
+         {
+            g_startup_router_gate_logged = true;
+            LogX::Info(StringFormat("[StartupRouteGate] phase=timer sym=%s ready=0 detail=%s",
+                                    router_sym,
+                                    startup_gate_diag));
+         }
+      }
+
+      PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
+      return;
+   }
+
+   g_startup_router_gate_logged = false;
+   g_startup_router_seed_ready = true;
+   g_startup_router_seed_diag = "timer_ready";
 
    RunCachedRouterPass(router_sym, now_srv, "Timer");
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
