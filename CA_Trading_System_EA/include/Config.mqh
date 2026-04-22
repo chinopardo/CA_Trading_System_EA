@@ -3184,6 +3184,16 @@ namespace Config
               CfgMainTesterAllowLiquidityObservabilitySoftening(cfg));
    }
 
+   inline string CfgMainTesterStageSofteningSummary(const Settings &cfg)
+   {
+      return StringFormat("tester_degraded=%d main_stage_loose=%d main_stage_obs=%d main_stage_regime=%d main_stage_liquidity=%d",
+                          (CfgTesterDegradedModeActive(cfg) ? 1 : 0),
+                          (CfgMainTesterLooseModeActive(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowDegradedObservabilitySoftening(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowRegimeObservabilitySoftening(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowLiquidityObservabilitySoftening(cfg) ? 1 : 0));
+   }
+
    inline bool CfgInstitutionalStrictTransportExpected()
    {
    #ifdef BUILD_PROFILE_STRICT_PRODUCTION_INSTITUTIONAL

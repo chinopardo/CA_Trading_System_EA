@@ -2702,6 +2702,8 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
    const bool runtime_degraded = EA_RuntimeInstitutionalDegradeActive();
    const double runtime_inst_coverage01 = StateInstitutionalCoverage01(g_state);
    const int runtime_inst_sel_source = StateInstitutionalSignalSource(g_state);
+   const string main_stage_softening =
+      Config::CfgMainTesterStageSofteningSummary(g_cfg);
 
    string key = where_tag + "|" +
                 use_sym + "|" +
@@ -2719,7 +2721,7 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
 
    s_last_key = key;
 
-   PrintFormat("[TransportDiag][%s][transport] sym=%s req=%s detail=%s transport{ready=%d bar=%s sym=%s} raw{valid=%d dir11=%d bar=%s} transport_inst{rawAvail=%d rawPartial=%d rawUnavail=%d rawProxyInst=%d rawHardBlock=%d rawSelSource=%s(%d) rawObs=%.2f stackPass=%d effVotes=%d stackCov=%.2f stackAvail=%d stackPartial=%d stackUnavail=%d stackProxyInst=%d stackHardBlock=%d stackSelSource=%s(%d)} sel{count=%d inst=%d trend=%d mom=%d vol=%d vola=%d trendZ=%.2f momZ=%.2f} loc{pass=%d poi=%.2f poiKind=%d liqEvt=%d liqEvtTime=%s sweep=%.2f liqGap=%.2f spreadZ=%.2f slipZ=%.2f depthZ=%.2f} hyp{accepted=%d rejected=%d}",
+   PrintFormat("[TransportDiag][%s][transport] sym=%s req=%s detail=%s transport{ready=%d bar=%s sym=%s} raw{valid=%d dir11=%d bar=%s} transport_inst{rawAvail=%d rawPartial=%d rawUnavail=%d rawProxyInst=%d rawHardBlock=%d rawSelSource=%s(%d) rawObs=%.2f stackPass=%d effVotes=%d stackCov=%.2f stackAvail=%d stackPartial=%d stackUnavail=%d stackProxyInst=%d stackHardBlock=%d stackSelSource=%s(%d)} sel{count=%d inst=%d trend=%d mom=%d vol=%d vola=%d trendZ=%.2f momZ=%.2f} loc{pass=%d poi=%.2f poiKind=%d liqEvt=%d liqEvtType=%s liqEvtTime=%s sweepDir=%d sweep=%.2f liqGap=%.2f spreadZ=%.2f slipZ=%.2f depthZ=%.2f prov=%s} hyp{accepted=%d rejected=%d}",
                where_tag,
                use_sym,
                InstDiagTimeStr(required_bar_time),
@@ -2760,16 +2762,19 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
                g_location_pass.poi_score01,
                g_location_pass.poi_kind,
                (g_location_pass.liquidity_event_time > 0 ? 1 : 0),
+               LogX::San(g_location_pass.liquidity_event_type),
                InstDiagTimeStr(g_location_pass.liquidity_event_time),
+               g_location_pass.sweep_dir,
                g_location_pass.sweep_score,
                g_location_pass.liquidity_gap,
                g_location_pass.spread_shock_z,
                g_location_pass.slippage_z,
                g_location_pass.depth_fade_z,
+               LogX::San(g_location_pass.liquidity_event_provenance),
                g_hyp_bank.count,
                g_hyp_bank.rejected_count);
 
-   PrintFormat("[TransportDiag][%s][runtime] sym=%s req=%s tester{is=%d degradedMode=%d fallbackActive=%d fallbackStatus=%s fallbackDetail=%s} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyInst=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}}",
+   PrintFormat("[TransportDiag][%s][runtime] sym=%s req=%s tester{is=%d degradedMode=%d fallbackActive=%d fallbackStatus=%s fallbackDetail=%s mainStage=%s} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyInst=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}}",
                where_tag,
                use_sym,
                InstDiagTimeStr(required_bar_time),
@@ -2778,6 +2783,7 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
                (tester_fb_active ? 1 : 0),
                tester_fb_status,
                LogX::San(tester_fb_detail),
+               LogX::San(main_stage_softening),
                (runtime_degraded ? 1 : 0),
                runtime_inst_coverage01,
                (StateInstitutionalAvailable(g_state) ? 1 : 0),
@@ -6813,6 +6819,12 @@ string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
 
    StringReplace(reject_hist, " | ", ",");
 
+   string reject_hist_by_strategy = StratReg::SR_FormatHypothesisRejectHistogramByStrategy();
+   if(StringLen(reject_hist_by_strategy) <= 0)
+      reject_hist_by_strategy = "none";
+
+   StringReplace(reject_hist_by_strategy, " | ", ",");
+
    const int considered_n = ArraySize(considered_ids);
    const int accepted_safe = MathMax(0, accepted_n);
    const int rejected_n = MathMax(0, rejected_n_actual);
@@ -6841,6 +6853,7 @@ string EA_BuildHypothesisBankFailureDiag(const Settings &cfg,
    diag += "|top_reason=" + (StringLen(reject_top_reason) > 0 ? reject_top_reason : top_rejection);
    diag += "|reject_stage_bucket=" + reject_stage_bucket;
    diag += "|reject_hist=" + reject_hist;
+   diag += "|reject_hist_by_strategy=" + reject_hist_by_strategy;
    diag += "|ids=" + EA_StrategyIdCsvCompact(considered_ids);
 
    if(StringLen(states) > 0)
@@ -6984,6 +6997,15 @@ void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
       ArraySize(canonical_ids),
       main_top);
 
+   msg += " main_stage=" + Config::CfgMainTesterStageSofteningSummary(cfg);
+   msg += StringFormat(" loc{pass=%d poiKind=%d poi=%.2f liqEvt=%d liqType=%s sweepDir=%d sweep=%.2f}",
+                       g_location_pass.pass,
+                       g_location_pass.poi_kind,
+                       g_location_pass.poi_score01,
+                       (g_location_pass.liquidity_event_time > 0 ? 1 : 0),
+                       LogX::San(g_location_pass.liquidity_event_type),
+                       g_location_pass.sweep_dir,
+                       g_location_pass.sweep_score);
    msg += " main_states=" + main_states;
    LogX::Warn(msg);
 }

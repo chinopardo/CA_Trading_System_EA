@@ -375,6 +375,29 @@ inline void FillSignalStackGateFromPass(const CategoryPassVector &passv,
    out_gate.inst_sel_source = passv.inst_sel_source;
 }
 
+inline int ResolveLocationPoiKindFromBank(const RawSignalBank_t &bank)
+{
+   if(bank.ms.poi_kind > 0)
+      return 1;
+
+   if(bank.ms.poi_kind < 0)
+      return -1;
+
+   if(bank.direction_dir11 > 0 &&
+      (bank.ms.poi_score01 >= 0.20 || bank.ms.liquidity_event_score01 >= 0.25))
+   {
+      return 1;
+   }
+
+   if(bank.direction_dir11 < 0 &&
+      (bank.ms.poi_score01 >= 0.20 || bank.ms.liquidity_event_score01 >= 0.25))
+   {
+      return -1;
+   }
+
+   return 0;
+}
+
 inline void FillLocationPassFromBank(const CategoryPassVector &passv,
                                      const RawSignalBank_t &bank,
                                      LocationPass_t &out_loc)
@@ -390,9 +413,17 @@ inline void FillLocationPassFromBank(const CategoryPassVector &passv,
    out_loc.va_state_z = bank.z[RAW_VA_STATE];
    out_loc.poi_score01 = bank.ms.poi_score01;
    out_loc.poi_distance_atr01 = bank.ms.poi_distance_atr01;
-   out_loc.poi_kind = bank.ms.poi_kind;
+   out_loc.poi_kind = ResolveLocationPoiKindFromBank(bank);
    out_loc.liquidity_event_time = bank.ms.liquidity_event_time;
    out_loc.liquidity_event_price = bank.ms.liquidity_event_price;
+
+   if(out_loc.pass == 1 &&
+      out_loc.poi_kind == 0 &&
+      out_loc.poi_score01 >= 0.20 &&
+      out_loc.liquidity_event_time <= 0)
+   {
+      out_loc.pass = 0;
+   }
 }
 
 inline string BuildSelectionDiagnosticSummary(const Settings &cfg,

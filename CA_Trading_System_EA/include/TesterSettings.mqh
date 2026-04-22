@@ -1297,6 +1297,14 @@ namespace TesterSettings
             BuildGateAudit(cfg), " ",
             BuildMicroAudit(cfg));
 
+      PrintFormat("[TesterSettings][MainStage] loose=%s obs=%s regime=%s liquidity=%s degradedFallback=%s preset=%s",
+                  BoolStr(cfg.main_tester_loose_mode),
+                  BoolStr(cfg.main_tester_allow_degraded_observability_softening),
+                  BoolStr(cfg.main_tester_allow_regime_observability_softening),
+                  BoolStr(cfg.main_tester_allow_liquidity_observability_softening),
+                  BoolStr(EnableDegradedFallbackRequested(cfg)),
+                  ActivePresetName(g_last_report.preset));
+
       if(!g_last_report.validation_ok)
       {
          PrintFormat("[TesterSettings][ERR] invalid effective override state: %s",

@@ -1498,6 +1498,30 @@ inline void PromoteCanonicalLiquidityEvent(const string sym,
                                          coherent_poi);
 }
 
+inline int ResolveCanonicalPoiKindFromTransport(const MicrostructureStats &ms,
+                                                const int liquidity_event_dir)
+{
+   if(ms.poi_kind > 0)
+      return 1;
+
+   if(ms.poi_kind < 0)
+      return -1;
+
+   if(liquidity_event_dir > 0 &&
+      (ms.poi_score01 >= 0.20 || ms.liquidity_event_score01 >= 0.25))
+   {
+      return 1;
+   }
+
+   if(liquidity_event_dir < 0 &&
+      (ms.poi_score01 >= 0.20 || ms.liquidity_event_score01 >= 0.25))
+   {
+      return -1;
+   }
+
+   return 0;
+}
+
 inline void CopySlotVector(const double &src[],
                            double &dst[])
 {
@@ -1714,7 +1738,7 @@ inline void FillLocationPassFromResult(const Result &src,
    dst.va_state_z = src.z[ISV_VA_STATE];
    dst.poi_score01 = src.ms.poi_score01;
    dst.poi_distance_atr01 = src.ms.poi_distance_atr01;
-   dst.poi_kind = src.ms.poi_kind;
+   dst.poi_kind = ResolveCanonicalPoiKindFromTransport(src.ms, src.liquidity_event_dir);
    dst.liquidity_event_time = src.ms.liquidity_event_time;
    dst.liquidity_event_price = src.ms.liquidity_event_price;
    dst.liquidity_event_type = src.ms.liquidity_event_type;
@@ -3082,8 +3106,12 @@ inline bool Build(const string sym,
                                                                have_sdob_bear ? sdob_bear.scoreFinal01 : 0.0));
 #endif
 #ifdef MICROSTRUCTURESTATS_HAS_POI_KIND
-      if(MathAbs(sd_score_raw) >= MathAbs(ob_score_raw))
-         out.ms.poi_kind = (sd_score_raw >= 0.0 ? 1 : -1);
+      double poi_signed_score = sd_score_raw;
+      if(MathAbs(ob_score_raw) > MathAbs(poi_signed_score))
+         poi_signed_score = ob_score_raw;
+
+      if(MathAbs(poi_signed_score) > 0.0)
+         out.ms.poi_kind = (poi_signed_score >= 0.0 ? 1 : -1);
 #endif
    }
 
