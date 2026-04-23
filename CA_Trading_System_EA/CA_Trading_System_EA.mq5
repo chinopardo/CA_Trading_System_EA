@@ -105,7 +105,7 @@ void MSH_RouteEvent(const Scan::ScanEvent &e);
 // ================== Globals ==================
 Settings g_cfg;        // live config snapshot (ICT/router-aware Settings)
 EAState    g_state;      // global EA state (market buffers, ICT_Context, etc.)
-CArrayObj g_strategies;  // StrategyBase*
+CArrayObj g_strategies;  // legacy non-canonical surface; must remain empty in backend build
 Router   g_exec_router;     // strategy router / dispatcher
 bool     g_inited = false;
 
@@ -214,6 +214,22 @@ void ResetCanonicalSignalStackTransport();
 bool BuildCanonicalSignalStackTransport(const string sym,
                                        const datetime required_bar_time,
                                        string &diag_out);
+
+bool RefreshRuntimeContextFromHubSync(const string sym,
+                                      const bool force_micro_refresh,
+                                      const datetime required_bar_time_anchor,
+                                      datetime &requested_bar_time_out,
+                                      string &inst_diag_out);
+
+bool EA_RuntimeEvaluateStageSofteningActive(const Settings &cfg);
+
+void EA_LogTimerPassStateOncePerBar(const string sym,
+                                    const datetime required_bar_time,
+                                    const bool canonical_ready,
+                                    const string detail,
+                                    const string phase_tag);
+
+string EA_ClassifyRouterRootFailureSeam(const string diag);
 
 bool EA_IsTrackedWatchlistSymbol(const string sym);
 void EA_EnsureCentralDOMSubscriptions();
@@ -2504,12 +2520,93 @@ void LogTesterRouterGateModeDiagOncePerBar(const string sym,
 
    last_key = key;
 
+   const bool eval_softening_active = EA_RuntimeEvaluateStageSofteningActive(g_cfg);
+
    LogX::Info(StringFormat(
-      "[TesterGate] sym=%s bar=%s mode=%s detail=%s",
+      "[TesterGate] sym=%s bar=%s mode=%s detail=%s eval_stage_softening=%d",
       sym,
       InstDiagTimeStr(bar_time),
       TesterRouterGateModeName(mode),
-      detail));
+      detail,
+      (eval_softening_active ? 1 : 0)));
+}
+
+bool EA_RuntimeEvaluateStageSofteningActive(const Settings &cfg)
+{
+   if(!IsTesterRuntime())
+      return false;
+
+   if(!Config::CfgTesterDegradedModeActive(cfg))
+      return false;
+
+   const string summary = Config::CfgMainTesterStageSofteningSummary(cfg);
+   if(StringLen(summary) <= 0)
+      return false;
+
+   if(StringCompare(summary, "off") == 0)
+      return false;
+   if(StringCompare(summary, "none") == 0)
+      return false;
+   if(StringCompare(summary, "disabled") == 0)
+      return false;
+
+   return true;
+}
+
+void EA_LogTimerPassStateOncePerBar(const string sym,
+                                    const datetime required_bar_time,
+                                    const bool canonical_ready,
+                                    const string detail,
+                                    const string phase_tag)
+{
+   if(!InpDebug && !IsTesterRuntime())
+      return;
+
+   const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+   if(use_sym == "")
+      return;
+
+   const bool tester_policy_bypass_active =
+      (IsTesterRuntime() &&
+       ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS);
+
+   const bool eval_softening_active =
+      EA_RuntimeEvaluateStageSofteningActive(g_cfg);
+
+   const int fresh_code =
+      StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+
+   const string key =
+      phase_tag + "|" +
+      use_sym + "|" +
+      IntegerToString((int)required_bar_time) + "|" +
+      IntegerToString((canonical_ready ? 1 : 0)) + "|" +
+      IntegerToString(fresh_code) + "|" +
+      detail;
+
+   static string s_last_key = "";
+   if(s_last_key == key)
+      return;
+
+   s_last_key = key;
+
+   const string msg = StringFormat(
+      "[TimerPass][%s] sym=%s req=%s tester_mode=%d degrade_mode=%d policy_bypass_active=%d evaluate_softening_active=%d canonical_ready=%d fresh_code=%d detail=%s",
+      phase_tag,
+      use_sym,
+      InstDiagTimeStr(required_bar_time),
+      (IsTesterRuntime() ? 1 : 0),
+      (Config::CfgTesterDegradedModeActive(g_cfg) ? 1 : 0),
+      (tester_policy_bypass_active ? 1 : 0),
+      (eval_softening_active ? 1 : 0),
+      (canonical_ready ? 1 : 0),
+      fresh_code,
+      LogX::San(detail));
+
+   if(canonical_ready)
+      LogX::Info(msg);
+   else
+      LogX::Warn(msg);
 }
 
 string EA_RuntimeGateJsonFragment(const Settings &cfg)
@@ -2523,6 +2620,9 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
                                             degraded_policy_type,
                                             degraded_policy_mag);
 
+   const bool eval_softening_active =
+      EA_RuntimeEvaluateStageSofteningActive(cfg);
+
    string j = "";
    j += ",\"router_min_score\":" + DoubleToString(Config::CfgRouterMinScore(cfg), 3);
    j += ",\"tester_degraded\":" + (Config::CfgTesterDegradedModeActive(cfg) ? "true" : "false");
@@ -2530,6 +2630,7 @@ string EA_RuntimeGateJsonFragment(const Settings &cfg)
    j += ",\"regime_gate\":" + (Config::CfgRegimeGateEnabled(cfg) ? "true" : "false");
    j += ",\"liquidity_gate\":" + (Config::CfgLiquidityGateEnabled(cfg) ? "true" : "false");
    j += ",\"tester_policy_bypass\":" + ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS) ? "true" : "false");
+   j += ",\"tester_eval_stage_bypass\":" + (eval_softening_active ? "true" : "false");
    j += ",\"tester_gate_mode\":" + Telemetry::JsonStringOrNull(IsTesterRuntime(), TesterRouterGateModeName(ResolveTesterRouterGateMode()));
    j += ",\"tester_gate_soft_micro\":" + ((IsTesterRuntime() && ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_SOFT_MICRO_FRESHNESS) ? "true" : "false");
    j += ",\"degraded_score_policy_active\":" + (degraded_policy_active ? "true" : "false");
@@ -2704,6 +2805,13 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
    const int runtime_inst_sel_source = StateInstitutionalSignalSource(g_state);
    const string main_stage_softening =
       Config::CfgMainTesterStageSofteningSummary(g_cfg);
+   const bool tester_policy_bypass_active =
+      (IsTesterRuntime() &&
+       ResolveTesterRouterGateMode() == TESTER_ROUTER_GATE_MODE_BYPASS);
+   const bool eval_softening_active =
+      EA_RuntimeEvaluateStageSofteningActive(g_cfg);
+   const int runtime_fresh_code =
+      StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
 
    string key = where_tag + "|" +
                 use_sym + "|" +
@@ -2774,12 +2882,15 @@ void EA_LogTransportSnapshotOncePerBar(const string where_tag,
                g_hyp_bank.count,
                g_hyp_bank.rejected_count);
 
-   PrintFormat("[TransportDiag][%s][runtime] sym=%s req=%s tester{is=%d degradedMode=%d fallbackActive=%d fallbackStatus=%s fallbackDetail=%s mainStage=%s} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyInst=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}}",
+   PrintFormat("[TransportDiag][%s][runtime] sym=%s req=%s tester{is=%d degradedMode=%d policyBypass=%d evalSoft=%d freshCode=%d fallbackActive=%d fallbackStatus=%s fallbackDetail=%s mainStage=%s} runtime_inst{degraded=%d coverage=%.2f available=%d partial=%d unavailable=%d proxyInst=%d selSource=%s(%d) hardBlock=%d effMinVotes=%d gates{pf=%d ssg=%d loc=%d}}",
                where_tag,
                use_sym,
                InstDiagTimeStr(required_bar_time),
                (IsTesterRuntime() ? 1 : 0),
                (Config::CfgTesterDegradedModeActive(g_cfg) ? 1 : 0),
+               (tester_policy_bypass_active ? 1 : 0),
+               (eval_softening_active ? 1 : 0),
+               runtime_fresh_code,
                (tester_fb_active ? 1 : 0),
                tester_fb_status,
                LogX::San(tester_fb_detail),
@@ -4777,7 +4888,7 @@ void MaybeEvaluate()
 
    const string router_sym = CanonicalRouterSymbol();
 
-   RefreshRuntimeContextFromHub(router_sym, false);
+   RefreshRuntimeContextFromHub(router_sym, false, 0);
 
    const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
    string inst_diag = "";
@@ -6091,9 +6202,6 @@ void Inst_BuildTransportStamp(const string sym)
 
 void Inst_CommitTransportStampToState(EAState &st)
 {
-   if(StateInstitutionalStateFresh(st) || StateInstitutionalDegradedTransportUsable(st))
-      return;
-
    double observability01 = Inst_Clamp01(g_inst_transport.observability01);
    int truth_tier = Inst_DiagOrdinalFrom01(g_inst_transport.truth_tier01, STATE_DIAG_TRUTHTIER_MAX);
    int venue_scope = Inst_DiagOrdinalFrom01(g_inst_transport.venue_scope01, STATE_DIAG_VENUESCOPE_MAX);
@@ -6452,11 +6560,7 @@ void PublishMicrostructureSnapshot(const string sym)
    // No scanner/confluence recomputation here.
    Inst_BuildTransportStamp(sym);
 
-   if(!StateInstitutionalStateFresh(g_state) &&
-      !StateInstitutionalDegradedTransportUsable(g_state))
-   {
-      Inst_CommitTransportStampToState(g_state);
-   }
+   Inst_CommitTransportStampToState(g_state);
 
    if(sym == "")
       return;
@@ -6939,6 +7043,37 @@ void EA_LogRouterBarAnchorSnapshotOnce(const string where_tag,
                g_msh_dirty_n);
 }
 
+string EA_ClassifyRouterRootFailureSeam(const string diag)
+{
+   if(StringLen(diag) <= 0)
+      return "unknown";
+
+   if(StringFind(diag, "state_invalid_canonical") >= 0)
+      return "canonical_readiness_invalid";
+   if(StringFind(diag, "bar_misaligned_hard") >= 0)
+      return "canonical_readiness_invalid";
+   if(StringFind(diag, "canonical_transport_not_ready") >= 0)
+      return "canonical_readiness_invalid";
+   if(StringFind(diag, "fresh_code=") >= 0 &&
+      StringFind(diag, "state_invalid_canonical") >= 0)
+      return "canonical_readiness_invalid";
+
+   if(StringFind(diag, "raw_bank_") == 0)
+      return "bank_build_transport_failure";
+   if(StringFind(diag, "router_symbol_empty") == 0)
+      return "bank_build_transport_failure";
+   if(StringFind(diag, "required_bar_time_invalid") == 0)
+      return "bank_build_transport_failure";
+
+   if(StringFind(diag, "hypothesis_bank_build_failed") == 0)
+      return "registry_build_failure";
+
+   if(StringFind(diag, "hypothesis_bank_empty") == 0)
+      return "strategy_starvation_valid_transport";
+
+   return "unknown";
+}
+
 void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
                                              const string router_sym,
                                              const datetime required_bar_time,
@@ -6948,8 +7083,8 @@ void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
    if(!IsTesterRuntime())
       return;
 
-   if(StringFind(transport_diag, "hypothesis_bank_build_failed") != 0 &&
-      StringFind(transport_diag, "hypothesis_bank_empty") != 0)
+   const string seam = EA_ClassifyRouterRootFailureSeam(transport_diag);
+   if(StringCompare(seam, "unknown") == 0)
       return;
 
    static string s_last_key = "";
@@ -6978,8 +7113,9 @@ void EA_LogHypothesisBankRootCauseBundleOnce(const Settings &cfg,
                                        main_top);
 
    string msg = StringFormat(
-      "[RouterRootCause][%s] hypothesis_build_fail sym=%s mode=%s(%d) req_bar=%d diag=%s canonical_ids=%s main_any_used=%d main_any_enabled=%d main_any_allowed=%d main_used=%d/%d main_enabled=%d/%d main_allowed=%d/%d top=%s",
+      "[RouterRootCause][%s] seam=%s sym=%s mode=%s(%d) req_bar=%d diag=%s canonical_ids=%s main_any_used=%d main_any_enabled=%d main_any_allowed=%d main_used=%d/%d main_enabled=%d/%d main_allowed=%d/%d top=%s",
       origin_tag,
+      seam,
       router_sym,
       EA_StrategyModeTokenCompact(sm),
       (int)sm,
@@ -7025,6 +7161,24 @@ bool BuildCanonicalSignalStackTransport(const string sym,
    }
 
    ResetCanonicalSignalStackTransport();
+
+   if(required_bar_time <= 0)
+   {
+      diag_out = "required_bar_time_invalid";
+      return false;
+   }
+
+   const int runtime_fresh_code =
+      StateInstitutionalFreshnessDiagCode(g_state, required_bar_time);
+
+   if(!StateInstitutionalFreshnessDiagAccepted(runtime_fresh_code))
+   {
+      diag_out = "state_invalid_canonical|fresh_code=" +
+                 IntegerToString(runtime_fresh_code) +
+                 "|reason=" +
+                 StateInstitutionalPromotionDiagReason(runtime_fresh_code);
+      return false;
+   }
 
    // 1) Canonical raw market state + derived category transport
    const ENUM_TIMEFRAMES isv_tf = Warmup::TF_Entry(g_cfg);
@@ -7111,68 +7265,97 @@ bool BuildCanonicalSignalStackTransport(const string sym,
    return true;
 }
 
-void RefreshRuntimeContextFromHub(const string sym, const bool force_micro_refresh)
+bool RefreshRuntimeContextFromHubSync(const string sym,
+                                      const bool force_micro_refresh,
+                                      const datetime required_bar_time_anchor,
+                                      datetime &requested_bar_time_out,
+                                      string &inst_diag_out)
 {
-   if(sym != "")
-      RefreshMicrostructureSnapshot(sym, force_micro_refresh);
+   requested_bar_time_out = 0;
+   inst_diag_out = "";
 
-   RefreshRuntimeContextLight((sym == "" ? CanonicalRouterSymbol() : sym));
-
-   const datetime requested_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(sym);
-   string inst_diag = "";
-   const bool inst_ready = EnsureCanonicalInstitutionalStateReady(sym, requested_bar_time, inst_diag);
    const string use_sym = (sym == "" ? CanonicalRouterSymbol() : sym);
+   if(use_sym == "")
+   {
+      inst_diag_out = "router_symbol_empty";
+      return false;
+   }
+
+   RefreshMicrostructureSnapshot(use_sym, force_micro_refresh);
+   RefreshRuntimeContextLight(use_sym);
+
+   requested_bar_time_out =
+      (required_bar_time_anchor > 0
+       ? required_bar_time_anchor
+       : ResolveCanonicalInstitutionalRequiredBarTime(use_sym));
+
+   PublishMicrostructureSnapshot(use_sym);
+
+   const bool inst_ready =
+      EnsureCanonicalInstitutionalStateReady(use_sym,
+                                             requested_bar_time_out,
+                                             inst_diag_out);
 
    if(use_sym == CanonicalRouterSymbol())
    {
       g_startup_router_seed_sym = use_sym;
-      g_startup_router_seed_req_bar_time = requested_bar_time;
+      g_startup_router_seed_req_bar_time = requested_bar_time_out;
 
       if(inst_ready)
       {
          g_startup_router_seed_ready = true;
          g_startup_router_seed_diag = "refresh_ready";
       }
-      else if(inst_diag != "")
+      else
+      if(inst_diag_out != "")
       {
          g_startup_router_seed_ready = false;
-         g_startup_router_seed_diag = inst_diag;
+         g_startup_router_seed_diag = inst_diag_out;
       }
 
       if(inst_ready)
          g_startup_transport_promoted = true;
-      else if(g_startup_transport_seeded)
+      else
+      if(g_startup_transport_seeded)
          g_startup_transport_promoted = false;
    }
 
-   if(InpDebug && !inst_ready && inst_diag != "")
+   if(InpDebug && !inst_ready && inst_diag_out != "")
    {
-      const string log_sym = use_sym;
-      const datetime throttle_key = (requested_bar_time > 0 ? requested_bar_time : TimeCurrent());
+      const datetime throttle_key =
+         (requested_bar_time_out > 0 ? requested_bar_time_out : TimeCurrent());
 
       static string last_sym = "";
       static datetime last_key = 0;
 
-      if(log_sym != last_sym || throttle_key != last_key)
+      if(use_sym != last_sym || throttle_key != last_key)
       {
-         last_sym = log_sym;
+         last_sym = use_sym;
          last_key = throttle_key;
 
          PrintFormat("[InstReady] sym=%s ready=0 req=%s detail=%s",
-                     log_sym,
-                     InstDiagTimeStr(requested_bar_time),
-                     inst_diag);
+                     use_sym,
+                     InstDiagTimeStr(requested_bar_time_out),
+                     inst_diag_out);
       }
    }
 
-   // Publish canonical runtime transport only.
-   // Do NOT build strategy hypotheses or route orders here.
-   // The timer-owned route pass is the single owner of:
-   // raw-bank build -> category selection -> hypothesis build -> router evaluation.
-   PublishMicrostructureSnapshot(sym);
+   EA_LogInstitutionalDegradeStateOncePerBar(use_sym, requested_bar_time_out);
+   return inst_ready;
+}
 
-   EA_LogInstitutionalDegradeStateOncePerBar((sym == "" ? CanonicalRouterSymbol() : sym),
-                                             requested_bar_time);
+void RefreshRuntimeContextFromHub(const string sym,
+                                  const bool force_micro_refresh,
+                                  const datetime required_bar_time_anchor)
+{
+   datetime requested_bar_time = 0;
+   string inst_diag = "";
+
+   RefreshRuntimeContextFromHubSync(sym,
+                                    force_micro_refresh,
+                                    required_bar_time_anchor,
+                                    requested_bar_time,
+                                    inst_diag);
 }
 
 bool PreseedRuntimeSymbolStateAtStartup(const string sym,
@@ -7632,7 +7815,8 @@ void WarnRunCachedRouterPassOriginBlockedOnce(const string origin_tag)
 
 bool RunCachedRouterPass(const string router_sym,
                          const datetime now_srv,
-                         const string origin_tag)
+                         const string origin_tag,
+                         const datetime required_bar_time_anchor)
 {
    if(router_sym == "")
    {
@@ -7669,7 +7853,10 @@ bool RunCachedRouterPass(const string router_sym,
       return false;
    }
 
-   const datetime required_bar_time = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+   const datetime required_bar_time =
+      (required_bar_time_anchor > 0
+       ? required_bar_time_anchor
+       : ResolveCanonicalInstitutionalRequiredBarTime(router_sym));
    LogCanonicalInstitutionalGateDiag(router_sym, required_bar_time, origin_tag);
 
    int gate_reason = 0;
@@ -7707,6 +7894,9 @@ bool RunCachedRouterPass(const string router_sym,
       const string transport_reason =
          (transport_diag != "" ? transport_diag : "canonical_transport_not_ready");
 
+      const string failure_seam =
+         EA_ClassifyRouterRootFailureSeam(transport_reason);
+
       EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
                                         g_hyp_bank.rejected_count,
                                         transport_reason,
@@ -7715,9 +7905,9 @@ bool RunCachedRouterPass(const string router_sym,
       EA_LogTransportSnapshotOncePerBar("transport_fail",
                                         router_sym,
                                         required_bar_time,
-                                        transport_reason);
-                                        
-      DecisionTelemetry_MarkGateBlocked("router", transport_reason);
+                                        failure_seam + "|" + transport_reason);
+
+      DecisionTelemetry_MarkGateBlocked("router", failure_seam);
 
       if(IsTesterRuntime())
       {
@@ -7730,8 +7920,9 @@ bool RunCachedRouterPass(const string router_sym,
 
       if(InpDebug && transport_reason != "")
       {
-         PrintFormat("[Router][%s] Skipping hypothesis route; detail=%s",
+         PrintFormat("[Router][%s] Skipping hypothesis route; seam=%s detail=%s",
                      origin_tag,
+                     failure_seam,
                      transport_reason);
       }
 
@@ -7756,6 +7947,9 @@ bool RunCachedRouterPass(const string router_sym,
                                          g_hyp_bank.count,
                                          g_hyp_bank.rejected_count);
 
+      const string empty_seam =
+         EA_ClassifyRouterRootFailureSeam(hyp_empty_diag);
+
       EA_PublishHypBankTelemetryContext(g_hyp_bank.count,
                                         g_hyp_bank.rejected_count,
                                         hyp_empty_diag,
@@ -7764,7 +7958,7 @@ bool RunCachedRouterPass(const string router_sym,
       EA_LogTransportSnapshotOncePerBar("hyp_bank_empty",
                                         router_sym,
                                         required_bar_time,
-                                        hyp_empty_diag);
+                                        empty_seam + "|" + hyp_empty_diag);
 
       if(IsTesterRuntime())
       {
@@ -7775,7 +7969,7 @@ bool RunCachedRouterPass(const string router_sym,
                                                  hyp_empty_diag);
       }
 
-      DecisionTelemetry_MarkNoCandidates("router", "hypothesis_bank_empty");
+      DecisionTelemetry_MarkNoCandidates("router", empty_seam);
       MSH_DirtyClear();
       return false;
    }
@@ -8274,9 +8468,13 @@ int OnInit()
    {
       if(g_main_only_audit_empty_roster)
          return(INIT_PARAMETERS_INCORRECT);
-   
+    
       return(INIT_FAILED);
    }
+
+   string main_only_effective_roster = "";
+   if(Config::BuildMainOnlyEffectiveRosterLine(S, main_only_effective_roster))
+      LogX::Info(main_only_effective_roster);
 
    // Prime MarketData caches once after watchlist is finalized (enables AutoVol warm builds)
    MarketData::OnTimerRefresh();
@@ -8335,15 +8533,30 @@ int OnInit()
    // so do not duplicate RefreshICTContext() here.
    {
       const string ms_sym0 = CanonicalRouterSymbol();
-      RefreshRuntimeContextFromHub(ms_sym0, true);
+      const datetime startup_req_bar_anchor =
+         ResolveCanonicalInstitutionalRequiredBarTime(ms_sym0);
+
+      datetime startup_req_bar_used = 0;
+      string startup_gate_diag = "";
+
+      const bool startup_gate_ok =
+         RefreshRuntimeContextFromHubSync(ms_sym0,
+                                          true,
+                                          startup_req_bar_anchor,
+                                          startup_req_bar_used,
+                                          startup_gate_diag);
+
+      const datetime startup_req_bar =
+         (startup_req_bar_used > 0 ? startup_req_bar_used : startup_req_bar_anchor);
+
+      EA_LogTimerPassStateOncePerBar(ms_sym0,
+                                     startup_req_bar,
+                                     startup_gate_ok,
+                                     (startup_gate_diag != "" ? startup_gate_diag : "startup_refresh"),
+                                     "startup_refresh");
 
       Warmup::ProductionWarmupReadiness rd;
       rd.Reset();
-
-      const datetime startup_req_bar = ResolveCanonicalInstitutionalRequiredBarTime(ms_sym0);
-      string startup_gate_diag = "";
-      const bool startup_gate_ok =
-         EnsureCanonicalInstitutionalStateReady(ms_sym0, startup_req_bar, startup_gate_diag);
 
       const bool startup_transport_ready = startup_gate_ok;
       const string startup_diag = startup_gate_diag;
@@ -8439,8 +8652,10 @@ int OnInit()
    _LogThresholdsOnce(S);
 
    // RouterInit(g_router, g_cfg) above already initialised the router
-   // using the ICT-aware Settings. Keep the legacy Init() disabled to
-   // avoid double-initialisation with inconsistent config.
+   // using the ICT-aware Settings. Keep the legacy Init() disabled:
+   //  - StratReg owns strategy adapter lifetime
+   //  - g_strategies is a legacy non-canonical surface and must stay empty
+   //  - reinitialising Router with g_strategies would reintroduce ownership ambiguity
    // g_router.Init(S, g_strategies);
 
    string win = TimeUtils::WindowSummary(S);
@@ -8596,23 +8811,51 @@ void OnBookEvent(const string &symbol)
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   const int legacy_registry_n = g_strategies.Total();
+
+   PrintFormat("[Lifecycle][EA] OnDeinit begin reason=%d legacy_registry_n=%d",
+               reason,
+               legacy_registry_n);
+
    g_inited = false;
+
+   MSH_DirtyClear();
+   g_msh_idle_heartbeat_streak = 0;
+   g_msh_last_forced_router_eval_ts = 0;
+   g_msh_eval_dirty_trigger_n = 0;
+   g_msh_eval_cadence_trigger_n = 0;
 
    g_startup_transport_seeded = false;
    g_startup_transport_promoted = false;
    g_startup_router_enabled = false;
    g_startup_router_gate_logged = false;
+   g_startup_router_seed_ready = false;
    g_startup_router_seed_sym = "";
    g_startup_router_seed_diag = "";
    g_startup_router_seed_req_bar_time = 0;
 
+   g_exec_router.Deinit();
+   StrategyRegistryDeinit();
+
+   if(legacy_registry_n > 0)
+   {
+      PrintFormat("[Lifecycle][EA][WARN] legacy g_strategies surface is non-empty at deinit count=%d | canonical ownership belongs to StratReg, not g_strategies",
+                  legacy_registry_n);
+   }
+   else
+   {
+      Print("[Lifecycle][EA] legacy g_strategies surface empty");
+   }
+
+   ResetCanonicalSignalStackTransport();
+
    MSH::Deinit();
    EA_ReleaseCentralDOMSubscriptions();
-   MSH_DirtyClear();
-   ResetCanonicalSignalStackTransport();
+
    Exec::Deinit();
    MarketData::Deinit();
    UI_Deinit();
+   Print("[Lifecycle][EA] teardown_order=router->strategy_registry->transport->msh->dom->exec->marketdata->ui");
    Telemetry_LogDeinit("CA_Trading_System_EA deinitialized.");
    // Telemetry_Flush();
 
@@ -8670,15 +8913,29 @@ void OnTimer()
    //
    // Non-canonical routes remain diagnostics-only and must not dispatch trades.
    MSH::HubTimerTick(S);
-   // Always refresh the microstructure snapshot.  Without this, the canonical
-   // institutional state never becomes "fresh" in the tester, causing the
-   // microstructure gate to veto all trades.
-   RefreshRuntimeContextFromHub(router_sym, true);
 
-   const datetime startup_req_bar = ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+   // Resolve ONE required-bar anchor for this timer pass and reuse it all the way down.
+   const datetime startup_req_bar_anchor =
+      ResolveCanonicalInstitutionalRequiredBarTime(router_sym);
+
+   datetime startup_req_bar_used = 0;
    string startup_diag = "";
+
    const bool startup_transport_ready =
-      EnsureCanonicalInstitutionalStateReady(router_sym, startup_req_bar, startup_diag);
+      RefreshRuntimeContextFromHubSync(router_sym,
+                                       true,
+                                       startup_req_bar_anchor,
+                                       startup_req_bar_used,
+                                       startup_diag);
+
+   const datetime startup_req_bar =
+      (startup_req_bar_used > 0 ? startup_req_bar_used : startup_req_bar_anchor);
+
+   EA_LogTimerPassStateOncePerBar(router_sym,
+                                  startup_req_bar,
+                                  startup_transport_ready,
+                                  (startup_diag != "" ? startup_diag : "post_refresh"),
+                                  "post_refresh");
 
    g_startup_router_seed_sym = router_sym;
    g_startup_router_seed_req_bar_time = startup_req_bar;
@@ -8723,6 +8980,31 @@ void OnTimer()
                                    startup_req_bar,
                                    false,
                                    g_startup_router_seed_diag);
+      }
+
+      DecisionTelemetry_MarkGateBlocked("router", "canonical_readiness_invalid");
+
+      EA_LogTimerPassStateOncePerBar(router_sym,
+                                     startup_req_bar,
+                                     false,
+                                     (startup_diag != "" ? startup_diag : "state_invalid_canonical"),
+                                     "blocked_post_refresh");
+
+      EA_LogTransportSnapshotOncePerBar("state_invalid_canonical",
+                                        router_sym,
+                                        startup_req_bar,
+                                        (startup_diag != "" ? startup_diag : "state_invalid_canonical"));
+
+      if(IsTesterRuntime())
+      {
+         const string root_diag =
+            (startup_diag != "" ? startup_diag : "state_invalid_canonical");
+
+         EA_LogHypothesisBankRootCauseBundleOnce(g_cfg,
+                                                 router_sym,
+                                                 startup_req_bar,
+                                                 "Timer",
+                                                 root_diag);
       }
 
       PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
@@ -8867,11 +9149,14 @@ void OnTimer()
 
    g_msh_last_forced_router_eval_ts = now_srv;
 
-   string startup_gate_diag = "";
-   const bool startup_gate_ok =
-      EnsureCanonicalInstitutionalStateReady(router_sym,
-                                             g_startup_router_seed_req_bar_time,
-                                             startup_gate_diag);
+   string startup_gate_diag = startup_diag;
+   const bool startup_gate_ok = startup_transport_ready;
+
+   EA_LogTimerPassStateOncePerBar(router_sym,
+                                  startup_req_bar,
+                                  startup_gate_ok,
+                                  (startup_gate_diag != "" ? startup_gate_diag : "pre_router"),
+                                  "pre_router");
 
    if(!g_startup_router_seed_ready || !startup_gate_ok)
    {
@@ -8897,6 +9182,22 @@ void OnTimer()
          }
       }
 
+      DecisionTelemetry_MarkGateBlocked("router", "canonical_readiness_invalid");
+
+      EA_LogTransportSnapshotOncePerBar("state_invalid_canonical",
+                                        router_sym,
+                                        startup_req_bar,
+                                        startup_gate_diag);
+
+      if(IsTesterRuntime())
+      {
+         EA_LogHypothesisBankRootCauseBundleOnce(g_cfg,
+                                                 router_sym,
+                                                 startup_req_bar,
+                                                 "Timer",
+                                                 startup_gate_diag);
+      }
+
       PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
       return;
    }
@@ -8905,7 +9206,7 @@ void OnTimer()
    g_startup_router_seed_ready = true;
    g_startup_router_seed_diag = "timer_ready";
 
-   RunCachedRouterPass(router_sym, now_srv, "Timer");
+   RunCachedRouterPass(router_sym, now_srv, "Timer", startup_req_bar);
    PushICTTelemetryToReviewUI(StateGetICTContext(g_state));
   }
 
@@ -9754,7 +10055,7 @@ void ProcessSymbol(const string sym, const bool new_bar_for_sym)
 
    // Keep State / ICT aligned to the exact symbol being evaluated.
    // This is defense-in-depth for all tester registry entry points.
-   RefreshRuntimeContextFromHub(sym, false);
+   RefreshRuntimeContextFromHub(sym, false, 0);
 
    // 1) Unified gate wrapper (Policies/Session/Time/Price/News/ExecLock)
    int gate_reason = 0;

@@ -151,6 +151,19 @@ enum CanonicalDegradeCauseCode
    ISV_DEGRADE_CAUSE_LOW_RELIABILITY   = 6
 };
 
+enum CanonicalReadinessReasonCode
+{
+   ISV_READY_UNKNOWN                  = 0,
+   ISV_READY_SYNC_OK                  = 1,
+   ISV_READY_DEGRADED_USABLE          = 2,
+   ISV_READY_DEGRADED_UNUSABLE        = 3,
+   ISV_READY_INVALID_STRUCTURE        = 4,
+   ISV_READY_INVALID_HARD_BLOCK       = 5,
+   ISV_READY_INVALID_UNAVAILABLE      = 6,
+   ISV_READY_INVALID_STALE_SNAPSHOT   = 7,
+   ISV_READY_INVALID_STALE_SIGNAL     = 8
+};
+
 struct CanonicalDegradeState_t
 {
    bool dom_proxy_used;
@@ -184,6 +197,12 @@ struct CanonicalDegradeState_t
    double degrade_severity01;
    int    degrade_acceptance_recommendation;
 
+   int    coverage_usable;
+   int    canonical_valid;
+   int    degraded_usable;
+   int    degraded_unusable;
+   int    readiness_reason_code;
+
    void Reset()
    {
       dom_proxy_used = false;
@@ -216,6 +235,12 @@ struct CanonicalDegradeState_t
       degrade_cause = ISV_DEGRADE_CAUSE_NONE;
       degrade_severity01 = 0.0;
       degrade_acceptance_recommendation = 0;
+
+      coverage_usable = 0;
+      canonical_valid = 0;
+      degraded_usable = 0;
+      degraded_unusable = 0;
+      readiness_reason_code = ISV_READY_UNKNOWN;
    }
 };
 
@@ -289,6 +314,13 @@ struct RawSignalBank_t
    string symbol;
    ENUM_TIMEFRAMES tf;
    datetime bar_time;
+   datetime required_bar_time;
+   long generation_seq;
+   int coverage_usable;
+   int canonical_valid;
+   int degraded_usable;
+   int degraded_unusable;
+   int readiness_reason_code;
 
    int direction_dir11;
 
@@ -314,6 +346,13 @@ struct RawSignalBank_t
       symbol = "";
       tf = PERIOD_CURRENT;
       bar_time = 0;
+      required_bar_time = 0;
+      generation_seq = 0;
+      coverage_usable = 0;
+      canonical_valid = 0;
+      degraded_usable = 0;
+      degraded_unusable = 0;
+      readiness_reason_code = ISV_READY_UNKNOWN;
       direction_dir11 = 0;
 
       open0 = 0.0;
@@ -1254,6 +1293,13 @@ struct Result
    string symbol;
    ENUM_TIMEFRAMES tf;
    datetime bar_time;
+   datetime required_bar_time;
+   long generation_seq;
+   int coverage_usable;
+   int canonical_valid;
+   int degraded_usable;
+   int degraded_unusable;
+   int readiness_reason_code;
 
    bool dom_proxy_used;
    bool flow_proxy_used;
@@ -1315,6 +1361,13 @@ struct Result
       symbol = "";
       tf = PERIOD_CURRENT;
       bar_time = 0;
+      required_bar_time = 0;
+      generation_seq = 0;
+      coverage_usable = 0;
+      canonical_valid = 0;
+      degraded_usable = 0;
+      degraded_unusable = 0;
+      readiness_reason_code = ISV_READY_UNKNOWN;
 
       dom_proxy_used = false;
       flow_proxy_used = false;
@@ -1668,6 +1721,141 @@ inline int ResolveCanonicalDegradeAcceptanceFromResult(const Result &src)
    return 0;
 }
 
+inline long NextCanonicalGenerationSeq()
+{
+   static long s_generation_seq = 0;
+
+   s_generation_seq++;
+   if(s_generation_seq <= 0)
+      s_generation_seq = 1;
+
+   return s_generation_seq;
+}
+
+inline int ResolveCanonicalCoverageUsableFromResult(const Result &src)
+{
+   const int inst_available    = (int)MathRound(src.raw[ISV_INST_AVAILABLE]);
+   const int inst_partial      = (int)MathRound(src.raw[ISV_INST_PARTIAL]);
+   const int proxy_inst_avail  = (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]);
+
+   if(inst_available == 1 || inst_partial == 1 || proxy_inst_avail == 1)
+      return 1;
+
+   return 0;
+}
+
+inline int ResolveCanonicalValidityFromResult(const Result &src)
+{
+   const int hard_inst_block = (int)MathRound(src.raw[ISV_HARD_INST_BLOCK]);
+
+   if(!src.valid)
+      return 0;
+
+   if(StringLen(src.symbol) <= 0 || src.bar_time <= 0)
+      return 0;
+
+   if(!src.snap.valid)
+      return 0;
+
+   if(!src.ofx.valid)
+      return 0;
+
+   if(hard_inst_block == 1)
+      return 0;
+
+   if(ResolveCanonicalCoverageUsableFromResult(src) == 0)
+      return 0;
+
+   return 1;
+}
+
+inline int ResolveCanonicalReadinessReasonCodeFromResult(const Result &src)
+{
+   const int hard_inst_block   = (int)MathRound(src.raw[ISV_HARD_INST_BLOCK]);
+   const int inst_unavailable  = (int)MathRound(src.raw[ISV_INST_UNAVAILABLE]);
+   const int proxy_inst_avail  = (int)MathRound(src.raw[ISV_PROXY_INST_AVAILABLE]);
+
+   if(!src.valid || StringLen(src.symbol) <= 0 || src.bar_time <= 0 || !src.snap.valid || !src.ofx.valid)
+      return ISV_READY_INVALID_STRUCTURE;
+
+   if(hard_inst_block == 1)
+      return ISV_READY_INVALID_HARD_BLOCK;
+
+   if(inst_unavailable == 1 && proxy_inst_avail == 0)
+      return ISV_READY_INVALID_UNAVAILABLE;
+
+   if(ResolveSnapshotFreshFromResult(src) == 0)
+      return ISV_READY_INVALID_STALE_SNAPSHOT;
+
+   if(ResolveSignalTransportFreshFromResult(src) == 0)
+      return ISV_READY_INVALID_STALE_SIGNAL;
+
+   const int accept_mode = ResolveCanonicalDegradeAcceptanceFromResult(src);
+
+   if(accept_mode == 1 || accept_mode == 2)
+      return ISV_READY_DEGRADED_USABLE;
+
+   if(accept_mode == 3)
+      return ISV_READY_DEGRADED_UNUSABLE;
+
+   return ISV_READY_SYNC_OK;
+}
+
+inline int ResolveCanonicalDegradedUsableFromResult(const Result &src)
+{
+   return (ResolveCanonicalReadinessReasonCodeFromResult(src) == ISV_READY_DEGRADED_USABLE ? 1 : 0);
+}
+
+inline int ResolveCanonicalDegradedUnusableFromResult(const Result &src)
+{
+   const int code = ResolveCanonicalReadinessReasonCodeFromResult(src);
+
+   if(code == ISV_READY_DEGRADED_UNUSABLE ||
+      code == ISV_READY_INVALID_STALE_SNAPSHOT ||
+      code == ISV_READY_INVALID_STALE_SIGNAL ||
+      code == ISV_READY_INVALID_HARD_BLOCK ||
+      code == ISV_READY_INVALID_UNAVAILABLE)
+   {
+      return 1;
+   }
+
+   return 0;
+}
+
+inline string CanonicalReadinessReasonTag(const int code)
+{
+   if(code == ISV_READY_SYNC_OK)
+      return "sync_ok";
+   if(code == ISV_READY_DEGRADED_USABLE)
+      return "degraded_tester_usable";
+   if(code == ISV_READY_DEGRADED_UNUSABLE)
+      return "degraded_tester_unusable";
+   if(code == ISV_READY_INVALID_STRUCTURE)
+      return "state_invalid|invalid_canonical_structure";
+   if(code == ISV_READY_INVALID_HARD_BLOCK)
+      return "state_invalid|hard_inst_block";
+   if(code == ISV_READY_INVALID_UNAVAILABLE)
+      return "state_invalid|institutional_unavailable";
+   if(code == ISV_READY_INVALID_STALE_SNAPSHOT)
+      return "state_invalid|snapshot_not_fresh";
+   if(code == ISV_READY_INVALID_STALE_SIGNAL)
+      return "state_invalid|signal_transport_not_fresh";
+
+   return "unknown";
+}
+
+inline void FinalizeCanonicalIdentityAndReadiness(Result &out)
+{
+   out.required_bar_time = out.bar_time;
+   out.generation_seq = NextCanonicalGenerationSeq();
+
+   out.coverage_usable = ResolveCanonicalCoverageUsableFromResult(out);
+   out.canonical_valid = ResolveCanonicalValidityFromResult(out);
+   out.readiness_reason_code = ResolveCanonicalReadinessReasonCodeFromResult(out);
+   out.degraded_usable = ResolveCanonicalDegradedUsableFromResult(out);
+   out.degraded_unusable = ResolveCanonicalDegradedUnusableFromResult(out);
+}
+
 inline void FillCanonicalDegradeState(const Result &src,
                                       CanonicalDegradeState_t &dst)
 {
@@ -1708,6 +1896,12 @@ inline void FillCanonicalDegradeState(const Result &src,
    dst.degrade_cause = ResolveCanonicalDegradeCauseFromResult(src);
    dst.degrade_severity01 = ResolveCanonicalDegradeSeverity01FromResult(src);
    dst.degrade_acceptance_recommendation = ResolveCanonicalDegradeAcceptanceFromResult(src);
+
+   dst.coverage_usable = src.coverage_usable;
+   dst.canonical_valid = src.canonical_valid;
+   dst.degraded_usable = src.degraded_usable;
+   dst.degraded_unusable = src.degraded_unusable;
+   dst.readiness_reason_code = src.readiness_reason_code;
 }
 
 inline void FillSignalStackGateFromResult(const Result &src,
@@ -1761,6 +1955,13 @@ inline void ProjectResultToRawSignalBank(const Result &src,
    dst.symbol = src.symbol;
    dst.tf = src.tf;
    dst.bar_time = src.bar_time;
+   dst.required_bar_time = src.required_bar_time;
+   dst.generation_seq = src.generation_seq;
+   dst.coverage_usable = src.coverage_usable;
+   dst.canonical_valid = src.canonical_valid;
+   dst.degraded_usable = src.degraded_usable;
+   dst.degraded_unusable = src.degraded_unusable;
+   dst.readiness_reason_code = src.readiness_reason_code;
    dst.direction_dir11 = src.direction_dir11;
 
    dst.open0 = src.open0;
@@ -1866,6 +2067,46 @@ inline int GetDirection(const RawSignalBank_t &bank)
 inline CanonicalDegradeState_t GetDegradeState(const RawSignalBank_t &bank)
 {
    return bank.degrade;
+}
+
+inline datetime GetRequiredBarTime(const RawSignalBank_t &bank)
+{
+   return bank.required_bar_time;
+}
+
+inline long GetGenerationSeq(const RawSignalBank_t &bank)
+{
+   return bank.generation_seq;
+}
+
+inline int GetReadinessReasonCode(const RawSignalBank_t &bank)
+{
+   return bank.readiness_reason_code;
+}
+
+inline string GetReadinessReasonTag(const RawSignalBank_t &bank)
+{
+   return CanonicalReadinessReasonTag(bank.readiness_reason_code);
+}
+
+inline bool IsCoverageUsable(const RawSignalBank_t &bank)
+{
+   return (bank.coverage_usable > 0);
+}
+
+inline bool IsCanonicalValid(const RawSignalBank_t &bank)
+{
+   return (bank.canonical_valid > 0);
+}
+
+inline bool IsDegradedUsable(const RawSignalBank_t &bank)
+{
+   return (bank.degraded_usable > 0);
+}
+
+inline bool IsDegradedUnusable(const RawSignalBank_t &bank)
+{
+   return (bank.degraded_unusable > 0);
 }
 
 inline double GetCVD(const RawSignalBank_t &bank)
@@ -2629,6 +2870,13 @@ inline bool Build(const string sym,
    out.symbol = sym;
    out.tf = tf;
    out.bar_time = bar_time;
+   out.required_bar_time = bar_time;
+   out.generation_seq = 0;
+   out.coverage_usable = 0;
+   out.canonical_valid = 0;
+   out.degraded_usable = 0;
+   out.degraded_unusable = 0;
+   out.readiness_reason_code = ISV_READY_UNKNOWN;
    out.tick_volume_proxy_used = otc_like;
 
    out.open0 = open0;
@@ -3634,6 +3882,8 @@ inline bool Build(const string sym,
    out.snap.risk_score = out.risk_t;
    out.snap.trade_gate_pass = out.trade_gate;
    out.snap.state_quality01 = out.ms.state_quality01;
+
+   FinalizeCanonicalIdentityAndReadiness(out);
 
    return true;
 }

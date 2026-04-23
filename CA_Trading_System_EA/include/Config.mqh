@@ -2566,6 +2566,14 @@ namespace Config
       bool   main_tester_allow_degraded_observability_softening;
       bool   main_tester_allow_regime_observability_softening;
       bool   main_tester_allow_liquidity_observability_softening;
+
+      // Centralized tester parity knobs for evaluate-stage softening.
+      // These are intentionally broader than the legacy Main-only flags above.
+      bool   tester_eval_softening_enable;
+      bool   tester_soft_poi_branch_enable;
+      bool   tester_soft_liquidity_branch_enable;
+      bool   tester_soft_depth_branch_enable;
+
       int    min_features_met;
 
      #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
@@ -3178,20 +3186,119 @@ namespace Config
       return CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg);
    }
 
+   inline bool CfgTesterEvaluateSofteningConfigured(const Settings &cfg)
+   {
+      return (cfg.tester_eval_softening_enable ? true : false);
+   }
+
+   inline bool CfgTesterPOISoftBranchConfigured(const Settings &cfg)
+   {
+      return (cfg.tester_soft_poi_branch_enable ? true : false);
+   }
+
+   inline bool CfgTesterLiquiditySoftBranchConfigured(const Settings &cfg)
+   {
+      return (cfg.tester_soft_liquidity_branch_enable ? true : false);
+   }
+
+   inline bool CfgTesterDepthSoftBranchConfigured(const Settings &cfg)
+   {
+      return (cfg.tester_soft_depth_branch_enable ? true : false);
+   }
+
+   inline bool CfgTesterEvaluateSofteningActive(const Settings &cfg)
+   {
+      if(!CfgIsTesterRuntime())
+         return false;
+
+      if(!CfgTesterDegradedModeActive(cfg))
+         return false;
+
+      if(CfgTesterEvaluateSofteningConfigured(cfg))
+         return true;
+
+      // Legacy bridge: preserve old Main-only loose-mode behavior.
+      if(CfgMainTesterLooseModeConfigured(cfg))
+         return true;
+
+      return false;
+   }
+
+   inline bool CfgTesterPOISoftBranchActive(const Settings &cfg)
+   {
+      if(!CfgTesterEvaluateSofteningActive(cfg))
+         return false;
+
+      if(CfgTesterPOISoftBranchConfigured(cfg))
+         return true;
+
+      // Legacy bridge: POI / structure-style softening historically rode
+      // the regime observability lever in Main.
+      if(CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg))
+         return true;
+
+      return false;
+   }
+
+   inline bool CfgTesterLiquiditySoftBranchActive(const Settings &cfg)
+   {
+      if(!CfgTesterEvaluateSofteningActive(cfg))
+         return false;
+
+      if(CfgTesterLiquiditySoftBranchConfigured(cfg))
+         return true;
+
+      // Legacy bridge: liquidity observability softening already exists.
+      if(CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg))
+         return true;
+
+      return false;
+   }
+
+   inline bool CfgTesterDepthSoftBranchActive(const Settings &cfg)
+   {
+      if(!CfgTesterEvaluateSofteningActive(cfg))
+         return false;
+
+      return CfgTesterDepthSoftBranchConfigured(cfg);
+   }
+
+   inline string CfgTesterParitySofteningSummary(const Settings &cfg)
+   {
+      return StringFormat("runtime=%s tester_degraded=%d eval_soft=%d poi_soft=%d liquidity_soft=%d depth_soft=%d legacy_loose=%d legacy_obs=%d legacy_regime=%d legacy_liquidity=%d",
+                          (CfgIsTesterRuntime() ? "tester" : "live"),
+                          (CfgTesterDegradedModeActive(cfg) ? 1 : 0),
+                          (CfgTesterEvaluateSofteningActive(cfg) ? 1 : 0),
+                          (CfgTesterPOISoftBranchActive(cfg) ? 1 : 0),
+                          (CfgTesterLiquiditySoftBranchActive(cfg) ? 1 : 0),
+                          (CfgTesterDepthSoftBranchActive(cfg) ? 1 : 0),
+                          (CfgMainTesterLooseModeConfigured(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowDegradedObservabilitySofteningConfigured(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg) ? 1 : 0),
+                          (CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg) ? 1 : 0));
+   }
+
    inline bool CfgMainTesterAnyStageSofteningActive(const Settings &cfg)
    {
       return (CfgMainTesterAllowRegimeObservabilitySoftening(cfg) ||
-              CfgMainTesterAllowLiquidityObservabilitySoftening(cfg));
+              CfgMainTesterAllowLiquidityObservabilitySoftening(cfg) ||
+              CfgTesterPOISoftBranchActive(cfg) ||
+              CfgTesterLiquiditySoftBranchActive(cfg) ||
+              CfgTesterDepthSoftBranchActive(cfg));
    }
 
    inline string CfgMainTesterStageSofteningSummary(const Settings &cfg)
    {
-      return StringFormat("tester_degraded=%d main_stage_loose=%d main_stage_obs=%d main_stage_regime=%d main_stage_liquidity=%d",
+      return StringFormat("tester_degraded=%d main_stage_loose=%d main_stage_obs=%d main_stage_regime=%d main_stage_liquidity=%d eval_soft=%d poi_soft=%d liquidity_soft=%d depth_soft=%d",
                           (CfgTesterDegradedModeActive(cfg) ? 1 : 0),
                           (CfgMainTesterLooseModeActive(cfg) ? 1 : 0),
                           (CfgMainTesterAllowDegradedObservabilitySoftening(cfg) ? 1 : 0),
                           (CfgMainTesterAllowRegimeObservabilitySoftening(cfg) ? 1 : 0),
-                          (CfgMainTesterAllowLiquidityObservabilitySoftening(cfg) ? 1 : 0));
+                          (CfgMainTesterAllowLiquidityObservabilitySoftening(cfg) ? 1 : 0),
+                          (CfgTesterEvaluateSofteningActive(cfg) ? 1 : 0),
+                          (CfgTesterPOISoftBranchActive(cfg) ? 1 : 0),
+                          (CfgTesterLiquiditySoftBranchActive(cfg) ? 1 : 0),
+                          (CfgTesterDepthSoftBranchActive(cfg) ? 1 : 0));
    }
 
    inline bool CfgInstitutionalStrictTransportExpected()
@@ -3987,10 +4094,14 @@ namespace Config
      else if(warn_only_out)
         action = "WARN_ONLY";
 
+     const string parity_summary =
+        CfgTesterParitySofteningSummary(cfg);
+
      line_out = StringFormat(
-        "[StartupAudit][MAIN_ONLY_ALLOWLIST] mode=%s(%d) registered=%d enabled=%d tradable_in_mode=%d canonical_ids=%s enabled_ids=%s intersection=%d/%d missing_canonical=%s unexpected_enabled_disallowed=%s disabled_canonical=%s structural_mismatch=%s action=%s",
+        "[StartupAudit][MAIN_ONLY_ALLOWLIST] mode=%s(%d) parity={%s} registered=%d enabled=%d tradable_in_mode=%d canonical_ids=%s enabled_ids=%s intersection=%d/%d missing_canonical=%s unexpected_enabled_disallowed=%s disabled_canonical=%s structural_mismatch=%s action=%s",
         _MainOnlyAuditModeName(sm),
         (int)sm,
+        parity_summary,
         registered_n,
         enabled_n,
         tradable_n,
@@ -4009,6 +4120,82 @@ namespace Config
 
   #ifndef CFG_HAS_MAIN_ONLY_RUNTIME_REGISTRY_AUDIT
      #define CFG_HAS_MAIN_ONLY_RUNTIME_REGISTRY_AUDIT 1
+  #endif
+
+  inline bool BuildMainOnlyEffectiveRosterLine(const Settings &cfg,
+                                               string &line_out)
+  {
+     line_out = "";
+
+     const StrategyMode sm = CfgStrategyMode(cfg);
+     if(sm != STRAT_MAIN_ONLY)
+        return false;
+
+     int canonical_ids[];
+     const string parity_summary =
+        CfgTesterParitySofteningSummary(cfg);
+
+     FillCanonicalMainOnlyIds(canonical_ids);
+     const int total = ArraySize(canonical_ids);
+     if(total <= 0)
+        return false;
+
+     int evaluable_n = 0;
+     string rows = "";
+
+     for(int i = 0; i < total; i++)
+     {
+        const StrategyID sid = (StrategyID)canonical_ids[i];
+
+        bool registered_now  = false;
+        bool enabled_capable = false;
+        bool enabled_now     = false;
+        bool tradable_now    = false;
+        string slug_out      = "";
+
+        StratReg::QueryMainOnlyExpectedIdState(cfg,
+                                               sid,
+                                               registered_now,
+                                               enabled_capable,
+                                               enabled_now,
+                                               tradable_now,
+                                               slug_out);
+
+        const bool mode_allowed_now = IsCanonicalMainOnlyStrategyId(sid);
+        const bool evaluable_now =
+           (registered_now && enabled_now && mode_allowed_now && tradable_now);
+
+        if(evaluable_now)
+           evaluable_n++;
+
+        if(StringLen(rows) > 0)
+           rows += " | ";
+
+        rows += StringFormat("%d/%s{reg=%d,cap=%d,en=%d,allow=%d,trad=%d,evaluable=%d}",
+                             (int)sid,
+                             (StringLen(slug_out) > 0 ? slug_out : StratReg::FriendlyName(sid)),
+                             (registered_now ? 1 : 0),
+                             (enabled_capable ? 1 : 0),
+                             (enabled_now ? 1 : 0),
+                             (mode_allowed_now ? 1 : 0),
+                             (tradable_now ? 1 : 0),
+                             (evaluable_now ? 1 : 0));
+     }
+
+     line_out = StringFormat(
+        "[StartupAudit][MAIN_ONLY_EFFECTIVE_ROSTER] mode=%s(%d) parity={%s} evaluable=%d/%d rows=%s",
+        _MainOnlyAuditModeName(sm),
+        (int)sm,
+        parity_summary,
+        evaluable_n,
+        total,
+        rows);
+
+     return true;
+  }
+
+  #ifndef CFG_HAS_MAIN_ONLY_EFFECTIVE_ROSTER_AUDIT
+     #define CFG_HAS_MAIN_ONLY_EFFECTIVE_ROSTER_AUDIT 1
   #endif
 
 #ifdef CFG_HAS_STRAT_MODE
@@ -5019,6 +5206,18 @@ namespace Config
      cfg.main_tester_allow_liquidity_observability_softening =
         x.main_tester_allow_liquidity_observability_softening;
 
+     cfg.tester_eval_softening_enable =
+        x.tester_eval_softening_enable;
+
+     cfg.tester_soft_poi_branch_enable =
+        x.tester_soft_poi_branch_enable;
+
+     cfg.tester_soft_liquidity_branch_enable =
+        x.tester_soft_liquidity_branch_enable;
+
+     cfg.tester_soft_depth_branch_enable =
+        x.tester_soft_depth_branch_enable;
+
      // Some codebases name it differently — set both if present
      #ifdef CFG_HAS_ROUTER_FALLBACK_MIN
        cfg.router_fallback_min_score = x.router_fb_min;
@@ -5873,6 +6072,11 @@ namespace Config
       x.main_tester_allow_degraded_observability_softening = false;
       x.main_tester_allow_regime_observability_softening = false;
       x.main_tester_allow_liquidity_observability_softening = false;
+
+      x.tester_eval_softening_enable = false;
+      x.tester_soft_poi_branch_enable = false;
+      x.tester_soft_liquidity_branch_enable = false;
+      x.tester_soft_depth_branch_enable = false;
 
       #ifdef CFG_HAS_ROUTER_USE_CONFL_POOL
         x.router_use_confl_pool = false;
@@ -8831,6 +9035,23 @@ namespace Config
       (CfgMainTesterAllowRegimeObservabilitySofteningConfigured(cfg) ||
        CfgMainTesterAllowLiquidityObservabilitySofteningConfigured(cfg)))
       warns += "main_tester specific regime/liquidity softening flags are set while main_tester_allow_degraded_observability_softening=false; specific staged softening remains inactive until the global observability softener is enabled.\n";
+
+   if(CfgTesterEvaluateSofteningConfigured(cfg) && !CfgIsTesterRuntime())
+      warns += "tester_eval_softening_enable=true outside tester runtime; centralized evaluate softening remains configured but inactive.\n";
+
+   if(!CfgTesterEvaluateSofteningConfigured(cfg) &&
+      (CfgTesterPOISoftBranchConfigured(cfg) ||
+       CfgTesterLiquiditySoftBranchConfigured(cfg) ||
+       CfgTesterDepthSoftBranchConfigured(cfg)))
+   {
+      warns += "tester_soft_* branch flags are set while tester_eval_softening_enable=false; centralized parity branches remain inactive until the master evaluate-softening flag is enabled.\n";
+   }
+
+   if(CfgTesterEvaluateSofteningConfigured(cfg) &&
+      !CfgTesterDegradedModeActive(cfg))
+   {
+      warns += "tester_eval_softening_enable=true while tester degraded mode is inactive; centralized parity branches remain configured but inactive until degraded mode is active.\n";
+   }
 
    if(CfgTesterDegradedModeActive(cfg) &&
       (CfgMainTesterLooseModeConfigured(cfg) ||
@@ -11974,6 +12195,18 @@ namespace Config
 
    cfg.main_tester_allow_liquidity_observability_softening =
       (cfg.main_tester_allow_liquidity_observability_softening ? true : false);
+
+   cfg.tester_eval_softening_enable =
+      (cfg.tester_eval_softening_enable ? true : false);
+
+   cfg.tester_soft_poi_branch_enable =
+      (cfg.tester_soft_poi_branch_enable ? true : false);
+
+   cfg.tester_soft_liquidity_branch_enable =
+      (cfg.tester_soft_liquidity_branch_enable ? true : false);
+
+   cfg.tester_soft_depth_branch_enable =
+      (cfg.tester_soft_depth_branch_enable ? true : false);
 
    if(CfgTesterDegradedModeActive(cfg))
    {
@@ -16392,6 +16625,11 @@ namespace Config
     s+=",mtRegObs="+BoolStr(c.main_tester_allow_regime_observability_softening);
     s+=",mtLiqObs="+BoolStr(c.main_tester_allow_liquidity_observability_softening);
 
+    s+=",teSoft="+BoolStr(c.tester_eval_softening_enable);
+    s+=",tpSoft="+BoolStr(c.tester_soft_poi_branch_enable);
+    s+=",tlSoft="+BoolStr(c.tester_soft_liquidity_branch_enable);
+    s+=",tdSoft="+BoolStr(c.tester_soft_depth_branch_enable);
+
     #ifdef CFG_HAS_ROUTER_MAX_STRATS
       s+=",routerCap="+IntegerToString(c.router_max_strats);
     #endif
@@ -18129,6 +18367,15 @@ namespace Config
       else if(k=="mtLiqObs" || k=="main_tester_allow_liquidity_observability_softening")
          cfg.main_tester_allow_liquidity_observability_softening = ToBool(v);
 
+      else if(k=="teSoft" || k=="tester_eval_softening_enable")
+         cfg.tester_eval_softening_enable = ToBool(v);
+      else if(k=="tpSoft" || k=="tester_soft_poi_branch_enable")
+         cfg.tester_soft_poi_branch_enable = ToBool(v);
+      else if(k=="tlSoft" || k=="tester_soft_liquidity_branch_enable")
+         cfg.tester_soft_liquidity_branch_enable = ToBool(v);
+      else if(k=="tdSoft" || k=="tester_soft_depth_branch_enable")
+         cfg.tester_soft_depth_branch_enable = ToBool(v);
+
       #ifdef CFG_HAS_ICT_ARM_ON_SIGNAL
         else if(k=="gArm") cfg.ict_arm_on_signal = ToBool(v);
       #endif
@@ -19112,6 +19359,15 @@ namespace Config
          cfg.main_tester_allow_regime_observability_softening = ToBool(v);
       else if(k=="mtLiqObs" || k=="main_tester_allow_liquidity_observability_softening")
          cfg.main_tester_allow_liquidity_observability_softening = ToBool(v);
+
+      else if(k=="teSoft" || k=="tester_eval_softening_enable")
+         cfg.tester_eval_softening_enable = ToBool(v);
+      else if(k=="tpSoft" || k=="tester_soft_poi_branch_enable")
+         cfg.tester_soft_poi_branch_enable = ToBool(v);
+      else if(k=="tlSoft" || k=="tester_soft_liquidity_branch_enable")
+         cfg.tester_soft_liquidity_branch_enable = ToBool(v);
+      else if(k=="tdSoft" || k=="tester_soft_depth_branch_enable")
+         cfg.tester_soft_depth_branch_enable = ToBool(v);
 
       #ifdef CFG_HAS_ROUTER_MAX_STRATS
         else if(k=="routerCap") cfg.router_max_strats = ToInt(v);
@@ -22046,6 +22302,12 @@ struct Settings
   bool            main_tester_allow_degraded_observability_softening;
   bool            main_tester_allow_regime_observability_softening;
   bool            main_tester_allow_liquidity_observability_softening;
+
+  // Centralized tester parity knobs for evaluate-stage softening.
+  bool            tester_eval_softening_enable;
+  bool            tester_soft_poi_branch_enable;
+  bool            tester_soft_liquidity_branch_enable;
+  bool            tester_soft_depth_branch_enable;
 
   #ifdef CFG_HAS_ROUTER_HINTS
      string router_profile_alias;           // profile alias used for fallback hinting ("trend", "mr", ...)
