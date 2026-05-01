@@ -296,6 +296,15 @@
  #endif
 #endif
 
+// -----------------------------------------------------------------------
+// C.A.N.D.L.E. FRAMEWORK EXTENSIONS
+// -----------------------------------------------------------------------
+// Enable the multi-candle narrative exhaustion scorer (N element)
+#define CANDLE_NARRATIVE_AVAILABLE
+
+// Enable the time-at-level (time-memory) scorer for OB/FVG/OTE zones (A element)
+#define AXIS_TIME_MEMORY_AVAILABLE
+
 // -------------------------------------------------------------------
 // 2) Safety-first defaults (Production posture)
 // -------------------------------------------------------------------

@@ -6341,6 +6341,21 @@ namespace Config
     cfg.w_liquidity         = 0.10;
     cfg.w_orderblock_near   = 0.10;
     cfg.w_vsa_increase      = 0.10;
+    
+    // C.A.N.D.L.E. N — Narrative Cluster defaults
+    cfg.cf_candle_narrative         = false;   // OFF by default; enable after shadow-mode validation
+    cfg.w_candle_narrative          = 0.08;
+    cfg.candle_narrative_lookback   = 4;
+    cfg.candle_narrative_min_score  = 0.55;
+    cfg.candle_narrative_veto       = false;
+ 
+    // C.A.N.D.L.E. A — Axis Time-Memory defaults
+    cfg.cf_axis_time_memory         = false;   // OFF by default; enable after shadow-mode validation
+    cfg.w_axis_time_memory          = 0.05;
+    cfg.axis_time_memory_lookback   = 100;
+    cfg.axis_time_memory_band_pct   = 0.0015;
+    cfg.axis_time_memory_min_score  = 0.25;
+    
     cfg.w_candle_pattern    = 0.10;
     cfg.w_chart_pattern     = 0.10;
     cfg.w_trend_regime      = 0.05;
@@ -10783,6 +10798,12 @@ namespace Config
       cfg.w_orderflow_delta  = MathMax(0.0, cfg.w_orderflow_delta);
       cfg.w_orderblock_near  = MathMax(0.0, cfg.w_orderblock_near);
       cfg.w_candle_pattern   = MathMax(0.0, cfg.w_candle_pattern);
+      
+      // C.A.N.D.L.E. N — Narrative Cluster weight clamp
+      cfg.w_candle_narrative         = MathMin(MathMax(cfg.w_candle_narrative, 0.0), 0.20);
+      cfg.candle_narrative_lookback  = MathMin(MathMax(cfg.candle_narrative_lookback, 2), 10);
+      cfg.candle_narrative_min_score = MathMin(MathMax(cfg.candle_narrative_min_score, 0.10), 0.90);
+      
       cfg.w_chart_pattern    = MathMax(0.0, cfg.w_chart_pattern);
       cfg.w_market_structure = MathMax(0.0, cfg.w_market_structure);
       cfg.w_trend_regime     = MathMax(0.0, cfg.w_trend_regime);
@@ -10790,6 +10811,13 @@ namespace Config
       cfg.w_macd             = MathMax(0.0, cfg.w_macd);
       cfg.w_correlation      = MathMax(0.0, cfg.w_correlation);
       cfg.w_news             = MathMax(0.0, cfg.w_news);
+      
+      // C.A.N.D.L.E. A — Axis Time-Memory weight clamp
+      cfg.w_axis_time_memory          = MathMin(MathMax(cfg.w_axis_time_memory, 0.0), 0.15);
+      cfg.axis_time_memory_lookback   = MathMin(MathMax(cfg.axis_time_memory_lookback, 10), 500);
+      cfg.axis_time_memory_band_pct   = MathMin(MathMax(cfg.axis_time_memory_band_pct, 0.0001), 0.02);
+      cfg.axis_time_memory_min_score  = MathMin(MathMax(cfg.axis_time_memory_min_score, 0.05), 0.90);
+      
       // --- Autochartist-style weights ---
       cfg.w_autochartist_chart      = MathMin(MathMax(cfg.w_autochartist_chart,      0.0), 2.0);
       cfg.w_autochartist_fib        = MathMin(MathMax(cfg.w_autochartist_fib,        0.0), 2.0);
@@ -20223,6 +20251,15 @@ struct Settings
    double w_correlation;
    double w_news;
    
+   // -----------------------------------------------------------------------
+   // C.A.N.D.L.E. N — Narrative Cluster Scorer
+   // -----------------------------------------------------------------------
+   bool   cf_candle_narrative;          // enable multi-candle exhaustion cluster scorer
+   double w_candle_narrative;           // confluence weight (recommended 0.05..0.12)
+   int    candle_narrative_lookback;    // closed bars to assess (3–5; 4 = default)
+   double candle_narrative_min_score;   // minimum exhaustion_score to vote "pass" (0.55 default)
+   bool   candle_narrative_veto;        // when true, fail = hard rejection (leave false initially)
+   
    // --- Autochartist-style internal scanner (local computation) ---
    bool   auto_enable;
    int    auto_provider;       // 0=local, 1=API, 2=hybrid (API+local fallback)
@@ -21561,6 +21598,15 @@ struct Settings
   // Core confluences (used by MainTradingLogic)
   bool    cf_liquidity;       double w_liquidity;
   bool    cf_vsa_increase;    double w_vsa_increase;
+  
+  // -----------------------------------------------------------------------
+  // C.A.N.D.L.E. A — Axis Time-Memory Scorer
+  // -----------------------------------------------------------------------
+  bool   cf_axis_time_memory;          // enable time-at-level quality multiplier on active POI
+  double w_axis_time_memory;           // confluence weight (recommended 0.04..0.08)
+  int    axis_time_memory_lookback;    // bars to scan for zone touches (100 default, 200 for H1/H4)
+  double axis_time_memory_band_pct;    // price band fraction around zone (0.0015 = 0.15%)
+  double axis_time_memory_min_score;   // normalised threshold to vote "pass" (0.25 default)
   
   // Silver Bullet timezone / session entry confluence
   bool   extra_silverbullet_tz;

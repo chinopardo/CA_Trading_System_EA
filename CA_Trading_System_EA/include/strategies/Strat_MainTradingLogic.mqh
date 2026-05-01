@@ -205,6 +205,15 @@ namespace MarketData
   #include "../NewsFilter.mqh"
 #endif
 
+// C.A.N.D.L.E. Framework extensions — N (Narrative) and A (Axis Time-Memory)
+#ifdef CANDLE_NARRATIVE_AVAILABLE
+   #include "../CandleNarrative.mqh"
+#endif
+
+#ifdef AXIS_TIME_MEMORY_AVAILABLE
+   #include "../LevelTimeMemory.mqh"
+#endif
+
 #ifndef STRAT_MAIN_ID
    #define STRAT_MAIN_ID STRAT_ID_MAIN_TRADING
 #endif
@@ -2572,6 +2581,21 @@ inline bool ADP_ADX_StrongAligned(const string sym,
 // Scanner-derived Wyckoff manipulation hint (Spring / UTAD recently detected)
 #define C_WY_SCAN_MANIP     38
 
+// -----------------------------------------------------------------------
+// C.A.N.D.L.E. FRAMEWORK EXTENSION CATEGORIES
+// -----------------------------------------------------------------------
+// C_CANDLE_NARR: multi-candle body/wick/close exhaustion cluster (N element).
+// Sits logically alongside C_CANDLE (6) in the confirmation tier.
+#ifndef C_CANDLE_NARR
+   #define C_CANDLE_NARR     39
+#endif
+
+// C_AXIS_TIME_MEM: time-at-level memory score for OB/FVG/OTE zones (A element).
+// Sits logically alongside C_OB (4) in the location tier.
+#ifndef C_AXIS_TIME_MEM
+   #define C_AXIS_TIME_MEM   40
+#endif
+
 #define C_AUTO_KEY C_AUTO_KEYLEVELS
 // ---------- Veto reason bitmask (Main strategy) ----------
 #define VETO_NONE          0
@@ -4380,6 +4404,27 @@ void Evaluate_StrategyMain(EAState &/*st*/,
          return;
       }
    #endif
+   
+   // Preflight: ensure enough bar history for C.A.N.D.L.E. extension scorers.
+   #ifdef CANDLE_NARRATIVE_AVAILABLE
+   {
+      const int narrLb = cfgForThisStrategy.cf_candle_narrative
+                          ? cfgForThisStrategy.candle_narrative_lookback  : 4;
+      const int tmLb   = cfgForThisStrategy.cf_axis_time_memory
+                          ? cfgForThisStrategy.axis_time_memory_lookback  : 100;
+
+      if(!CheckSanityForCANDLEExtensions(_Symbol,
+                                         (ENUM_TIMEFRAMES)cfgForThisStrategy.tf_entry,
+                                         narrLb, tmLb))
+      {
+         ss.Reset();
+         ss.eligible = false;
+         ss.reason   = "CANDLE_ext_bars_not_ready";
+         return;
+      }
+   }
+   #endif // CANDLE_NARRATIVE_AVAILABLE
+   
    // Decide which side this strategy instance should evaluate.
    // If BOTH, follow ICT allowedDirection when it is decisive.
    Direction dir = DIR_BUY;
@@ -6858,6 +6903,37 @@ void Evaluate_StrategyMain(EAState &/*st*/,
                                        autoS,
                                        whyConfirm);
 
+         // -----------------------------------------------------------------------
+         // C.A.N.D.L.E. N — Narrative Exhaustion in Hypothesis Stage
+         // Blends opposing-side exhaustion quality into st.pattern_score so that
+         // the hypothesis pipeline reflects both named pattern quality and the
+         // body/wick/close cluster signal together.
+         // -----------------------------------------------------------------------
+         #ifdef CANDLE_NARRATIVE_AVAILABLE
+         if(cfg.cf_candle_narrative)
+         {
+            CandleNarrativeResult narrHyp;
+            ZeroMemory(narrHyp);
+            const bool narrHypOk =
+               ComputeCandleNarrative(sym, tf, dir,
+                                      cfg.candle_narrative_lookback > 0
+                                         ? cfg.candle_narrative_lookback : 4,
+                                      narrHyp);
+
+            if(narrHypOk && narrHyp.data_valid)
+            {
+               // Mild multiplier: strong exhaustion >= 0.6 gets +5%;
+               // weak exhaustion < 0.35 gets -5%.  Neutral zone is no-op.
+               const double narrMult =
+                  (narrHyp.exhaustion_score >= 0.60) ? 1.05 :
+                  (narrHyp.exhaustion_score >= 0.45) ? 1.00 :
+                  (narrHyp.exhaustion_score >= 0.30) ? 0.97 : 0.95;
+
+               st.pattern_score = MathMin(1.0, MathMax(0.0, st.pattern_score * narrMult));
+            }
+         }
+         #endif // CANDLE_NARRATIVE_AVAILABLE
+         
          // Base threshold from Playbook
          double qThresh = Playbook_FinalHighQualityThreshold();
       
@@ -9471,6 +9547,83 @@ void Evaluate_StrategyMain(EAState &/*st*/,
             }
          }
          
+         // -----------------------------------------------------------------------
+         // C.A.N.D.L.E. A — Axis Time-Memory Gate
+         // Scores how "remembered" the current POI is based on how many bars
+         // in the lookback window touched the zone.  This is the "time is memory"
+         // concept — well-tested levels are more reliable.
+         // -----------------------------------------------------------------------
+         #ifdef AXIS_TIME_MEMORY_AVAILABLE
+         if(cfg.cf_axis_time_memory)
+         {
+            double zoneLo = 0.0, zoneHi = 0.0;
+
+            ICTOrderBlock obPick_tm;
+            ICTFVG        fvgPick_tm;
+            string        srcTm = "";
+
+            if(StratMainLogic::PickBestOBForDir(ctx, (dir == DIR_BUY), obPick_tm, srcTm))
+            {
+               zoneLo = MathMin(obPick_tm.low, obPick_tm.high);
+               zoneHi = MathMax(obPick_tm.low, obPick_tm.high);
+            }
+            else if(StratMainLogic::PickBestFVGForDir(ctx, (dir == DIR_BUY), fvgPick_tm, srcTm))
+            {
+               zoneLo = MathMin(fvgPick_tm.low, fvgPick_tm.high);
+               zoneHi = MathMax(fvgPick_tm.low, fvgPick_tm.high);
+            }
+            else if(poiPrice > 0.0)
+            {
+               const double halfSpread = poiPrice * 0.0010;
+               zoneLo = poiPrice - halfSpread;
+               zoneHi = poiPrice + halfSpread;
+            }
+
+            if(zoneLo > 0.0 && zoneHi > zoneLo)
+            {
+               LevelTimeMemoryResult tmResult;
+               ZeroMemory(tmResult);
+
+               const int tmLookback = (cfg.axis_time_memory_lookback >= 10)
+                                       ? cfg.axis_time_memory_lookback : 100;
+
+               const bool tmDataOk = ComputeLevelTimeMemory(
+                  sym, tf, zoneLo, zoneHi, tmLookback,
+                  cfg.axis_time_memory_band_pct, tmResult);
+
+               if(tmDataOk && tmResult.data_valid)
+               {
+                  const bool tmConfirms = (tmResult.memory_score >= cfg.axis_time_memory_min_score);
+
+                  const double tmQualMult =
+                     LevelTimeMemory_QualityMultiplier(tmResult.memory_score, 0.88, 1.12);
+
+                  _ML::Append(R,
+                              tmConfirms,
+                              cfg.w_axis_time_memory * tmQualMult,
+                              StringFormat("AxisTimeMem[sc=%.2f t=%d]",
+                                           tmResult.memory_score,
+                                           tmResult.touch_count),
+                              C_AXIS_TIME_MEM);
+
+                  if(CfgDebugStrategies(cfg))
+                  {
+                     DbgStrat(cfg, sym, tf, "AxisTimeMem",
+                        StringFormat("[AxisTimeMem] sym=%s tf=%d dir=%s"
+                                     " zone=[%.5f..%.5f] src=%s"
+                                     " touches=%d/%d density=%.3f score=%.3f confirms=%d",
+                                     sym, (int)tf, (dir == DIR_BUY ? "BUY" : "SELL"),
+                                     zoneLo, zoneHi, srcTm,
+                                     tmResult.touch_count, tmResult.lookback_used,
+                                     tmResult.touch_density, tmResult.memory_score,
+                                     (tmConfirms ? 1 : 0)),
+                        true);
+                  }
+               }
+            }
+         }
+         #endif // AXIS_TIME_MEMORY_AVAILABLE
+         
          // Final confirmation group (CANDLE or CHART or TREND)
          const bool needConfirm =
                   cfg.cf_candle_pattern ||
@@ -9517,6 +9670,58 @@ void Evaluate_StrategyMain(EAState &/*st*/,
            okCandle = HasBullBearCandlePattern(sym, tf, dir, cfg);
            _ML::Append(R, okCandle, cfg.w_candle_pattern, "CndlPattern", C_CANDLE);
          }
+         
+         // -----------------------------------------------------------------------
+         // C.A.N.D.L.E. N — Narrative Cluster Exhaustion Gate
+         // Runs the multi-candle body/wick/close scorer to detect opposing-side
+         // exhaustion.  This vote is ADDITIVE alongside the named-pattern gate —
+         // it does not replace HasBullBearCandlePattern().
+         // -----------------------------------------------------------------------
+         #ifdef CANDLE_NARRATIVE_AVAILABLE
+         if(cfg.cf_candle_narrative)
+         {
+            CandleNarrativeResult narrResult;
+            ZeroMemory(narrResult);
+
+            const int narrLookback = (cfg.candle_narrative_lookback >= 2 &&
+                                       cfg.candle_narrative_lookback <= 10)
+                                      ? cfg.candle_narrative_lookback : 4;
+
+            const bool narrDataOk = ComputeCandleNarrative(sym, tf, dir, narrLookback, narrResult);
+
+            if(narrDataOk && narrResult.data_valid)
+            {
+               const bool narrConfirms =
+                  (narrResult.exhaustion_score >= cfg.candle_narrative_min_score);
+
+               _ML::Append(R,
+                           narrConfirms,
+                           cfg.w_candle_narrative,
+                           StringFormat("NarrExhaust[%.2f]", narrResult.exhaustion_score),
+                           C_CANDLE_NARR);
+
+               // Optional hard veto in checklist mode
+               if(requireChecklist && cfg.candle_narrative_veto && !narrConfirms)
+                  return _ML::Finalize(R, cfg, "Seq@NarrativeExhaustion");
+
+               if(CfgDebugStrategies(cfg))
+               {
+                  const string dirStr = (dir == DIR_BUY ? "BUY" : "SELL");
+                  DbgStrat(cfg, sym, tf, "NarrCluster",
+                     StringFormat("[NarrCluster] sym=%s tf=%d dir=%s"
+                                  " body_slope=%.3f wick_slope=%.3f close_slope=%.3f"
+                                  " exhaust=%.3f confirms=%d",
+                                  sym, (int)tf, dirStr,
+                                  narrResult.body_ratio_slope,
+                                  narrResult.wick_trend_slope,
+                                  narrResult.close_quality_slope,
+                                  narrResult.exhaustion_score,
+                                  (narrConfirms ? 1 : 0)),
+                     true);
+               }
+            }
+         }
+         #endif // CANDLE_NARRATIVE_AVAILABLE
          
          if(cfg.cf_chart_pattern && !cfg.cf_autochartist_chart)
          {

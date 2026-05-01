@@ -468,6 +468,16 @@
       "path":"include\\strategies\\StrategyDirectExecGuards.mqh",
       "compile":false,
       "relative_to_project":true
+    },
+    {
+      "path":"include\\CandleNarrative.mqh",
+      "compile":false,
+      "relative_to_project":true
+    },
+    {
+      "path":"include\\LevelTimeMemory.mqh",
+      "compile":false,
+      "relative_to_project":true
     }
   ]
 }

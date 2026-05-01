@@ -70,6 +70,41 @@ inline bool SanityBypassPreflightInTester()
     return SanityIsTesterRuntime();
   }
 
+// Sanity check for the C.A.N.D.L.E. Framework narrative and time-memory
+// features in Strat_MainTradingLogic.  Ensures that the entry timeframe
+// has enough bars for both the narrative lookback and the time-memory scan.
+//
+// Parameters:
+//   symbol               — traded symbol
+//   entryTF              — entry timeframe used by Strat_MainTradingLogic
+//   narrativeLookback    — cfg.candle_narrative_lookback (typically 4)
+//   timeMemoryLookback   — cfg.axis_time_memory_lookback (typically 100)
+//
+// Returns false if either requirement is unmet, signalling that the strategy
+// should abstain on the current tick.
+inline bool CheckSanityForCANDLEExtensions(const string symbol,
+                                           const ENUM_TIMEFRAMES entryTF,
+                                           const int narrativeLookback,
+                                           const int timeMemoryLookback)
+{
+   if(SanityBypassPreflightInTester())
+      return true;
+
+   // Narrative scorer only needs a small cluster of recent closed bars.
+   const int narrNeed = SanityRelaxedBarsNeed(narrativeLookback + 2);
+   if(!CheckTimeframeAvailability(symbol, entryTF, narrNeed))
+      return false;
+
+   // Time-memory scanner needs a much larger history window.
+   // The relaxed version caps at 10 in the tester, which is fine because
+   // time-memory scoring degrades gracefully when fewer bars are available.
+   const int tmNeed = SanityRelaxedBarsNeed(timeMemoryLookback + 5);
+   if(!CheckTimeframeAvailability(symbol, entryTF, tmNeed))
+      return false;
+
+   return true;
+}
+
 // Helper to check that a timeframe has been loaded and contains at least
 // `requiredBars` bars.  If `tf` is less than or equal to 0 the check is
 // skipped to allow optional HTF parameters.
