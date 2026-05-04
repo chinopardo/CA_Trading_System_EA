@@ -6914,7 +6914,7 @@ void Evaluate_StrategyMain(EAState &/*st*/,
          {
             CandleNarrativeResult narrHyp;
             ZeroMemory(narrHyp);
-            const bool narrHypOk =
+            bool narrHypOk = false;
                // Build CandleNarrativeCtx for the hypothesis stage.
                // Mirrors the EvalSequentialEx enrichment path using the same ctx fields.
                #ifdef CANDLE_NARRATIVE_ENHANCED
@@ -6976,15 +6976,15 @@ void Evaluate_StrategyMain(EAState &/*st*/,
                   }
 
                   narrHypCtx.data_populated = true;
-                  ComputeCandleNarrative(sym, tf, dir,
-                                         cfg.candle_narrative_lookback > 0
-                                            ? cfg.candle_narrative_lookback : 4,
-                                         narrHypCtx, narrHyp);
+                  narrHypOk = ComputeCandleNarrative(sym, tf, dir,
+                                          cfg.candle_narrative_lookback > 0
+                                             ? cfg.candle_narrative_lookback : 4,
+                                          narrHypCtx, narrHyp);
                }
                else
                #endif // CANDLE_NARRATIVE_ENHANCED
                {
-                  ComputeCandleNarrative(sym, tf, dir,
+                  narrHypOk = ComputeCandleNarrative(sym, tf, dir,
                                          cfg.candle_narrative_lookback > 0
                                             ? cfg.candle_narrative_lookback : 4,
                                          narrHyp);
@@ -6992,14 +6992,19 @@ void Evaluate_StrategyMain(EAState &/*st*/,
 
             if(narrHypOk && narrHyp.data_valid)
             {
-               // Mild multiplier: strong exhaustion >= 0.6 gets +5%;
-               // weak exhaustion < 0.35 gets -5%.  Neutral zone is no-op.
-               const double narrMult =
-                  (narrHyp.exhaustion_score >= 0.60) ? 1.05 :
-                  (narrHyp.exhaustion_score >= 0.45) ? 1.00 :
-                  (narrHyp.exhaustion_score >= 0.30) ? 0.97 : 0.95;
-
-               st.pattern_score = MathMin(1.0, MathMax(0.0, st.pattern_score * narrMult));
+               // EvaluateEx does not carry MainHypStageState — narrative result is
+               // available in narrHyp for diagnostics.  Pattern-score blending is
+               // applied in the EvaluateHypothesis staged pipeline only.
+               if(CfgDebugStrategies(cfg))
+               {
+                  const double narrMult =
+                     (narrHyp.exhaustion_score >= 0.60) ? 1.05 :
+                     (narrHyp.exhaustion_score >= 0.45) ? 1.00 :
+                     (narrHyp.exhaustion_score >= 0.30) ? 0.97 : 0.95;
+                  DbgStrat(cfg, sym, tf, "NarrExhaust",
+                     StringFormat("[NarrExhaust] exhaust=%.3f mult=%.2f",
+                                  narrHyp.exhaustion_score, narrMult), true);
+               }
             }
          }
          #endif // CANDLE_NARRATIVE_AVAILABLE
@@ -9642,11 +9647,17 @@ void Evaluate_StrategyMain(EAState &/*st*/,
                zoneLo = MathMin(fvgPick_tm.low, fvgPick_tm.high);
                zoneHi = MathMax(fvgPick_tm.low, fvgPick_tm.high);
             }
-            else if(poiPrice > 0.0)
+            else
             {
-               const double halfSpread = poiPrice * 0.0010;
-               zoneLo = poiPrice - halfSpread;
-               zoneHi = poiPrice + halfSpread;
+               int    _tmPoiKind  = 0;
+               double _tmPoiPrice = 0.0;
+               Main_ResolveVSAPOIContext(sym, tf, dir, ctx, _tmPoiKind, _tmPoiPrice);
+               if(_tmPoiPrice > 0.0)
+               {
+                  const double halfSpread = _tmPoiPrice * 0.0010;
+                  zoneLo = _tmPoiPrice - halfSpread;
+                  zoneHi = _tmPoiPrice + halfSpread;
+               }
             }
 
             if(zoneLo > 0.0 && zoneHi > zoneLo)
