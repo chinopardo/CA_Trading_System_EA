@@ -305,6 +305,16 @@
 // Enable the time-at-level (time-memory) scorer for OB/FVG/OTE zones (A element)
 #define AXIS_TIME_MEMORY_AVAILABLE
 
+// Enable the enhanced pattern/VSA/AMD/HTF-aware narrative scorer (N element)
+// Requires CandleNarrativeCtx to be populated before calling ComputeCandleNarrative().
+// When disabled, the scorer falls back to the original OHLC-only behaviour.
+#define CANDLE_NARRATIVE_ENHANCED
+
+// Enable the enhanced multi-TF pivot/trendline/OB-aware memory scorer (A element)
+// Requires LevelTimeMemoryCtx to be populated before calling ComputeLevelTimeMemory().
+// When disabled, the scorer falls back to the original single-TF bar-count behaviour.
+#define AXIS_TIME_MEMORY_ENHANCED
+
 // -------------------------------------------------------------------
 // 2) Safety-first defaults (Production posture)
 // -------------------------------------------------------------------

@@ -6915,10 +6915,80 @@ void Evaluate_StrategyMain(EAState &/*st*/,
             CandleNarrativeResult narrHyp;
             ZeroMemory(narrHyp);
             const bool narrHypOk =
-               ComputeCandleNarrative(sym, tf, dir,
-                                      cfg.candle_narrative_lookback > 0
-                                         ? cfg.candle_narrative_lookback : 4,
-                                      narrHyp);
+               // Build CandleNarrativeCtx for the hypothesis stage.
+               // Mirrors the EvalSequentialEx enrichment path using the same ctx fields.
+               #ifdef CANDLE_NARRATIVE_ENHANCED
+               if(cfg.candle_narrative_use_patterns ||
+                  cfg.candle_narrative_use_vsa      ||
+                  cfg.candle_narrative_use_amd      ||
+                  cfg.candle_narrative_htf_weight > 0.0)
+               {
+                  CandleNarrativeCtx narrHypCtx;
+                  narrHypCtx.Reset();
+
+                  if(cfg.candle_narrative_use_patterns)
+                  {
+                     Patt::PatternSet P;
+                     if(Patt::ScanAll(sym, tf, 80, P))
+                     {
+                        narrHypCtx.patt_cs_ampdi01    = P.cs_score_ampdi01;
+                        narrHypCtx.patt_cs_trend01    = P.cs_trend01;
+                        narrHypCtx.patt_cs_vol01      = P.cs_vol01;
+                        narrHypCtx.patt_cs_mom01      = P.cs_mom01;
+                        narrHypCtx.patt_ch_ampdi01    = P.ch_score_ampdi01;
+                        narrHypCtx.patt_cs_best_score = P.cs_best_score01;
+                        narrHypCtx.patt_cs_bull       = P.cs_best_bull;
+                        narrHypCtx.patt_sd_htf_aligned= P.sd_htf_aligned;
+                     }
+                  }
+
+                  if(cfg.candle_narrative_use_vsa)
+                  {
+                     narrHypCtx.vsa_climax_against = (dir == DIR_BUY)
+                        ? ctx.vsaSellingClimax : ctx.vsaBuyingClimax;
+                     narrHypCtx.vsa_climax_score01 = ctx.vsaClimaxScore;
+                     narrHypCtx.vsa_spring         = ctx.wySpringCandidate;
+                     narrHypCtx.vsa_upthrust       = ctx.wyUTADCandidate;
+                  }
+
+                  narrHypCtx.atr_pts     = Indi::ATRPoints(sym, tf, 14, 1);
+                  narrHypCtx.vol_regime01= _Clamp01((double)ctx.vwapVolumeRegime / 2.0);
+
+                  if(cfg.candle_narrative_use_amd)
+                  {
+                     const int ph1 = Ctx_AMDPhase_H1(ctx);
+                     const int ph4 = Ctx_AMDPhase_H4(ctx);
+                     narrHypCtx.amd_accumulation = (ph1 == AMD_PHASE_ACCUM || ph4 == AMD_PHASE_ACCUM)
+                                                    || ctx.wySpringCandidate;
+                     narrHypCtx.amd_distribution = (ph1 == AMD_PHASE_DIST  || ph4 == AMD_PHASE_DIST)
+                                                    || ctx.wyUTADCandidate;
+                     narrHypCtx.amd_manipulation = (ph1 == AMD_PHASE_MANIP || ph4 == AMD_PHASE_MANIP);
+                  }
+
+                  if(cfg.candle_narrative_htf_weight > 0.0)
+                  {
+                     const bool htfBull = ctx.wyInAccumulation || ctx.wyInMarkup;
+                     const bool htfBear = ctx.wyInDistribution || ctx.wyInMarkdown;
+                     narrHypCtx.htf_trend_aligned    = (dir == DIR_BUY) ? htfBull : htfBear;
+                     narrHypCtx.htf_trend_strength01 = htfBull
+                        ? (ctx.wyInMarkup ? 1.0 : 0.60)
+                        : (htfBear ? (ctx.wyInMarkdown ? 1.0 : 0.60) : 0.0);
+                  }
+
+                  narrHypCtx.data_populated = true;
+                  ComputeCandleNarrative(sym, tf, dir,
+                                         cfg.candle_narrative_lookback > 0
+                                            ? cfg.candle_narrative_lookback : 4,
+                                         narrHypCtx, narrHyp);
+               }
+               else
+               #endif // CANDLE_NARRATIVE_ENHANCED
+               {
+                  ComputeCandleNarrative(sym, tf, dir,
+                                         cfg.candle_narrative_lookback > 0
+                                            ? cfg.candle_narrative_lookback : 4,
+                                         narrHyp);
+               }
 
             if(narrHypOk && narrHyp.data_valid)
             {
@@ -9587,9 +9657,80 @@ void Evaluate_StrategyMain(EAState &/*st*/,
                const int tmLookback = (cfg.axis_time_memory_lookback >= 10)
                                        ? cfg.axis_time_memory_lookback : 100;
 
-               const bool tmDataOk = ComputeLevelTimeMemory(
-                  sym, tf, zoneLo, zoneHi, tmLookback,
-                  cfg.axis_time_memory_band_pct, tmResult);
+               // Build LevelTimeMemoryCtx and call the enhanced scorer when enabled.
+               bool tmDataOk = false;
+               #ifdef AXIS_TIME_MEMORY_ENHANCED
+               if(cfg.axis_time_memory_htf_lookback > 0 ||
+                  cfg.axis_time_memory_use_pivots        ||
+                  cfg.axis_time_memory_use_trendlines    ||
+                  cfg.axis_time_memory_use_ob_quality)
+               {
+                  LevelTimeMemoryCtx tmCtx;
+                  tmCtx.Reset();
+
+                  // Multi-TF configuration
+                  tmCtx.tf_htf       = (ENUM_TIMEFRAMES)cfg.tf_trend_htf;
+                  tmCtx.tf_mid       = (ENUM_TIMEFRAMES)cfg.tf_entry;
+                  tmCtx.htf_lookback = (cfg.axis_time_memory_htf_lookback >= 10)
+                                        ? cfg.axis_time_memory_htf_lookback : 80;
+                  tmCtx.mid_lookback = (cfg.axis_time_memory_mid_lookback >= 10)
+                                        ? cfg.axis_time_memory_mid_lookback : 120;
+
+                  // HTF S&R bounds: use ICT_Context HTF zone if available.
+                  // bestDemandZoneH4 / bestSupplyZoneH4 hold H4-detected zones.
+                  #ifdef CA_HAS_MULTITF_ZONES
+                  if(dir == DIR_BUY && ctx.bestDemandZoneH4.hi > 0.0)
+                  {
+                     tmCtx.htf_lo = ctx.bestDemandZoneH4.lo;
+                     tmCtx.htf_hi = ctx.bestDemandZoneH4.hi;
+                  }
+                  else if(dir == DIR_SELL && ctx.bestSupplyZoneH4.hi > 0.0)
+                  {
+                     tmCtx.htf_lo = ctx.bestSupplyZoneH4.lo;
+                     tmCtx.htf_hi = ctx.bestSupplyZoneH4.hi;
+                  }
+                  #endif
+
+                  // Mid TF bounds come from the already-resolved zone (zoneLo / zoneHi)
+                  tmCtx.mid_lo = zoneLo;
+                  tmCtx.mid_hi = zoneHi;
+
+                  // Pivot proximity from ICT_Context poolDistanceATR
+                  // (pivot proximity is already expressed as ATR distance in context)
+                  if(cfg.axis_time_memory_use_pivots)
+                  {
+                     const double pivDistATR = ctx.poolDistanceATR;
+                     tmCtx.near_pivot     = (pivDistATR >= 0.0 && pivDistATR < 1.5);
+                     tmCtx.pivot_dist_atr = (pivDistATR >= 0.0) ? pivDistATR : 99.0;
+                  }
+
+                  // OBZone quality from already-resolved obPick_tm
+                  if(cfg.axis_time_memory_use_ob_quality)
+                  {
+                     // obPick_tm is a StratMainLogic::ICTOrderBlock; cast to StructOB::OBZone
+                     // The ICTOrderBlock type carries the full OBZone payload in this codebase.
+                     #ifdef STRUCTOB_QUALITY_HELPERS_AVAILABLE
+                        tmCtx.ob_quality01   = StructOB::_ZoneOBNormalizedScore01(obPick_tm);
+                        tmCtx.ob_freshness01 = StructOB::_ZoneFreshnessExport01(obPick_tm);
+                        tmCtx.ob_sd_score01  = StructOB::_ZoneSDNormalizedScore01(obPick_tm);
+                        tmCtx.fvg_overlap01  = obPick_tm.fvgOverlap01;
+                        tmCtx.ob_touch_count = obPick_tm.touchCount;
+                     #endif
+                  }
+
+                  tmCtx.data_populated = true;
+                  tmDataOk = ComputeLevelTimeMemory(
+                     sym, tf, zoneLo, zoneHi, tmLookback,
+                     cfg.axis_time_memory_band_pct, tmCtx, tmResult);
+               }
+               else
+               #endif // AXIS_TIME_MEMORY_ENHANCED
+               {
+                  // Fallback: original call without context
+                  tmDataOk = ComputeLevelTimeMemory(
+                     sym, tf, zoneLo, zoneHi, tmLookback,
+                     cfg.axis_time_memory_band_pct, tmResult);
+               }
 
                if(tmDataOk && tmResult.data_valid)
                {
@@ -9687,7 +9828,94 @@ void Evaluate_StrategyMain(EAState &/*st*/,
                                        cfg.candle_narrative_lookback <= 10)
                                       ? cfg.candle_narrative_lookback : 4;
 
-            const bool narrDataOk = ComputeCandleNarrative(sym, tf, dir, narrLookback, narrResult);
+            // Build CandleNarrativeCtx from data available in EvalSequentialEx scope.
+            // Runs the enriched path only when CANDLE_NARRATIVE_ENHANCED is defined.
+            bool narrDataOk = false;
+            #ifdef CANDLE_NARRATIVE_ENHANCED
+            if(cfg.candle_narrative_use_patterns ||
+               cfg.candle_narrative_use_vsa      ||
+               cfg.candle_narrative_use_amd      ||
+               cfg.candle_narrative_htf_weight > 0.0 ||
+               cfg.candle_narrative_vol_scale)
+            {
+               CandleNarrativeCtx narrCtx;
+               narrCtx.Reset();
+
+               // --- PatternSet: run a fresh scan (closed-bar safe, non-repaint) ---
+               if(cfg.candle_narrative_use_patterns)
+               {
+                  Patt::PatternSet P;
+                  if(Patt::ScanAll(sym, tf, 80, P))
+                  {
+                     narrCtx.patt_cs_ampdi01    = P.cs_score_ampdi01;
+                     narrCtx.patt_cs_trend01    = P.cs_trend01;
+                     narrCtx.patt_cs_vol01      = P.cs_vol01;
+                     narrCtx.patt_cs_mom01      = P.cs_mom01;
+                     narrCtx.patt_ch_ampdi01    = P.ch_score_ampdi01;
+                     narrCtx.patt_ch_trend01    = P.ch_trend01;
+                     narrCtx.patt_cs_best_score = P.cs_best_score01;
+                     narrCtx.patt_ch_best_score = P.ch_best_score01;
+                     narrCtx.patt_cs_bull       = P.cs_best_bull;
+                     narrCtx.patt_ch_bull       = P.ch_best_bull;
+                     narrCtx.patt_sd_htf_aligned= P.sd_htf_aligned;
+                  }
+               }
+
+               // --- VSA climax context from ICT_Context scalar fields ---
+               if(cfg.candle_narrative_use_vsa)
+               {
+                  // vsaBuyingClimax  = buying climax detected (bearish exhaustion → SELL signal)
+                  // vsaSellingClimax = selling climax detected (bullish exhaustion → BUY signal)
+                  narrCtx.vsa_climax_against = (dir == DIR_BUY)
+                     ? ctx.vsaSellingClimax    // selling climax is AGAINST a sell, so BUY exhaustion confirmed
+                     : ctx.vsaBuyingClimax;    // buying climax is AGAINST a buy, so SELL exhaustion confirmed
+                  narrCtx.vsa_climax_score01 = ctx.vsaClimaxScore;
+                  narrCtx.vsa_spring         = ctx.wySpringCandidate;
+                  narrCtx.vsa_upthrust       = ctx.wyUTADCandidate;
+               }
+
+               // --- ATR from MarketData (no ATR field on ICT_Context; compute inline) ---
+               narrCtx.atr_pts    = Indi::ATRPoints(sym, tf, 14, 1);
+
+               // --- Volatility regime: use vwapVolumeRegime as a proxy [0..1] ---
+               // vwapVolumeRegime: 0=low, 1=normal, 2=high (map to [0..1])
+               narrCtx.vol_regime01 = _Clamp01((double)ctx.vwapVolumeRegime / 2.0);
+
+               // --- AMD phase via helper functions (correct access pattern) ---
+               if(cfg.candle_narrative_use_amd)
+               {
+                  const int ph1 = Ctx_AMDPhase_H1(ctx);
+                  const int ph4 = Ctx_AMDPhase_H4(ctx);
+                  narrCtx.amd_accumulation = (ph1 == AMD_PHASE_ACCUM || ph4 == AMD_PHASE_ACCUM)
+                                              || ctx.wySpringCandidate;
+                  narrCtx.amd_distribution = (ph1 == AMD_PHASE_DIST  || ph4 == AMD_PHASE_DIST)
+                                              || ctx.wyUTADCandidate;
+                  narrCtx.amd_manipulation = (ph1 == AMD_PHASE_MANIP || ph4 == AMD_PHASE_MANIP);
+               }
+
+               // --- HTF trend: use Wyckoff macro-state flags on ICT_Context ---
+               // wyInAccumulation / wyInMarkup / wyInDistribution / wyInMarkdown are
+               // the HTF narrative flags set by the ICT model for the D1/H4 phase.
+               if(cfg.candle_narrative_htf_weight > 0.0)
+               {
+                  const bool htfBull = ctx.wyInAccumulation || ctx.wyInMarkup;
+                  const bool htfBear = ctx.wyInDistribution || ctx.wyInMarkdown;
+                  narrCtx.htf_trend_aligned    = (dir == DIR_BUY) ? htfBull : htfBear;
+                  // Strength: both HTF phases aligned = 1.0; one = 0.60; neither = 0.0
+                  narrCtx.htf_trend_strength01 = htfBull
+                     ? (ctx.wyInMarkup ? 1.0 : 0.60)
+                     : (htfBear ? (ctx.wyInMarkdown ? 1.0 : 0.60) : 0.0);
+               }
+
+               narrCtx.data_populated = true;
+               narrDataOk = ComputeCandleNarrative(sym, tf, dir, narrLookback, narrCtx, narrResult);
+            }
+            else
+            #endif // CANDLE_NARRATIVE_ENHANCED
+            {
+               // Fallback: original OHLC-only call (no ctx parameter)
+               narrDataOk = ComputeCandleNarrative(sym, tf, dir, narrLookback, narrResult);
+            }
 
             if(narrDataOk && narrResult.data_valid)
             {

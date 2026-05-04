@@ -6356,6 +6356,22 @@ namespace Config
     cfg.axis_time_memory_band_pct   = 0.0015;
     cfg.axis_time_memory_min_score  = 0.25;
     
+    // C.A.N.D.L.E. N — enhanced context defaults
+    cfg.candle_narrative_use_patterns   = false;
+    cfg.candle_narrative_use_vsa        = false;
+    cfg.candle_narrative_use_amd        = false;
+    cfg.candle_narrative_htf_weight     = 0.10;
+    cfg.candle_narrative_vol_scale      = false;
+
+    // C.A.N.D.L.E. A — enhanced multi-TF defaults
+    cfg.axis_time_memory_htf_lookback   = 80;
+    cfg.axis_time_memory_mid_lookback   = 120;
+    cfg.axis_time_memory_use_pivots     = false;
+    cfg.axis_time_memory_use_trendlines = false;
+    cfg.axis_time_memory_use_ob_quality = false;
+    cfg.axis_time_memory_htf_weight     = 0.30;
+    cfg.axis_time_memory_mid_weight     = 0.35;
+    
     cfg.w_candle_pattern    = 0.10;
     cfg.w_chart_pattern     = 0.10;
     cfg.w_trend_regime      = 0.05;
@@ -10817,6 +10833,20 @@ namespace Config
       cfg.axis_time_memory_lookback   = MathMin(MathMax(cfg.axis_time_memory_lookback, 10), 500);
       cfg.axis_time_memory_band_pct   = MathMin(MathMax(cfg.axis_time_memory_band_pct, 0.0001), 0.02);
       cfg.axis_time_memory_min_score  = MathMin(MathMax(cfg.axis_time_memory_min_score, 0.05), 0.90);
+      
+      // C.A.N.D.L.E. N — enhanced field clamps
+      cfg.candle_narrative_htf_weight   =
+         MathMin(MathMax(cfg.candle_narrative_htf_weight, 0.0), 0.40);
+
+      // C.A.N.D.L.E. A — enhanced multi-TF field clamps
+      cfg.axis_time_memory_htf_lookback =
+         MathMin(MathMax(cfg.axis_time_memory_htf_lookback, 10), 300);
+      cfg.axis_time_memory_mid_lookback =
+         MathMin(MathMax(cfg.axis_time_memory_mid_lookback, 10), 400);
+      cfg.axis_time_memory_htf_weight   =
+         MathMin(MathMax(cfg.axis_time_memory_htf_weight, 0.0), 1.0);
+      cfg.axis_time_memory_mid_weight   =
+         MathMin(MathMax(cfg.axis_time_memory_mid_weight, 0.0), 1.0);
       
       // --- Autochartist-style weights ---
       cfg.w_autochartist_chart      = MathMin(MathMax(cfg.w_autochartist_chart,      0.0), 2.0);
@@ -20260,6 +20290,20 @@ struct Settings
    double candle_narrative_min_score;   // minimum exhaustion_score to vote "pass" (0.55 default)
    bool   candle_narrative_veto;        // when true, fail = hard rejection (leave false initially)
    
+   // C.A.N.D.L.E. N — Enhanced context feeds
+   // candle_narrative_use_patterns: blend PatternSet AMD scores into exhaustion scorer.
+   bool   candle_narrative_use_patterns;     // default false (enable after validation)
+   // candle_narrative_use_vsa: blend VSA climax/spring into exhaustion scorer.
+   bool   candle_narrative_use_vsa;          // default false
+   // candle_narrative_use_amd: weight score by Wyckoff AMD phase alignment.
+   bool   candle_narrative_use_amd;          // default false
+   // candle_narrative_htf_weight: how much HTF trend alignment scales final score.
+   // 0.0 = no HTF scaling; 0.20 = up to ±20% adjustment.
+   double candle_narrative_htf_weight;       // default 0.10
+   // candle_narrative_vol_scale: scale exhaustion_score by vol_regime01.
+   // High vol → score may be less reliable; low vol → cluster patterns are cleaner.
+   bool   candle_narrative_vol_scale;        // default false
+   
    // --- Autochartist-style internal scanner (local computation) ---
    bool   auto_enable;
    int    auto_provider;       // 0=local, 1=API, 2=hybrid (API+local fallback)
@@ -21607,6 +21651,22 @@ struct Settings
   int    axis_time_memory_lookback;    // bars to scan for zone touches (100 default, 200 for H1/H4)
   double axis_time_memory_band_pct;    // price band fraction around zone (0.0015 = 0.15%)
   double axis_time_memory_min_score;   // normalised threshold to vote "pass" (0.25 default)
+  
+  // C.A.N.D.L.E. A — Enhanced multi-TF memory settings
+  // axis_time_memory_htf_lookback: bars to scan on the HTF zone (H4/D1 level S&R).
+  int    axis_time_memory_htf_lookback;     // default 80
+  // axis_time_memory_mid_lookback: bars to scan on the mid TF zone (H1 S&D).
+  int    axis_time_memory_mid_lookback;     // default 120
+  // axis_time_memory_use_pivots: apply bonus for proximity to daily/weekly pivots.
+  bool   axis_time_memory_use_pivots;       // default false
+  // axis_time_memory_use_trendlines: apply bonus for proximity to active trendlines.
+  bool   axis_time_memory_use_trendlines;   // default false
+  // axis_time_memory_use_ob_quality: scale memory score by OBZone quality/freshness.
+  bool   axis_time_memory_use_ob_quality;   // default false
+  // axis_time_memory_htf_weight: weight of HTF tier in composite_score.
+  double axis_time_memory_htf_weight;       // default 0.30
+  // axis_time_memory_mid_weight: weight of mid TF tier in composite_score.
+  double axis_time_memory_mid_weight;       // default 0.35
   
   // Silver Bullet timezone / session entry confluence
   bool   extra_silverbullet_tz;
